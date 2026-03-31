@@ -5,15 +5,6 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      // Debug mode: show raw property keys + mapped result for first page
-      if (req.query.debug) {
-        const resp = await notion.databases.query({ database_id: CLIENTS_DB, page_size: 1 });
-        const page = resp.results[0];
-        const propKeys = Object.keys(page.properties);
-        const clientNameProp = page.properties['Client Name'];
-        return res.json({ propKeys, clientNameProp, mapped: mapClientFromNotion(page) });
-      }
-
       const results = [];
       let cursor;
       do {
