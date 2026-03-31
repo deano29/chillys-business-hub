@@ -183,6 +183,9 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .k-stage-title{font-size:12px;font-weight:700;color:var(--ink-mid);flex:1}
 .k-count{background:rgba(0,0,0,.08);border-radius:20px;font-size:10px;font-weight:700;padding:1px 7px;color:var(--ink-mid)}
 .k-cards{display:flex;flex-direction:column;gap:8px;min-height:40px}
+.kanban-grid{min-width:0}
+.k-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.k-grid .enq-card{margin:0}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -1395,17 +1398,31 @@ function renderPipeline(){
   }
   // Render cards
   const stagesToShow=pipelineFilter==='all'?STAGES:STAGES.filter(s=>s.id===pipelineFilter);
-  document.getElementById('kanban-board').innerHTML=stagesToShow.map(s=>{
+  const board=document.getElementById('kanban-board');
+  const singleStage=pipelineFilter!=='all';
+  board.className=singleStage?'kanban-grid':'kanban';
+  if(singleStage){
+    const s=stagesToShow[0];
     const cards=enquiries.filter(e=>e.stage===s.id);
-    return `<div class="k-col">
-      <div class="k-col-head">
+    board.innerHTML=`<div class="k-col-head" style="margin-bottom:12px">
         <div class="k-stage-dot" style="background:${s.color}"></div>
         <div class="k-stage-title">${s.label}</div>
         <div class="k-count">${cards.length}</div>
       </div>
-      <div class="k-cards">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">○</div>'}</div>
-    </div>`;
-  }).join('');
+      <div class="k-grid">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">No enquiries</div>'}</div>`;
+  }else{
+    board.innerHTML=stagesToShow.map(s=>{
+      const cards=enquiries.filter(e=>e.stage===s.id);
+      return `<div class="k-col">
+        <div class="k-col-head">
+          <div class="k-stage-dot" style="background:${s.color}"></div>
+          <div class="k-stage-title">${s.label}</div>
+          <div class="k-count">${cards.length}</div>
+        </div>
+        <div class="k-cards">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">○</div>'}</div>
+      </div>`;
+    }).join('');
+  }
 }
 function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
 
