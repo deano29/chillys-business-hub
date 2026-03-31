@@ -270,7 +270,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .ei-tag.enquiry{background:var(--orange-light);color:var(--orange-dark)}
 .ei-tag.reply{background:var(--success-bg);color:var(--success)}
 .ei-tag.booking{background:var(--info-bg);color:var(--info)}
-.ei-tag.onboarding{background:var(--purple-bg);color:var(--purple)}
+.ei-tag.closed-won{background:#dcfce7;color:#16a34a}
 .ei-tag.payment{background:var(--success-bg);color:var(--success)}
 .inbox-main{overflow-y:auto;padding:28px;display:flex;flex-direction:column}
 .inbox-empty{text-align:center;color:var(--ink-xlight);margin:auto}
@@ -465,7 +465,6 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     <div class="nav-section">
       <div class="nav-label">Pipeline</div>
       <div class="nav-item" data-view="enquiries"><span class="ni">📥</span><span class="nl">Enquiries</span><span class="nav-badge" id="badge-enq">4</span></div>
-      <div class="nav-item" data-view="onboarding"><span class="ni">✅</span><span class="nl">Onboarding</span><span class="nav-badge" id="badge-ob">2</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Clients</div>
@@ -711,8 +710,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <p>Paste your Make.com webhook URLs here. The app triggers these automatically on key events.</p>
           <div class="settings-form single">
             <div class="form-group"><label>New Enquiry Created</label><input id="wh-new-enquiry" placeholder="https://hook.eu1.make.com/..."></div>
-            <div class="form-group"><label>Stage Changed to Onboarding</label><input id="wh-stage-onboarding" placeholder="https://hook.eu1.make.com/..."></div>
-            <div class="form-group"><label>Client Converted</label><input id="wh-client-converted" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Stage Changed to Qualified</label><input id="wh-stage-onboarding" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Closed Won</label><input id="wh-client-converted" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Follow-up Overdue</label><input id="wh-followup-overdue" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Send Email (Automated)</label><input id="wh-send-email" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>AI Draft (Claude via Make.com)</label><input id="wh-ai-draft" placeholder="https://hook.eu1.make.com/..."></div>
@@ -814,9 +813,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
         <div class="form-group"><label>Stage</label>
           <select id="f-stage">
             <option value="new">New</option><option value="contacted">Contacted</option>
-            <option value="info-sent">Info Sent</option><option value="meet-greet">Meet & Greet</option>
-            <option value="onboarding">Onboarding</option><option value="qualified">Qualified</option><option value="converted">Converted</option>
-            <option value="not-suitable">Not Suitable</option><option value="closed-lost">Closed Lost</option><option value="uncontactable">Uncontactable</option><option value="archived">Archived</option>
+            <option value="qualified">Qualified</option><option value="closed-won">Closed Won</option>
+            <option value="not-suitable">Not Suitable</option><option value="closed-lost">Closed Lost</option><option value="uncontactable">Uncontactable</option><option value="not-interested">Not Interested</option><option value="archived">Archived</option>
           </select>
         </div>
         <div class="form-group"><label>Follow-up Date</label><input id="f-followup" type="date"></div>
@@ -855,14 +853,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 const STAGES=[
   {id:'new',label:'New',color:'#3b82f6'},
   {id:'contacted',label:'Contacted',color:'#f59e0b'},
-  {id:'info-sent',label:'Info Sent',color:'#8b5cf6'},
-  {id:'meet-greet',label:'Meet & Greet',color:'#ec4899'},
-  {id:'onboarding',label:'Onboarding',color:'#F26B21'},
   {id:'qualified',label:'Qualified',color:'#06b6d4'},
-  {id:'converted',label:'Converted',color:'#22c55e'},
+  {id:'closed-won',label:'Closed Won',color:'#22c55e'},
   {id:'not-suitable',label:'Not Suitable',color:'#ef4444'},
   {id:'closed-lost',label:'Closed Lost',color:'#6b7280'},
   {id:'uncontactable',label:'Uncontactable',color:'#9ca3af'},
+  {id:'not-interested',label:'Not Interested',color:'#a1a1aa'},
   {id:'archived',label:'Archived',color:'#d1d5db'},
 ];
 
@@ -885,11 +881,11 @@ const DUMMY_ENQ=[
   {id:'e4',name:'Michael Torres',phone:'0445 678 901',email:'mtorres@hotmail.com',channel:'Website',dogName:'Luna',dogBreed:'Poodle',services:'Solo walks',stage:'new',followup:'2026-04-02',notes:'Prefers afternoon walks. Luna is well trained.',dateAdded:'2026-03-24',source:'Website',suburb:'South Yarra'},
   {id:'e5',name:'Priya Sharma',phone:'0456 789 012',email:'priya.sharma@gmail.com',channel:'Referral',dogName:'Coco',dogBreed:'Cavoodle',services:'Group walks, puppy visits',stage:'contacted',followup:'2026-04-03',notes:'Referred by Amy Foster. 6-month old puppy.',dateAdded:'2026-03-23',source:'Referral',suburb:'Northcote'},
   {id:'e6',name:'Tom Wilson',phone:'0467 890 123',email:'tom.wilson@gmail.com',channel:'Email',dogName:'Archie',dogBreed:'Staffy',services:'Daily walks',stage:'contacted',followup:'2026-04-04',notes:'Works from home, wants 9am walks Mon-Fri.',dateAdded:'2026-03-22',source:'Google',suburb:'Brunswick'},
-  {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'info-sent',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
-  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'meet-greet',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Facebook Ad',suburb:'Fitzroy North'},
-  {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'onboarding',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
-  {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'onboarding',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
-  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'converted',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Facebook Ad',suburb:'Fitzroy'},
+  {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'qualified',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
+  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'qualified',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Facebook Ad',suburb:'Fitzroy North'},
+  {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'closed-won',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
+  {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'closed-won',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
+  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'closed-won',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Facebook Ad',suburb:'Fitzroy'},
   {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
 ];
 
@@ -942,7 +938,7 @@ const TEMPLATES=[
 ];
 
 const INTEGRATIONS=[
-  {icon:'📔',name:'Notion',desc:'CRM database — enquiries, clients, onboarding',status:'connected',bg:'#f3f0ff'},
+  {icon:'📔',name:'Notion',desc:'CRM database — enquiries & clients',status:'connected',bg:'#f3f0ff'},
   {icon:'✉️',name:'Microsoft Outlook',desc:'Email — send templates, view inbox, sync calendar',status:'connected',bg:'#dbeafe'},
   {icon:'📊',name:'Xero',desc:'Accounting — invoices, payments, revenue reports',status:'connected',bg:'#dcfce7'},
   {icon:'🕐',name:'Time to Pet',desc:'Client walks, scheduling, GPS reports (via Zapier)',status:'connected',bg:'#fde8d8'},
@@ -951,7 +947,7 @@ const INTEGRATIONS=[
   {icon:'📅',name:'Calendly',desc:'Meet & greet auto-booking — link sent in templates',status:'pending',bg:'#f0fdf4'},
   {icon:'📝',name:'Typeform',desc:'Client intake forms — feeds into Notion + Time to Pet',status:'disconnected',bg:'#fff4ed'},
   {icon:'⚡',name:'Make.com',desc:'Automation engine — powers all workflow automations',status:'connected',bg:'#ede9fe'},
-  {icon:'✍️',name:'Dropbox Sign',desc:'Digital T&Cs signing — triggered on onboarding',status:'disconnected',bg:'#f0f9ff'},
+  {icon:'✍️',name:'Dropbox Sign',desc:'Digital T&Cs signing',status:'disconnected',bg:'#f0f9ff'},
 ];
 
 const AUTOMATION_LOG_BASE=[
@@ -1072,7 +1068,7 @@ function calcFitScore(e){
   else s+=1;
   if(e.followup)s+=1;
   if(e.followup&&fuStatus(e.followup)!=='overdue')s+=1;
-  const sb={new:0,contacted:1,'info-sent':2,'meet-greet':3,onboarding:3};
+  const sb={new:0,contacted:1,qualified:2,'closed-won':3};
   s+=sb[e.stage]||0;
   const norm=Math.min(10,Math.max(1,Math.round((s/13)*10)));
   let label,cls;
@@ -1085,16 +1081,14 @@ function calcFitScore(e){
 
 // ── NEXT ACTIONS ──
 function getEnqNextAction(e){
-  if(['converted','not-suitable'].includes(e.stage))return null;
+  if(['closed-won','not-suitable'].includes(e.stage))return null;
   const fu=fuStatus(e.followup);
   if(e.stage==='new'&&!e.followup)return{icon:'📅',text:'Set a follow-up date'};
   if(e.stage==='new'&&fu==='overdue')return{icon:'⚠️',text:'Follow up now — overdue!'};
   if(e.stage==='new'&&fu==='today')return{icon:'📞',text:'Call or message today'};
   if(e.stage==='new')return{icon:'💬',text:'Send first reply'};
   if(e.stage==='contacted')return{icon:'📄',text:'Send info pack'};
-  if(e.stage==='info-sent')return{icon:'📅',text:'Book a meet & greet'};
-  if(e.stage==='meet-greet')return{icon:'✅',text:'Confirm meet & greet'};
-  if(e.stage==='onboarding')return{icon:'📋',text:'Check onboarding steps'};
+  if(e.stage==='qualified')return{icon:'📋',text:'Follow up to close'};
   return null;
 }
 
@@ -1114,7 +1108,7 @@ function getObNextAction(e){
 
 // ── NAV ──
 const VIEW_TITLES={
-  dashboard:'Dashboard',enquiries:'Enquiry Pipeline',onboarding:'Onboarding Tracker',
+  dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients & Walks',inbox:'Inbox',coverage:'Coverage Map',templates:'Message Templates',
   reports:'Reports & KPIs',settings:'Settings',
 };
@@ -1134,7 +1128,6 @@ function navigate(v){
   document.getElementById('topbar-actions').innerHTML=actions[v]||'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-light)"><span class="int-live-dot"></span> Live sync</div>';
   if(v==='dashboard')renderDashboard();
   if(v==='enquiries')renderPipeline();
-  if(v==='onboarding')renderOnboarding();
   if(v==='clients')renderClients();
   if(v==='inbox')renderInbox();
   if(v==='coverage')renderCoverage();
@@ -1152,9 +1145,6 @@ function updateBadges(){
   const n=enquiries.filter(e=>e.stage==='new').length;
   const be=document.getElementById('badge-enq');
   be.textContent=n;be.style.display=n>0?'inline-block':'none';
-  const ob=enquiries.filter(e=>e.stage==='onboarding').length;
-  const bo=document.getElementById('badge-ob');
-  bo.textContent=ob;bo.style.display=ob>0?'inline-block':'none';
 }
 
 // ── CHART ──
@@ -1216,8 +1206,8 @@ function renderDashboard(){
   }).join('');
 
   const pipelineEl=document.getElementById('dash-pipeline');
-  const total=enquiries.filter(e=>!['converted','not-suitable'].includes(e.stage)).length||1;
-  pipelineEl.innerHTML=STAGES.filter(s=>!['converted','not-suitable'].includes(s.id)).map(s=>{
+  const total=enquiries.filter(e=>!['closed-won','not-suitable'].includes(e.stage)).length||1;
+  pipelineEl.innerHTML=STAGES.filter(s=>!['closed-won','not-suitable'].includes(s.id)).map(s=>{
     const c=enquiries.filter(e=>e.stage===s.id).length;
     return `<div class="pm-row">
       <div class="pm-dot" style="background:${s.color}"></div>
@@ -1346,9 +1336,9 @@ function renderAcPanel(tab){
     enquiries.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>{
       items.push({cls:'urgent',icon:'⚠️',title:`Follow up ${esc(e.name)}`,sub:`${esc(e.dogName)} · ${STAGES.find(s=>s.id===e.stage)?.label} · Overdue since ${fmtDate(e.followup)}`,cta:'Open enquiry',fn:`openEditEnquiry('${e.id}')`});
     });
-    enquiries.filter(e=>e.stage==='onboarding').forEach(e=>{
+    enquiries.filter(e=>e.stage==='qualified').forEach(e=>{
       const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
-      if(days>=14)items.push({cls:'urgent',icon:'🔄',title:`Onboarding stalled: ${esc(e.name)}`,sub:`${days} days in onboarding — check progress with client`,cta:'View checklist',fn:`navigate('onboarding')`});
+      if(days>=14)items.push({cls:'urgent',icon:'🔄',title:`Stalled lead: ${esc(e.name)}`,sub:`${days} days as qualified — follow up to close`,cta:'Open enquiry',fn:`openEditEnquiry('${e.id}')`});
     });
     clients.filter(c=>c.health==='win-back').forEach(c=>{
       items.push({cls:'urgent',icon:'💔',title:`Re-engage ${esc(c.owner)}`,sub:`${esc(c.dog)} hasn't walked recently — send reactivation message`,cta:'Email client',fn:`composeEmail('${c.email||''}','We miss ${esc(c.dog)}!','Hi ${esc(c.owner)},\\n\\nWe noticed ${esc(c.dog)} hasn\\'t been on a walk recently. We\\'d love to have them back!\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
@@ -1419,6 +1409,7 @@ function renderEnqCard(e){
       ${e.channel?`<span class="tag tag-channel">${esc(e.channel)}</span>`:''}
       ${e.source&&e.source!==e.channel?`<span class="tag tag-source">${esc(e.source)}</span>`:''}
       ${e.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(e.suburb)}</span>`:''}
+      ${(e.stageTags||[]).map(t=>`<span class="tag" style="background:#f3f4f6;color:#6b7280;font-size:9px">${esc(t)}</span>`).join('')}
       <span class="fit-badge ${fit.cls}">🎯 ${fit.score}/10 ${fit.label}</span>
     </div>
     <div class="enq-footer">
@@ -1681,7 +1672,7 @@ function renderBySource(){
     const s=e.source||'Unknown';
     if(!map[s])map[s]={total:0,converted:0};
     map[s].total++;
-    if(e.stage==='converted')map[s].converted++;
+    if(e.stage==='closed-won')map[s].converted++;
   });
   const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
   const tbody=rows.map(([s,d])=>{
@@ -1704,7 +1695,7 @@ function renderByService(){
     keys.forEach(k=>{
       if(!map[k])map[k]={total:0,converted:0};
       map[k].total++;
-      if(e.stage==='converted')map[k].converted++;
+      if(e.stage==='closed-won')map[k].converted++;
     });
   });
   const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
@@ -1721,7 +1712,7 @@ function renderBySuburb(){
     const s=e.suburb||'Unknown';
     if(!map[s])map[s]={total:0,converted:0};
     map[s].total++;
-    if(e.stage==='converted')map[s].converted++;
+    if(e.stage==='closed-won')map[s].converted++;
   });
   const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
   const tbody=rows.map(([s,d])=>{
@@ -1817,7 +1808,7 @@ function fillTemplate(body,e){
 function openAiDraft(enqId){
   currentAiEnqId=enqId;
   const e=enquiries.find(x=>x.id===enqId);
-  const stageMap={new:'t1',contacted:'t2','info-sent':'t3','meet-greet':'t4',onboarding:'t5'};
+  const stageMap={new:'t1',contacted:'t2',qualified:'t3','closed-won':'t4'};
   const recId=stageMap[e?.stage]||'t1';
   const recT=TEMPLATES.find(t=>t.id===recId);
   aiDraftText=fillTemplate(recT?.body,e);
@@ -1981,8 +1972,8 @@ function saveEnquiry(){
   if(editingId){
     if(oldEnq&&oldEnq.stage!==data.stage){
       logEvent('Stage changed',`${name}: ${STAGES.find(s=>s.id===oldEnq.stage)?.label} → ${STAGES.find(s=>s.id===data.stage)?.label}`);
-      if(data.stage==='onboarding') fireWebhook('stage-onboarding',data);
-      if(data.stage==='converted') fireWebhook('client-converted',data);
+      if(data.stage==='qualified') fireWebhook('stage-onboarding',data);
+      if(data.stage==='closed-won') fireWebhook('client-converted',data)/*closed-won*/;
     }
     enquiries=enquiries.map(x=>x.id===editingId?data:x);
     showToast('Enquiry updated');
@@ -2058,10 +2049,10 @@ function seedDefaultPins(){
     {refId:'e4',refType:'lead',name:'Michael Torres',dog:'Luna',stage:'new',suburb:'South Yarra',addr:'5 Chapel St, South Yarra VIC',lat:-37.8395,lng:144.9940},
     {refId:'e5',refType:'lead',name:'Priya Sharma',dog:'Coco',stage:'contacted',suburb:'Northcote',addr:'280 High St, Northcote VIC',lat:-37.7695,lng:144.9985},
     {refId:'e6',refType:'lead',name:'Tom Wilson',dog:'Archie',stage:'contacted',suburb:'Brunswick',addr:'400 Sydney Rd, Brunswick VIC',lat:-37.7645,lng:144.9605},
-    {refId:'e7',refType:'lead',name:'Rachel Green',dog:'Daisy',stage:'info-sent',suburb:'Carlton',addr:'210 Lygon St, Carlton VIC',lat:-37.8005,lng:144.9665},
-    {refId:'e8',refType:'lead',name:'David Kim',dog:'Milo',stage:'meet-greet',suburb:'Fitzroy North',addr:'12 Scotchmer St, Fitzroy North VIC',lat:-37.7880,lng:144.9780},
-    {refId:'e9',refType:'lead',name:'Lisa Park',dog:'Charlie',stage:'onboarding',suburb:'St Kilda',addr:'15 Fitzroy St, St Kilda VIC',lat:-37.8580,lng:144.9735},
-    {refId:'e10',refType:'lead',name:'Nick Patel',dog:'Rosie',stage:'onboarding',suburb:'Prahran',addr:'166 Commercial Rd, Prahran VIC',lat:-37.8500,lng:144.9920},
+    {refId:'e7',refType:'lead',name:'Rachel Green',dog:'Daisy',stage:'qualified',suburb:'Carlton',addr:'210 Lygon St, Carlton VIC',lat:-37.8005,lng:144.9665},
+    {refId:'e8',refType:'lead',name:'David Kim',dog:'Milo',stage:'qualified',suburb:'Fitzroy North',addr:'12 Scotchmer St, Fitzroy North VIC',lat:-37.7880,lng:144.9780},
+    {refId:'e9',refType:'lead',name:'Lisa Park',dog:'Charlie',stage:'closed-won',suburb:'St Kilda',addr:'15 Fitzroy St, St Kilda VIC',lat:-37.8580,lng:144.9735},
+    {refId:'e10',refType:'lead',name:'Nick Patel',dog:'Rosie',stage:'closed-won',suburb:'Prahran',addr:'166 Commercial Rd, Prahran VIC',lat:-37.8500,lng:144.9920},
   ];
   defaults.forEach(p=>assignedPins[p.refId]=p);
   save('cw_map_pins',assignedPins);
@@ -2228,7 +2219,8 @@ function renderMapPins(pins){
     let color='#F26B21';
     if(p.refType==='lead')color='#3b82f6';
     if(p.health==='win-back')color='#dc2626';
-    if(p.stage==='converted')color='#22c55e';
+    if(p.stage==='closed-won')color='#22c55e';
+    if(p.stage==='qualified')color='#06b6d4';
     if(p.health==='at-risk')color='#d97706';
 
     const icon=L.divIcon({

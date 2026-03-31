@@ -47,14 +47,12 @@ const ENQ_PROP_MAP = {
 const STAGE_TO_ID = {
   'New': 'new',
   'Contacted': 'contacted',
-  'Info Sent': 'info-sent',
-  'Meet & Greet': 'meet-greet',
-  'Onboarding': 'onboarding',
   'Qualified': 'qualified',
-  'Converted': 'converted',
+  'Closed Won': 'closed-won',
   'Not Suitable': 'not-suitable',
   'Closed Lost': 'closed-lost',
   'Uncontactable': 'uncontactable',
+  'Not Interested': 'not-interested',
   'Archived': 'archived',
 };
 
@@ -66,8 +64,10 @@ function mapEnquiryFromNotion(page) {
   for (const [notionName, appField] of Object.entries(ENQ_PROP_MAP)) {
     if (p[notionName]) raw[appField] = text(p[notionName]);
   }
-  // Qualification Stage is multi_select — take the first value as primary stage
-  const stageRaw = raw.stage ? raw.stage.split(', ')[0] : '';
+  // Qualification Stage is multi_select — first value = primary stage, rest = secondary qualifiers
+  const stageParts = raw.stage ? raw.stage.split(', ') : [];
+  const primaryStageRaw = stageParts[0] || '';
+  const secondaryStages = stageParts.slice(1).map(s => STAGE_TO_ID[s] || s.toLowerCase().replace(/\s+/g, '-'));
   return {
     id: page.id,
     name: raw.name || '',
@@ -77,7 +77,8 @@ function mapEnquiryFromNotion(page) {
     dogBreed: '',
     dogCount: raw.dogCount || '',
     services: '',
-    stage: STAGE_TO_ID[stageRaw] || stageRaw?.toLowerCase().replace(/\s+/g, '-') || 'new',
+    stage: STAGE_TO_ID[primaryStageRaw] || primaryStageRaw?.toLowerCase().replace(/\s+/g, '-') || 'new',
+    stageTags: secondaryStages,
     dateAdded: raw.dateAdded || '',
     followup: raw.followup || '',
     nextFollowup: raw.nextFollowup || '',
