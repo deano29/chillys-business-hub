@@ -567,11 +567,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     <!-- ── ENQUIRIES ── -->
     <div class="view" id="view-enquiries">
       <div class="pipeline-header">
-        <div class="pipeline-filters">
-          <div class="filter-pill active">All</div>
-          <div class="filter-pill">Active</div>
-          <div class="filter-pill">Overdue</div>
-        </div>
+        <div class="pipeline-filters" id="pipeline-filters"></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button>
           <button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>
@@ -1383,8 +1379,23 @@ function renderAcItem(item){
 }
 
 // ── PIPELINE ──
+let pipelineFilter='all';
 function renderPipeline(){
-  document.getElementById('kanban-board').innerHTML=STAGES.map(s=>{
+  // Build filter pills
+  const filtersEl=document.getElementById('pipeline-filters');
+  if(filtersEl){
+    const counts={all:enquiries.length};
+    STAGES.forEach(s=>{counts[s.id]=enquiries.filter(e=>e.stage===s.id).length;});
+    filtersEl.innerHTML=`<div class="filter-pill${pipelineFilter==='all'?' active':''}" onclick="setPipelineFilter('all')">All <strong>${counts.all}</strong></div>`+
+      STAGES.filter(s=>counts[s.id]>0).map(s=>
+        `<div class="filter-pill${pipelineFilter===s.id?' active':''}" style="cursor:pointer" onclick="setPipelineFilter('${s.id}')">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:4px"></span>${s.label} <strong>${counts[s.id]}</strong>
+        </div>`
+      ).join('');
+  }
+  // Render cards
+  const stagesToShow=pipelineFilter==='all'?STAGES:STAGES.filter(s=>s.id===pipelineFilter);
+  document.getElementById('kanban-board').innerHTML=stagesToShow.map(s=>{
     const cards=enquiries.filter(e=>e.stage===s.id);
     return `<div class="k-col">
       <div class="k-col-head">
@@ -1396,11 +1407,11 @@ function renderPipeline(){
     </div>`;
   }).join('');
 }
+function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
 
 function renderEnqCard(e){
   const fs=fuStatus(e.followup);
   const fuHtml=fs?`<div class="fu-badge ${fs}">${fs==='overdue'?'⚠️':'📅'} ${fs==='upcoming'?fmtDate(e.followup):fs.charAt(0).toUpperCase()+fs.slice(1)}</div>`:'';
-  const fit=calcFitScore(e);
   const na=getEnqNextAction(e);
   return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
     <div class="enq-name">${esc(e.name)}</div>
@@ -1410,7 +1421,6 @@ function renderEnqCard(e){
       ${e.source&&e.source!==e.channel?`<span class="tag tag-source">${esc(e.source)}</span>`:''}
       ${e.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(e.suburb)}</span>`:''}
       ${(e.stageTags||[]).map(t=>`<span class="tag" style="background:#f3f4f6;color:#6b7280;font-size:9px">${esc(t)}</span>`).join('')}
-      <span class="fit-badge ${fit.cls}">🎯 ${fit.score}/10 ${fit.label}</span>
     </div>
     <div class="enq-footer">
       <div class="enq-date">Added ${fmtDate(e.dateAdded)}</div>
