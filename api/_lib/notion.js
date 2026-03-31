@@ -22,21 +22,25 @@ function text(prop) {
 }
 
 // --- Enquiry mapping ---
+// Actual Notion properties:
+// Lead Name (title), Qualification Stage (multi_select), Source (select),
+// Urgency (rich_text), Dog Count (number), Next Follow-up (rich_text),
+// Enquiry date (date), Notes (rich_text), Preferred Days (rich_text),
+// Last Contacted (date), Suburb (rich_text), Enquiry Type (select)
 
-// Map from Notion property names to app field names
 const ENQ_PROP_MAP = {
   'Lead Name': 'name',
-  'Phone Number': 'phone',
-  'Email': 'email',
-  'Dog Name': 'dogName',
-  'Dog Breed': 'dogBreed',
-  'Services': 'services',
   'Qualification Stage': 'stage',
-  'Enquiry Date': 'dateAdded',
+  'Enquiry date': 'dateAdded',
   'Last Contacted': 'followup',
   'Source': 'source',
   'Suburb': 'suburb',
   'Notes': 'notes',
+  'Urgency': 'urgency',
+  'Dog Count': 'dogCount',
+  'Next Follow-up': 'nextFollowup',
+  'Preferred Days': 'preferredDays',
+  'Enquiry Type': 'enquiryType',
 };
 
 // Map app stage labels to IDs
@@ -51,6 +55,7 @@ const STAGE_TO_ID = {
   'Not Suitable': 'not-suitable',
   'Closed Lost': 'closed-lost',
   'Uncontactable': 'uncontactable',
+  'Archived': 'archived',
 };
 
 const ID_TO_STAGE = Object.fromEntries(Object.entries(STAGE_TO_ID).map(([k, v]) => [v, k]));
@@ -61,61 +66,76 @@ function mapEnquiryFromNotion(page) {
   for (const [notionName, appField] of Object.entries(ENQ_PROP_MAP)) {
     if (p[notionName]) raw[appField] = text(p[notionName]);
   }
+  // Qualification Stage is multi_select — take the first value as primary stage
+  const stageRaw = raw.stage ? raw.stage.split(', ')[0] : '';
   return {
     id: page.id,
     name: raw.name || '',
-    phone: raw.phone || '',
-    email: raw.email || '',
-    dogName: raw.dogName || '',
-    dogBreed: raw.dogBreed || '',
-    services: raw.services || '',
-    stage: STAGE_TO_ID[raw.stage] || raw.stage?.toLowerCase().replace(/\s+/g, '-') || 'new',
+    phone: '',
+    email: '',
+    dogName: '',
+    dogBreed: '',
+    dogCount: raw.dogCount || '',
+    services: '',
+    stage: STAGE_TO_ID[stageRaw] || stageRaw?.toLowerCase().replace(/\s+/g, '-') || 'new',
     dateAdded: raw.dateAdded || '',
     followup: raw.followup || '',
+    nextFollowup: raw.nextFollowup || '',
     source: raw.source || '',
     suburb: raw.suburb || '',
     notes: raw.notes || '',
     channel: raw.source || '',
+    urgency: raw.urgency || '',
+    preferredDays: raw.preferredDays || '',
+    enquiryType: raw.enquiryType || '',
   };
 }
 
 function mapEnquiryToNotion(data) {
   const props = {};
   if (data.name !== undefined) props['Lead Name'] = { title: [{ text: { content: data.name } }] };
-  if (data.phone !== undefined) props['Phone Number'] = { phone_number: data.phone || null };
-  if (data.email !== undefined) props['Email'] = { email: data.email || null };
-  if (data.dogName !== undefined) props['Dog Name'] = { rich_text: [{ text: { content: data.dogName } }] };
-  if (data.dogBreed !== undefined) props['Dog Breed'] = { rich_text: [{ text: { content: data.dogBreed } }] };
-  if (data.services !== undefined) props['Services'] = { rich_text: [{ text: { content: data.services } }] };
-  if (data.stage !== undefined) props['Qualification Stage'] = { select: { name: ID_TO_STAGE[data.stage] || data.stage } };
-  if (data.dateAdded !== undefined) props['Enquiry Date'] = { date: data.dateAdded ? { start: data.dateAdded } : null };
+  if (data.stage !== undefined) props['Qualification Stage'] = { multi_select: [{ name: ID_TO_STAGE[data.stage] || data.stage }] };
+  if (data.dateAdded !== undefined) props['Enquiry date'] = { date: data.dateAdded ? { start: data.dateAdded } : null };
   if (data.followup !== undefined) props['Last Contacted'] = { date: data.followup ? { start: data.followup } : null };
   if (data.source !== undefined) props['Source'] = { select: { name: data.source } };
   if (data.suburb !== undefined) props['Suburb'] = { rich_text: [{ text: { content: data.suburb } }] };
   if (data.notes !== undefined) props['Notes'] = { rich_text: [{ text: { content: data.notes } }] };
+  if (data.urgency !== undefined) props['Urgency'] = { rich_text: [{ text: { content: data.urgency } }] };
+  if (data.preferredDays !== undefined) props['Preferred Days'] = { rich_text: [{ text: { content: data.preferredDays } }] };
+  if (data.enquiryType !== undefined) props['Enquiry Type'] = { select: { name: data.enquiryType } };
   return props;
 }
 
 // --- Client mapping ---
+// Actual Notion properties:
+// Client Name (title), Status (select), Suburb (rich_text), Days Per Week (number),
+// Primary Service (select), Plan / Package (select), Client Type (select),
+// Preferred Days (multi_select), Notes (rich_text), Dogs (number)
 
 function mapClientFromNotion(page) {
   const p = page.properties;
   return {
     id: page.id,
-    owner: text(p['Owner Name'] || p['Name'] || {}),
-    dog: text(p['Dog Name'] || {}),
-    breed: text(p['Dog Breed'] || p['Breed'] || {}),
-    phone: text(p['Phone'] || p['Phone Number'] || {}),
-    email: text(p['Email'] || {}),
-    walks: text(p['Walks Per Week'] || {}),
-    nextWalk: text(p['Next Walk'] || {}),
-    health: text(p['Health'] || p['Status'] || {}),
-    tags: text(p['Tags'] || {}),
+    owner: text(p['Client Name'] || {}),
+    dog: '',
+    breed: '',
+    phone: '',
+    email: '',
+    walks: text(p['Days Per Week'] || {}),
+    nextWalk: '',
+    health: (text(p['Status'] || {}) || 'active').toLowerCase(),
+    tags: [],
     suburb: text(p['Suburb'] || {}),
-    monthWalks: text(p['Month Walks'] || {}),
-    joined: text(p['Joined'] || {}),
-    ltv: text(p['LTV'] || {}),
-    address: text(p['Address'] || {}),
+    monthWalks: '',
+    joined: '',
+    ltv: '',
+    address: '',
+    primaryService: text(p['Primary Service'] || {}),
+    planPackage: text(p['Plan / Package'] || {}),
+    clientType: text(p['Client Type'] || {}),
+    preferredDays: text(p['Preferred Days'] || {}),
+    notes: text(p['Notes'] || {}),
+    dogs: text(p['Dogs'] || {}),
   };
 }
 
