@@ -815,8 +815,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <select id="f-stage">
             <option value="new">New</option><option value="contacted">Contacted</option>
             <option value="info-sent">Info Sent</option><option value="meet-greet">Meet & Greet</option>
-            <option value="onboarding">Onboarding</option><option value="converted">Converted</option>
-            <option value="not-suitable">Not Suitable</option>
+            <option value="onboarding">Onboarding</option><option value="qualified">Qualified</option><option value="converted">Converted</option>
+            <option value="not-suitable">Not Suitable</option><option value="closed-lost">Closed Lost</option><option value="uncontactable">Uncontactable</option>
           </select>
         </div>
         <div class="form-group"><label>Follow-up Date</label><input id="f-followup" type="date"></div>
@@ -858,8 +858,11 @@ const STAGES=[
   {id:'info-sent',label:'Info Sent',color:'#8b5cf6'},
   {id:'meet-greet',label:'Meet & Greet',color:'#ec4899'},
   {id:'onboarding',label:'Onboarding',color:'#F26B21'},
+  {id:'qualified',label:'Qualified',color:'#06b6d4'},
   {id:'converted',label:'Converted',color:'#22c55e'},
   {id:'not-suitable',label:'Not Suitable',color:'#ef4444'},
+  {id:'closed-lost',label:'Closed Lost',color:'#6b7280'},
+  {id:'uncontactable',label:'Uncontactable',color:'#9ca3af'},
 ];
 
 const OB_STEPS=[
@@ -963,16 +966,45 @@ const AUTOMATION_LOG_BASE=[
 
 // ── STATE ──
 let enquiries=[...DUMMY_ENQ];
+let clients=[...DUMMY_CLIENTS];
 let editingId=null;
 let activeEmail=null;
 let aiDraftText='';
 let currentAiEnqId=null;
+let dataLoaded=false;
 
 function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}
 function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
 
+// Load from localStorage cache first (instant)
 const stored=load('cw_enq',null);
 if(stored&&stored.length>0)enquiries=stored;
+const storedClients=load('cw_clients',null);
+if(storedClients&&storedClients.length>0)clients=storedClients;
+
+// Async load from Notion API
+async function loadFromNotion(){
+  try{
+    const [enqRes,cliRes]=await Promise.all([
+      fetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('/api/notion/clients').then(r=>r.ok?r.json():null).catch(()=>null),
+    ]);
+    if(enqRes&&enqRes.length>0){
+      enquiries=enqRes;
+      save('cw_enq',enquiries);
+    }
+    if(cliRes&&cliRes.length>0){
+      clients=cliRes;
+      save('cw_clients',clients);
+    }
+    dataLoaded=true;
+    renderDashboard();
+    logEvent('Notion sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients','success','📔');
+  }catch(e){
+    console.warn('Notion sync failed, using cached data:',e.message);
+  }
+}
+loadFromNotion();
 
 // ── UTILS ──
 function today(){return new Date().toISOString().slice(0,10)}
@@ -1317,7 +1349,7 @@ function renderAcPanel(tab){
       const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
       if(days>=14)items.push({cls:'urgent',icon:'🔄',title:`Onboarding stalled: ${esc(e.name)}`,sub:`${days} days in onboarding — check progress with client`,cta:'View checklist',fn:`navigate('onboarding')`});
     });
-    DUMMY_CLIENTS.filter(c=>c.health==='win-back').forEach(c=>{
+    clients.filter(c=>c.health==='win-back').forEach(c=>{
       items.push({cls:'urgent',icon:'💔',title:`Re-engage ${esc(c.owner)}`,sub:`${esc(c.dog)} hasn't walked recently — send reactivation message`,cta:'Email client',fn:`composeEmail('${c.email||''}','We miss ${esc(c.dog)}!','Hi ${esc(c.owner)},\\n\\nWe noticed ${esc(c.dog)} hasn\\'t been on a walk recently. We\\'d love to have them back!\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
     });
     if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">🎉 Nothing urgent right now — great work!</div>';
@@ -1339,7 +1371,7 @@ function renderAcPanel(tab){
     enquiries.filter(e=>e.stage==='new'&&e.source==='Referral').forEach(e=>{
       items.push({cls:'',icon:'⭐',title:`Referral lead: ${esc(e.name)}`,sub:`${esc(e.dogName)} · Referrals convert at 2× the rate — contact now`,cta:'Contact now',fn:`openEditEnquiry('${e.id}')`});
     });
-    DUMMY_CLIENTS.filter(c=>c.health==='at-risk').forEach(c=>{
+    clients.filter(c=>c.health==='at-risk').forEach(c=>{
       items.push({cls:'warn',icon:'📉',title:`At risk: ${esc(c.owner)}`,sub:`${esc(c.dog)}'s walk frequency has dropped — check in this week`,cta:'Send message',fn:`composeEmail('${c.email||''}','Checking in — ${esc(c.dog)}','Hi ${esc(c.owner)},\\n\\nJust checking in — we noticed ${esc(c.dog)}\\'s walk schedule has dropped off. Everything okay?\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
     });
     enquiries.filter(e=>e.stage==='new').forEach(e=>{
@@ -1458,7 +1490,7 @@ function toggleObStep(id,i,val){
 
 // ── CLIENTS ──
 function renderClients(){
-  document.getElementById('clients-grid').innerHTML=DUMMY_CLIENTS.map(c=>{
+  document.getElementById('clients-grid').innerHTML=clients.map(c=>{
     const healthLabel={active:'● Active','at-risk':'⚠️ At Risk','win-back':'💔 Win-back'}[c.health]||'● Active';
     const tagHtml=(c.tags||[]).map(t=>{
       const cfg={vip:['ctag-vip','⭐ VIP'],'review-due':['ctag-review','📋 Review Due'],'reactivation':['ctag-reactivation','💌 Reactivation'],'low-frequency':['ctag-low','📉 Low Freq']}[t];
@@ -1521,7 +1553,7 @@ function getEmailContext(m){
       <button class="btn btn-ghost btn-sm" onclick="openEditEnquiry('${enq.id}')">📝 Open Enquiry</button>
     </div>`;
   }
-  const client=DUMMY_CLIENTS.find(c=>c.owner===m.from);
+  const client=clients.find(c=>c.owner===m.from);
   if(client){
     const na=getClientNextAction(client);
     return `<div class="ctx-header">🐕 Linked Client</div>
@@ -1953,8 +1985,13 @@ function saveEnquiry(){
     }
     enquiries=enquiries.map(x=>x.id===editingId?data:x);
     showToast('Enquiry updated');
+    // Sync to Notion
+    fetch('/api/notion/enquiries/'+editingId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
   }else{
     logEvent('Enquiry added',`${name} → ${STAGES[0].label} (via ${data.channel})`,'success','📥');
+    // Create in Notion, use returned ID
+    fetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+      .then(r=>r.ok?r.json():null).then(saved=>{if(saved){data.id=saved.id;save('cw_enq',enquiries);}}).catch(()=>{});
     enquiries.push(data);
     fireWebhook('new-enquiry',data);
     showToast('Enquiry added to pipeline 🎉');
@@ -1966,11 +2003,14 @@ function saveEnquiry(){
 
 function deleteEnquiry(){
   if(!editingId||!confirm('Delete this enquiry? This cannot be undone.'))return;
-  enquiries=enquiries.filter(x=>x.id!==editingId);
-  localStorage.removeItem('cw_ob_'+editingId);
+  const delId=editingId;
+  enquiries=enquiries.filter(x=>x.id!==delId);
+  localStorage.removeItem('cw_ob_'+delId);
   save('cw_enq',enquiries);
   closeModal('modal-enq');renderPipeline();updateBadges();
   showToast('Enquiry deleted','🗑️');
+  // Archive in Notion
+  fetch('/api/notion/enquiries/'+delId,{method:'DELETE'}).catch(()=>{});
 }
 
 // ── MODAL ──
@@ -2040,7 +2080,7 @@ function buildAssignDropdown(){
   const already=new Set(Object.keys(assignedPins));
   let html='<option value="">📍 Assign address to a client or lead...</option>';
   html+='<optgroup label="🐕 Clients">';
-  DUMMY_CLIENTS.forEach(c=>{
+  clients.forEach(c=>{
     const on=already.has(c.id);
     html+=`<option value="${c.id}" ${on?'disabled':''}>${c.owner} — ${c.dog}${on?' (already mapped)':''}</option>`;
   });
@@ -2060,7 +2100,7 @@ function openAssignAddress(){
   if(assignedPins[refId]){showToast('Already on the map — no duplicates','⚠️');return;}
 
   // Find the record
-  const client=DUMMY_CLIENTS.find(c=>c.id===refId);
+  const client=clients.find(c=>c.id===refId);
   const lead=enquiries.find(e=>e.id===refId);
   const record=client||lead;
   if(!record)return;

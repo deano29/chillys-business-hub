@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:chillys.com.au)",
+      "WebSearch",
+      "Bash(start:*)",
+      "Bash(gh repo:*)",
+      "Bash(npm i:*)",
+      "WebFetch(domain:chillys-business-hub.vercel.app)",
+      "Bash(cd:*)"
+    ]
+  }
+}
