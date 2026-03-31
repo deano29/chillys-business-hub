@@ -1,0 +1,2276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chilly's — Business Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --orange:#F26B21;--orange-dark:#c85a26;--orange-mid:#CF6A2F;
+  --orange-light:#fde8d8;--orange-xlight:#fff4ed;
+  --cream:#faf7f4;--cream-dark:#f7e8d0;--cream-mid:#f0e6d6;
+  --ink:#1c1c1c;--ink-mid:#3d3d3d;--ink-light:#6b6b6b;--ink-xlight:#a0a0a0;
+  --white:#ffffff;--border:#e8e0d8;--border-light:#f0ebe4;
+  --sidebar:#1e1b18;--sidebar-hover:rgba(242,107,33,0.1);--sidebar-active:rgba(242,107,33,0.15);
+  --success:#16a34a;--success-bg:#dcfce7;
+  --warning:#d97706;--warning-bg:#fef3c7;
+  --danger:#dc2626;--danger-bg:#fee2e2;
+  --info:#2563eb;--info-bg:#dbeafe;
+  --purple:#7c3aed;--purple-bg:#ede9fe;
+  --pink:#db2777;--pink-bg:#fce7f3;
+  --radius:12px;--radius-sm:8px;--radius-lg:16px;--radius-xl:20px;
+  --shadow:0 1px 4px rgba(28,28,28,.08),0 4px 16px rgba(28,28,28,.06);
+  --shadow-lg:0 8px 32px rgba(28,28,28,.12),0 2px 8px rgba(28,28,28,.06);
+}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);display:flex;height:100vh;overflow:hidden;font-size:14px}
+
+/* ── SIDEBAR ── */
+.sidebar{width:232px;min-width:232px;background:var(--sidebar);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.sidebar-logo{padding:24px 20px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+.logo-wrap{display:flex;align-items:center;gap:10px}
+.logo-icon{width:38px;height:38px;background:var(--orange);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.logo-text h1{font-family:'Readex Pro',sans-serif;font-weight:800;font-size:16px;color:#fff;letter-spacing:-.3px}
+.logo-text p{font-size:10px;color:rgba(255,255,255,.4);margin-top:1px;letter-spacing:.5px;text-transform:uppercase}
+.nav-section{padding:14px 0 4px}
+.nav-label{color:rgba(255,255,255,.25);font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;padding:0 18px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 18px;color:rgba(255,255,255,.5);cursor:pointer;transition:all .15s;font-size:13px;font-weight:500;border-left:3px solid transparent;user-select:none;position:relative}
+.nav-item:hover{background:var(--sidebar-hover);color:rgba(255,255,255,.85)}
+.nav-item.active{background:var(--sidebar-active);color:var(--orange);border-left-color:var(--orange)}
+.nav-item .ni{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.nav-item .nl{flex:1}
+.nav-badge{background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center;line-height:16px}
+.sidebar-bottom{margin-top:auto;padding:16px 18px;border-top:1px solid rgba(255,255,255,.07)}
+.user-pill{display:flex;align-items:center;gap:9px}
+.user-avatar{width:32px;height:32px;background:var(--orange);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;font-family:'Readex Pro',sans-serif;flex-shrink:0}
+.user-info .name{font-size:12px;font-weight:600;color:#fff}
+.user-info .role{font-size:10px;color:rgba(255,255,255,.35)}
+
+/* ── MAIN ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.topbar{background:var(--white);padding:0 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;height:62px;flex-shrink:0}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar h2{font-family:'Readex Pro',sans-serif;font-size:19px;font-weight:700;color:var(--ink)}
+.topbar-subtitle{font-size:12px;color:var(--ink-xlight);padding-left:12px;border-left:1px solid var(--border)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.content{flex:1;overflow-y:auto;padding:24px 28px}
+.view{display:none}.view.active{display:block}
+
+/* ── BUTTONS ── */
+.btn{padding:9px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:6px;line-height:1}
+.btn-primary{background:linear-gradient(135deg,var(--orange),var(--orange-dark));color:#fff;box-shadow:0 2px 8px rgba(242,107,33,.3)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(242,107,33,.4)}
+.btn-secondary{background:var(--cream-mid);color:var(--ink-mid);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--cream-dark)}
+.btn-ghost{background:transparent;color:var(--ink-light);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--cream)}
+.btn-danger{background:var(--danger-bg);color:var(--danger);border:1px solid #fca5a5}
+.btn-danger:hover{background:#fecaca}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-icon{padding:8px;border-radius:var(--radius-sm);background:var(--cream-mid);border:1px solid var(--border);cursor:pointer;font-size:15px;line-height:1;transition:all .15s}
+.btn-icon:hover{background:var(--cream-dark)}
+
+/* ── CARDS ── */
+.card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow)}
+.card-header{padding:18px 20px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between}
+.card-header h3{font-family:'Readex Pro',sans-serif;font-size:14px;font-weight:700;color:var(--ink)}
+.card-body{padding:18px 20px}
+
+/* ── STAT CARDS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:20px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.stat-card.orange::before{background:linear-gradient(90deg,var(--orange),var(--orange-dark))}
+.stat-card.green::before{background:linear-gradient(90deg,#22c55e,#16a34a)}
+.stat-card.blue::before{background:linear-gradient(90deg,#3b82f6,#2563eb)}
+.stat-card.purple::before{background:linear-gradient(90deg,#8b5cf6,#7c3aed)}
+.stat-card.red::before{background:linear-gradient(90deg,#ef4444,#dc2626)}
+.stat-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-xlight)}
+.stat-value{font-family:'Readex Pro',sans-serif;font-size:30px;font-weight:800;color:var(--ink);margin:6px 0 4px;line-height:1}
+.stat-sub{font-size:11px;color:var(--ink-light);display:flex;align-items:center;gap:4px}
+.stat-icon{position:absolute;right:16px;top:16px;font-size:28px;opacity:.12}
+.trend-up{color:var(--success)}.trend-down{color:var(--danger)}
+
+/* ── DASHBOARD GRID ── */
+.dash-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:16px}
+.dash-grid-3{display:grid;grid-template-columns:1fr 1fr 340px;gap:16px}
+
+/* ── CHART ── */
+.chart-wrap{padding:4px 0 0}
+.chart-labels{display:flex;justify-content:space-between;padding:6px 4px 0;font-size:10px;color:var(--ink-xlight)}
+.chart-svg{width:100%;overflow:visible}
+
+/* ── TODAY'S WALKS ── */
+.walk-list{display:flex;flex-direction:column;gap:0}
+.walk-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)}
+.walk-item:last-child{border-bottom:none}
+.walk-time{font-size:11px;font-weight:700;color:var(--orange);width:52px;flex-shrink:0;font-family:'Readex Pro',sans-serif}
+.walk-info{flex:1;min-width:0}
+.walk-dogs{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.walk-type{font-size:11px;color:var(--ink-xlight)}
+.walk-walker{font-size:11px;color:var(--ink-light);background:var(--cream);padding:2px 7px;border-radius:20px;white-space:nowrap}
+.walk-status{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap}
+.ws-completed{background:var(--success-bg);color:var(--success)}
+.ws-inprogress{background:var(--orange-light);color:var(--orange-dark)}
+.ws-upcoming{background:var(--cream-dark);color:var(--ink-light)}
+
+/* ── FOLLOW-UPS ── */
+.followup-list{display:flex;flex-direction:column;gap:0}
+.followup-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer}
+.followup-item:last-child{border-bottom:none}
+.followup-item:hover .followup-name{color:var(--orange)}
+.fu-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fu-dot.overdue{background:var(--danger)}
+.fu-dot.today{background:var(--warning)}
+.followup-name{font-size:13px;font-weight:600;flex:1}
+.followup-detail{font-size:11px;color:var(--ink-xlight)}
+.followup-date{font-size:11px;font-weight:600}
+.followup-date.overdue{color:var(--danger)}
+.followup-date.today{color:var(--warning)}
+
+/* ── PIPELINE SUMMARY ── */
+.pipeline-mini{display:flex;flex-direction:column;gap:6px}
+.pm-row{display:flex;align-items:center;gap:8px}
+.pm-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pm-label{font-size:12px;color:var(--ink-mid);width:100px;flex-shrink:0}
+.pm-bar-wrap{flex:1;background:var(--cream-dark);border-radius:4px;height:6px;overflow:hidden}
+.pm-bar{height:100%;border-radius:4px;transition:width .4s}
+.pm-count{font-size:11px;font-weight:700;color:var(--ink-light);width:20px;text-align:right}
+
+/* ── ACTION CENTRE ── */
+.ac-tabs{display:flex;gap:0;border-bottom:1px solid var(--border)}
+.ac-tab{padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-light);border-bottom:2px solid transparent;transition:all .15s;user-select:none}
+.ac-tab:hover{color:var(--ink)}
+.ac-tab.active{color:var(--orange);border-bottom-color:var(--orange)}
+.ac-panel{display:none;padding:14px 20px;flex-direction:column;gap:8px;min-height:80px}
+.ac-panel.active{display:flex}
+.ac-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--cream);border:1px solid var(--border-light);cursor:pointer;transition:all .15s}
+.ac-item:hover{background:var(--cream-dark);border-color:var(--border)}
+.ac-item.urgent{background:var(--danger-bg);border-color:#fca5a5}
+.ac-item.warn{background:var(--warning-bg);border-color:#fde68a}
+.ac-icon{font-size:18px;flex-shrink:0}
+.ac-content{flex:1;min-width:0}
+.ac-title{font-size:13px;font-weight:600;color:var(--ink)}
+.ac-sub{font-size:11px;color:var(--ink-light);margin-top:1px}
+.ac-cta{font-size:11px;font-weight:600;color:var(--orange);white-space:nowrap;flex-shrink:0}
+
+/* ── FIT SCORE ── */
+.fit-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;display:inline-flex;align-items:center;gap:3px}
+.fit-hot{background:#fff0e6;color:#c85a26;border:1px solid var(--orange-light)}
+.fit-good{background:var(--success-bg);color:var(--success)}
+.fit-medium{background:var(--warning-bg);color:var(--warning)}
+.fit-low{background:var(--cream-dark);color:var(--ink-xlight)}
+
+/* ── NEXT ACTION CHIP ── */
+.next-action{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--orange);background:var(--orange-xlight);padding:3px 9px;border-radius:20px;margin-top:6px;border:1px solid var(--orange-light);cursor:default}
+
+/* ── KANBAN ── */
+.pipeline-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.pipeline-filters{display:flex;gap:6px}
+.filter-pill{padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:12px;font-weight:500;cursor:pointer;color:var(--ink-light);transition:all .15s}
+.filter-pill:hover,.filter-pill.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.kanban-wrap{overflow-x:auto;padding-bottom:16px}
+.kanban{display:flex;gap:12px;min-width:max-content;align-items:flex-start}
+.k-col{width:236px;background:var(--cream);border-radius:var(--radius);padding:12px;min-height:200px}
+.k-col-head{display:flex;align-items:center;gap:7px;margin-bottom:10px}
+.k-stage-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.k-stage-title{font-size:12px;font-weight:700;color:var(--ink-mid);flex:1}
+.k-count{background:rgba(0,0,0,.08);border-radius:20px;font-size:10px;font-weight:700;padding:1px 7px;color:var(--ink-mid)}
+.k-cards{display:flex;flex-direction:column;gap:8px;min-height:40px}
+.enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
+.enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
+.enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+.enq-dog{font-size:11px;color:var(--ink-light);margin-bottom:6px}
+.enq-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px}
+.tag-channel{background:var(--info-bg);color:var(--info)}
+.tag-source{background:var(--purple-bg);color:var(--purple)}
+.tag-service{background:var(--orange-xlight);color:var(--orange-dark)}
+.enq-footer{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.enq-date{font-size:10px;color:var(--ink-xlight)}
+.fu-badge{font-size:10px;font-weight:600;padding:2px 6px;border-radius:20px;display:flex;align-items:center;gap:3px}
+.fu-badge.overdue{background:var(--danger-bg);color:var(--danger)}
+.fu-badge.today{background:var(--warning-bg);color:var(--warning)}
+.fu-badge.upcoming{background:var(--success-bg);color:var(--success)}
+
+/* ── KANBAN EMPTY ── */
+.k-empty{text-align:center;padding:20px 8px;color:var(--ink-xlight);font-size:11px}
+
+/* ── ONBOARDING ── */
+.ob-grid{display:flex;flex-direction:column;gap:14px}
+.ob-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border)}
+.ob-head{padding:16px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none}
+.ob-head:hover{background:var(--cream)}
+.ob-head .name{font-size:15px;font-weight:700;font-family:'Readex Pro',sans-serif}
+.ob-head .dog{font-size:12px;color:var(--ink-light);margin-top:2px}
+.ob-meta{margin-left:auto;display:flex;align-items:center;gap:12px}
+.progress-wrap{text-align:right}
+.progress-bar-bg{background:var(--cream-dark);border-radius:4px;height:6px;width:90px;overflow:hidden;margin-bottom:3px}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--orange),var(--orange-dark));border-radius:4px;transition:width .4s}
+.progress-label{font-size:10px;color:var(--ink-xlight)}
+.ob-toggle{font-size:12px;color:var(--ink-xlight);transition:transform .2s}
+.ob-toggle.open{transform:rotate(180deg)}
+.ob-checklist{padding:0 20px 16px;display:none;flex-direction:column;gap:2px;border-top:1px solid var(--border-light)}
+.ob-checklist.open{display:flex;padding-top:12px}
+.check-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-light)}
+.check-item:last-child{border-bottom:none}
+.check-item input[type=checkbox]{width:15px;height:15px;accent-color:var(--orange);cursor:pointer;flex-shrink:0}
+.check-item label{font-size:13px;cursor:pointer;flex:1}
+.check-item input:checked+label{text-decoration:line-through;color:var(--ink-xlight)}
+.check-badge{font-size:10px;padding:1px 6px;border-radius:20px;font-weight:600}
+.check-badge.done{background:var(--success-bg);color:var(--success)}
+.check-badge.pending{background:var(--cream-dark);color:var(--ink-xlight)}
+
+/* ── CLIENTS ── */
+.clients-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.client-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:16px;cursor:pointer;transition:all .15s}
+.client-card:hover{box-shadow:var(--shadow-lg);border-color:var(--orange-light)}
+.client-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.client-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--orange-light),var(--cream-dark));display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.client-name{font-size:14px;font-weight:700;font-family:'Readex Pro',sans-serif}
+.client-dog{font-size:12px;color:var(--ink-light)}
+.client-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light)}
+.cs-stat{text-align:center}
+.cs-val{font-size:16px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--orange)}
+.cs-lbl{font-size:10px;color:var(--ink-xlight);margin-top:1px}
+.client-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:4px}
+.health-active{background:var(--success-bg);color:var(--success)}
+.health-at-risk{background:var(--warning-bg);color:var(--warning)}
+.health-win-back{background:var(--danger-bg);color:var(--danger)}
+.client-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.ctag{font-size:9px;font-weight:700;padding:2px 6px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.ctag-vip{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.ctag-review{background:var(--info-bg);color:var(--info)}
+.ctag-reactivation{background:var(--danger-bg);color:var(--danger)}
+.ctag-low{background:var(--cream-dark);color:var(--ink-light)}
+.next-walk{font-size:11px;color:var(--ink-light);margin-top:8px;display:flex;align-items:center;gap:4px}
+
+/* ── 3-COL INBOX ── */
+.inbox-wrap{display:grid;grid-template-columns:300px 1fr 280px;gap:0;background:var(--white);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;height:calc(100vh - 140px)}
+.inbox-list{border-right:1px solid var(--border);overflow-y:auto}
+.inbox-search{padding:12px;border-bottom:1px solid var(--border)}
+.inbox-search input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:'Inter',sans-serif;outline:none;background:var(--cream)}
+.inbox-search input:focus{border-color:var(--orange)}
+.email-item{padding:12px 14px;border-bottom:1px solid var(--border-light);cursor:pointer;transition:background .12s}
+.email-item:hover{background:var(--cream)}
+.email-item.active{background:var(--orange-xlight);border-left:3px solid var(--orange)}
+.email-item.unread .ei-from{font-weight:700}
+.ei-from{font-size:13px;color:var(--ink);display:flex;align-items:center;justify-content:space-between}
+.ei-time{font-size:10px;color:var(--ink-xlight);font-weight:400}
+.ei-subject{font-size:12px;color:var(--ink-mid);margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ei-preview{font-size:11px;color:var(--ink-xlight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.ei-tags{display:flex;gap:4px;margin-top:5px}
+.ei-tag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;text-transform:uppercase}
+.ei-tag.enquiry{background:var(--orange-light);color:var(--orange-dark)}
+.ei-tag.reply{background:var(--success-bg);color:var(--success)}
+.ei-tag.booking{background:var(--info-bg);color:var(--info)}
+.ei-tag.onboarding{background:var(--purple-bg);color:var(--purple)}
+.ei-tag.payment{background:var(--success-bg);color:var(--success)}
+.inbox-main{overflow-y:auto;padding:28px;display:flex;flex-direction:column}
+.inbox-empty{text-align:center;color:var(--ink-xlight);margin:auto}
+.inbox-empty .icon{font-size:48px;margin-bottom:12px;opacity:.3}
+.inbox-email-view{width:100%}
+.email-view-header{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.email-view-subject{font-size:18px;font-weight:700;font-family:'Readex Pro',sans-serif;color:var(--ink);margin-bottom:8px}
+.email-view-meta{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink-light)}
+.email-view-body{font-size:13px;color:var(--ink-mid);line-height:1.8;white-space:pre-wrap}
+.inbox-context{border-left:1px solid var(--border);overflow-y:auto;padding:16px;background:var(--cream)}
+.ctx-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:10px}
+.ctx-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);margin-bottom:10px}
+.ctx-field{margin-bottom:7px}
+.ctx-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-xlight);margin-bottom:2px}
+.ctx-value{font-size:12px;color:var(--ink)}
+
+/* ── TEMPLATES ── */
+.templates-wrap{display:flex;flex-direction:column;gap:12px}
+.tmpl-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border)}
+.tmpl-head{padding:14px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.tmpl-head:hover{background:var(--cream)}
+.tmpl-cat{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+.tc-first{background:var(--info-bg);color:var(--info)}
+.tc-info{background:var(--orange-xlight);color:var(--orange-dark)}
+.tc-followup{background:var(--warning-bg);color:var(--warning)}
+.tc-meet{background:var(--purple-bg);color:var(--purple)}
+.tc-welcome{background:var(--success-bg);color:var(--success)}
+.tc-decline{background:var(--danger-bg);color:var(--danger)}
+.tmpl-name{font-weight:600;font-size:14px;flex:1;color:var(--ink)}
+.tmpl-toggle{color:var(--ink-xlight);font-size:13px;transition:transform .2s}
+.tmpl-toggle.open{transform:rotate(180deg)}
+.tmpl-body{display:none;padding:0 18px 16px;border-top:1px solid var(--border-light)}
+.tmpl-body.open{display:block;padding-top:14px}
+.tmpl-text{font-size:12px;color:var(--ink-mid);line-height:1.8;white-space:pre-wrap;background:var(--cream);border-radius:var(--radius-sm);padding:14px;font-family:'Inter',sans-serif}
+.merge-field{background:var(--orange-xlight);color:var(--orange-dark);padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700}
+.tmpl-actions{display:flex;gap:8px;margin-top:10px}
+
+/* ── REPORTS ── */
+.report-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;background:var(--white);border-radius:var(--radius) var(--radius) 0 0;padding:0 4px}
+.report-tab{padding:12px 18px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink-light);border-bottom:2px solid transparent;transition:all .15s;user-select:none}
+.report-tab:hover{color:var(--ink)}
+.report-tab.active{color:var(--orange);border-bottom-color:var(--orange)}
+.report-panel{display:none}.report-panel.active{display:block}
+.reports-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:18px}
+.kpi-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-xlight);margin-bottom:4px}
+.kpi-value{font-size:24px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--ink)}
+.kpi-change{font-size:11px;margin-top:3px}
+.kpi-change.up{color:var(--success)}.kpi-change.down{color:var(--danger)}
+.source-list{display:flex;flex-direction:column;gap:10px}
+.source-row{display:flex;align-items:center;gap:10px}
+.source-label{font-size:12px;color:var(--ink-mid);width:140px;flex-shrink:0}
+.source-bar-bg{flex:1;background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden}
+.source-bar{height:100%;border-radius:4px}
+.source-pct{font-size:11px;font-weight:700;color:var(--ink-light);width:35px;text-align:right}
+.report-table{width:100%;border-collapse:collapse;font-size:13px}
+.report-table th{text-align:left;padding:9px 14px;background:var(--cream);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-light);border-bottom:2px solid var(--border)}
+.report-table td{padding:11px 14px;border-bottom:1px solid var(--border-light);color:var(--ink-mid)}
+.report-table tr:hover td{background:var(--cream)}
+
+/* ── SETTINGS ── */
+.settings-sections{display:flex;flex-direction:column;gap:20px;max-width:680px}
+.settings-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:22px}
+.settings-card h3{font-family:'Readex Pro',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px}
+.settings-card p{font-size:12px;color:var(--ink-light);margin-bottom:16px}
+.settings-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.settings-form.single{grid-template-columns:1fr}
+.integration-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-light)}
+.integration-row:last-child{border-bottom:none}
+.int-info{display:flex;align-items:center;gap:10px}
+.int-icon{width:36px;height:36px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:18px}
+.int-name{font-size:13px;font-weight:600}
+.int-desc{font-size:11px;color:var(--ink-xlight)}
+.int-status{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:flex;align-items:center;gap:4px}
+.int-connected{background:var(--success-bg);color:var(--success)}
+.int-pending{background:var(--warning-bg);color:var(--warning)}
+.int-disconnected{background:var(--cream-dark);color:var(--ink-xlight)}
+
+/* ── AUTOMATION LOG ── */
+.auto-log{display:flex;flex-direction:column}
+.al-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light)}
+.al-item:last-child{border-bottom:none}
+.al-icon-wrap{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+.al-success{background:var(--success-bg)}
+.al-info{background:var(--info-bg)}
+.al-warning{background:var(--warning-bg)}
+.al-content{flex:1;min-width:0}
+.al-event{font-size:12px;font-weight:600;color:var(--ink)}
+.al-detail{font-size:11px;color:var(--ink-light);margin-top:1px}
+.al-time{font-size:10px;color:var(--ink-xlight);white-space:nowrap;flex-shrink:0}
+
+/* ── FORM ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group.full{grid-column:1/-1}
+.form-group label{font-size:11px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:.4px}
+.form-group input,.form-group select,.form-group textarea{padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--ink);font-family:'Inter',sans-serif;outline:none;background:var(--cream);transition:border-color .15s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--orange);background:var(--white)}
+.form-group textarea{resize:vertical;min-height:80px}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(28,28,28,.45);display:none;align-items:center;justify-content:center;z-index:500;padding:20px;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--white);border-radius:var(--radius-lg);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+.modal-head{padding:22px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-head h3{font-family:'Readex Pro',sans-serif;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--ink-xlight);line-height:1;padding:4px;flex-shrink:0}
+.modal-body{padding:22px 24px}
+.modal-foot{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+
+/* ── AI DRAFT MODAL ── */
+.ai-tmpl-opt{padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;transition:all .15s;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ai-tmpl-opt:hover{border-color:var(--orange-light);background:var(--cream)}
+.ai-tmpl-opt.active{border-color:var(--orange);background:var(--orange-xlight)}
+.ai-preview{background:var(--cream);border-radius:var(--radius-sm);padding:16px;font-size:12px;line-height:1.8;white-space:pre-wrap;border:1px solid var(--border);max-height:260px;overflow-y:auto;font-family:'Inter',sans-serif;color:var(--ink-mid)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:1000;display:flex;align-items:center;gap:8px}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px}
+.ai-badge{background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.3px}
+.int-live-dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 0 2px var(--success-bg);display:inline-block}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:48px 20px;color:var(--ink-xlight)}
+.empty .ei{font-size:44px;margin-bottom:12px;opacity:.3}
+.empty h4{font-size:14px;color:var(--ink-light);margin-bottom:4px}
+.empty p{font-size:12px}
+
+/* ── COVERAGE MAP ── */
+.cov-layout{display:grid;grid-template-columns:320px 1fr;gap:16px;height:calc(100vh - 180px)}
+.cov-sidebar{display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+.cov-map-wrap{border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);position:relative;min-height:400px}
+.cov-map-wrap .leaflet-container{height:100%;width:100%;z-index:1}
+.cov-stat-row{display:flex;gap:10px;margin-bottom:14px}
+.cov-stat{flex:1;background:var(--white);border-radius:var(--radius-sm);border:1px solid var(--border);padding:14px;text-align:center}
+.cov-stat .val{font-family:'Readex Pro',sans-serif;font-size:22px;font-weight:800;color:var(--orange)}
+.cov-stat .lbl{font-size:10px;color:var(--ink-xlight);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
+.suburb-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);background:var(--white);border:1px solid var(--border-light);cursor:pointer;transition:all .12s}
+.suburb-row:hover{border-color:var(--orange-light);background:var(--cream)}
+.suburb-row.active{border-color:var(--orange);background:var(--orange-xlight)}
+.suburb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.suburb-name{font-size:13px;font-weight:600;flex:1;color:var(--ink)}
+.suburb-count{font-size:12px;font-weight:700;color:var(--orange);background:var(--orange-xlight);padding:2px 8px;border-radius:20px}
+.suburb-bar{flex:1;background:var(--cream-dark);border-radius:3px;height:5px;overflow:hidden;margin:0 6px}
+.suburb-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--orange),var(--orange-dark))}
+.cluster-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:16px}
+.cluster-card h4{font-family:'Readex Pro',sans-serif;font-size:13px;font-weight:700;margin-bottom:8px}
+.cluster-tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;margin-right:4px;margin-bottom:4px}
+.ct-hot{background:var(--danger-bg);color:var(--danger)}
+.ct-growing{background:var(--warning-bg);color:var(--warning)}
+.ct-new{background:var(--info-bg);color:var(--info)}
+.ct-opportunity{background:var(--success-bg);color:var(--success)}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-light);margin-bottom:4px}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.addr-input-row{display:flex;gap:6px;margin-top:10px}
+.addr-input-row input{flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:'Inter',sans-serif;outline:none;background:var(--cream)}
+.addr-input-row input:focus{border-color:var(--orange);background:var(--white)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--cream-dark);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border)}
+@media print{
+  .sidebar,.topbar,.modal-overlay,.toast{display:none!important}
+  .main{margin:0!important;padding:20px!important;overflow:visible!important}
+  .view{display:none!important}
+  .view.active{display:block!important;overflow:visible!important}
+  body{height:auto!important;overflow:visible!important}
+  .card{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-wrap">
+      <div class="logo-icon">🐾</div>
+      <div class="logo-text"><h1>Chilly's</h1><p>Business Hub</p></div>
+    </div>
+  </div>
+  <nav>
+    <div class="nav-section">
+      <div class="nav-item active" data-view="dashboard"><span class="ni">📊</span><span class="nl">Dashboard</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Pipeline</div>
+      <div class="nav-item" data-view="enquiries"><span class="ni">📥</span><span class="nl">Enquiries</span><span class="nav-badge" id="badge-enq">4</span></div>
+      <div class="nav-item" data-view="onboarding"><span class="ni">✅</span><span class="nl">Onboarding</span><span class="nav-badge" id="badge-ob">2</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Clients</div>
+      <div class="nav-item" data-view="clients"><span class="ni">🐕</span><span class="nl">Clients & Walks</span></div>
+      <div class="nav-item" data-view="inbox"><span class="ni">✉️</span><span class="nl">Inbox</span><span class="nav-badge" id="badge-inbox">2</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Tools</div>
+      <div class="nav-item" data-view="coverage"><span class="ni">🗺️</span><span class="nl">Coverage Map</span></div>
+      <div class="nav-item" data-view="templates"><span class="ni">💬</span><span class="nl">Templates</span></div>
+      <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-item" data-view="settings"><span class="ni">⚙️</span><span class="nl">Settings</span></div>
+    </div>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="user-pill">
+      <div class="user-avatar">C</div>
+      <div class="user-info"><div class="name">Chilly's Dogs</div><div class="role">Melbourne, VIC</div></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <h2 id="topbar-title">Dashboard</h2>
+      <span class="topbar-subtitle" id="topbar-sub">Monday, 30 March 2026</span>
+    </div>
+    <div class="topbar-right" id="topbar-actions">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-light)">
+        <span class="int-live-dot"></span> Live sync
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="view active" id="view-dashboard">
+      <div class="stat-grid">
+        <div class="stat-card orange"><div class="stat-icon">📥</div><div class="stat-label">New Enquiries</div><div class="stat-value">4</div><div class="stat-sub"><span class="trend-up">↑ 2</span> vs last week</div></div>
+        <div class="stat-card green"><div class="stat-icon">🐕</div><div class="stat-label">Active Clients</div><div class="stat-value">18</div><div class="stat-sub"><span class="trend-up">↑ 3</span> this month</div></div>
+        <div class="stat-card blue"><div class="stat-icon">🦮</div><div class="stat-label">Walks This Week</div><div class="stat-value">23</div><div class="stat-sub"><span class="trend-up">↑ 4</span> vs last week</div></div>
+        <div class="stat-card purple"><div class="stat-icon">💰</div><div class="stat-label">Revenue (Mar)</div><div class="stat-value">$4,850</div><div class="stat-sub"><span class="trend-up">↑ 13%</span> vs Feb</div></div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="card">
+          <div class="card-header"><h3>Monthly Revenue</h3><div style="display:flex;gap:8px;align-items:center"><span style="font-size:11px;color:var(--ink-xlight)">Last 6 months</span><span style="font-size:13px;font-weight:700;color:var(--success)">↑ 51%</span></div></div>
+          <div class="card-body" style="padding-bottom:10px"><div class="chart-wrap" id="revenue-chart"></div><div class="chart-labels" id="chart-labels"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Today's Walks</h3><span class="badge" style="background:var(--orange-light);color:var(--orange-dark)">6 walks</span></div>
+          <div class="card-body" style="padding:0 20px"><div class="walk-list" id="dash-walks"></div></div>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="card">
+          <div class="card-header"><h3>⚠️ Follow-ups Due</h3><span class="badge" style="background:var(--danger-bg);color:var(--danger)" id="fu-badge-count">2 overdue</span></div>
+          <div class="card-body" style="padding:0 20px"><div class="followup-list" id="dash-followups"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Pipeline Summary</h3><span style="font-size:12px;color:var(--ink-xlight)">12 active leads</span></div>
+          <div class="card-body"><div class="pipeline-mini" id="dash-pipeline"></div></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column">
+          <div class="card-header"><h3>💰 Xero Snapshot</h3><span style="font-size:10px;background:var(--success-bg);color:var(--success);padding:2px 7px;border-radius:20px;font-weight:700">LIVE</span></div>
+          <div class="card-body" style="flex:1">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Paid this month</span><span id="xero-paid" style="font-size:14px;font-weight:700;color:var(--success)">$4,320</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Outstanding</span><span id="xero-outstanding" style="font-size:14px;font-weight:700;color:var(--warning)">$530</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Overdue invoices</span><span id="xero-overdue" style="font-size:14px;font-weight:700;color:var(--danger)">$180</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><span style="font-size:12px;color:var(--ink-light)">Expenses (Mar)</span><span id="xero-expenses" style="font-size:14px;font-weight:700;color:var(--ink)">$640</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Centre -->
+      <div class="card" style="margin-top:0">
+        <div class="card-header" style="padding-bottom:0;border-bottom:none">
+          <h3>⚡ Action Centre</h3>
+          <span style="font-size:11px;color:var(--ink-xlight)">Prioritised tasks from your pipeline</span>
+        </div>
+        <div class="ac-tabs" style="margin:0 20px">
+          <div class="ac-tab active" data-ac="urgent" onclick="acTab('urgent')">🔴 Urgent</div>
+          <div class="ac-tab" data-ac="today" onclick="acTab('today')">📅 Today</div>
+          <div class="ac-tab" data-ac="opportunities" onclick="acTab('opportunities')">⭐ Opportunities</div>
+        </div>
+        <div class="ac-panel active" id="ac-urgent"></div>
+        <div class="ac-panel" id="ac-today"></div>
+        <div class="ac-panel" id="ac-opportunities"></div>
+      </div>
+    </div>
+
+    <!-- ── ENQUIRIES ── -->
+    <div class="view" id="view-enquiries">
+      <div class="pipeline-header">
+        <div class="pipeline-filters">
+          <div class="filter-pill active">All</div>
+          <div class="filter-pill">Active</div>
+          <div class="filter-pill">Overdue</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button>
+          <button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>
+        </div>
+      </div>
+      <div class="kanban-wrap"><div class="kanban" id="kanban-board"></div></div>
+    </div>
+
+    <!-- ── ONBOARDING ── -->
+    <div class="view" id="view-onboarding">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <p style="font-size:13px;color:var(--ink-light)">Clients being onboarded — track each step before adding to Time to Pet.</p>
+        <button class="btn btn-ghost btn-sm">📋 Export All</button>
+      </div>
+      <div class="ob-grid" id="ob-list"></div>
+    </div>
+
+    <!-- ── CLIENTS ── -->
+    <div class="view" id="view-clients">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;gap:8px">
+          <div class="filter-pill active" style="cursor:pointer">All Clients <strong style="margin-left:4px">18</strong></div>
+          <div class="filter-pill" style="cursor:pointer">Active <strong style="margin-left:4px">15</strong></div>
+          <div class="filter-pill" style="cursor:pointer">At Risk <strong style="margin-left:4px">2</strong></div>
+          <div class="filter-pill" style="cursor:pointer">Win-back <strong style="margin-left:4px">1</strong></div>
+        </div>
+        <span style="font-size:11px;background:var(--info-bg);color:var(--info);padding:3px 9px;border-radius:20px;font-weight:600">Synced via Time to Pet</span>
+      </div>
+      <div class="clients-grid" id="clients-grid"></div>
+    </div>
+
+    <!-- ── INBOX ── -->
+    <div class="view" id="view-inbox">
+      <div class="inbox-wrap">
+        <div class="inbox-list">
+          <div class="inbox-search"><input type="text" placeholder="🔍 Search emails..."></div>
+          <div id="email-list"></div>
+        </div>
+        <div class="inbox-main" id="inbox-main">
+          <div class="inbox-empty">
+            <div class="icon">✉️</div>
+            <p style="font-size:13px;color:var(--ink-light)">Select an email to read</p>
+          </div>
+        </div>
+        <div class="inbox-context" id="inbox-context">
+          <div class="ctx-header">Context</div>
+          <div style="font-size:12px;color:var(--ink-xlight)">Select an email to see the linked enquiry or client.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TEMPLATES ── -->
+    <div class="view" id="view-templates">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <p style="font-size:13px;color:var(--ink-light)">Click any template to expand and copy. Fields in <span class="merge-field">{curly braces}</span> are filled automatically by AI Draft.</p>
+        <button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft Reply</button>
+      </div>
+      <div class="templates-wrap" id="templates-list"></div>
+    </div>
+
+    <!-- ── REPORTS ── -->
+    <div class="view" id="view-reports">
+      <div class="report-tabs">
+        <div class="report-tab active" data-rtab="overview" onclick="reportTab('overview')">Overview</div>
+        <div class="report-tab" data-rtab="by-source" onclick="reportTab('by-source')">By Source</div>
+        <div class="report-tab" data-rtab="by-service" onclick="reportTab('by-service')">By Service</div>
+        <div class="report-tab" data-rtab="by-suburb" onclick="reportTab('by-suburb')">By Suburb</div>
+      </div>
+      <div class="report-panel active" id="rp-overview">
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">72%</div><div class="kpi-change up">↑ 8% vs last month</div></div>
+          <div class="kpi-card"><div class="kpi-label">Avg LTV</div><div class="kpi-value">$2,400</div><div class="kpi-change up">↑ $320 vs last month</div></div>
+          <div class="kpi-card"><div class="kpi-label">NPS Score</div><div class="kpi-value">87</div><div class="kpi-change up">↑ 4 pts</div></div>
+          <div class="kpi-card"><div class="kpi-label">Avg Response Time</div><div class="kpi-value">4 min</div><div class="kpi-change up">↓ 18 min (AI)</div></div>
+        </div>
+        <div class="reports-grid">
+          <div class="card">
+            <div class="card-header"><h3>Revenue Trend</h3><span style="font-size:11px;color:var(--ink-xlight)">6 months</span></div>
+            <div class="card-body" style="padding-bottom:10px"><div id="reports-chart"></div><div id="reports-labels" class="chart-labels"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Enquiry Sources</h3><span style="font-size:11px;color:var(--ink-xlight)">This month</span></div>
+            <div class="card-body"><div class="source-list" id="source-list"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Pipeline Conversion</h3></div>
+            <div class="card-body"><div style="display:flex;flex-direction:column;gap:8px" id="conversion-funnel"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Walker Utilisation</h3><span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:2px 7px;border-radius:20px;font-weight:700">85% avg</span></div>
+            <div class="card-body"><div style="display:flex;flex-direction:column;gap:12px" id="walker-util"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="report-panel" id="rp-by-source"></div>
+      <div class="report-panel" id="rp-by-service"></div>
+      <div class="report-panel" id="rp-by-suburb"></div>
+    </div>
+
+    <!-- ── SETTINGS ── -->
+    <div class="view" id="view-settings">
+      <div class="settings-sections">
+        <div class="settings-card">
+          <h3>🏢 Business Details</h3>
+          <p>Basic information used in message templates and reports.</p>
+          <div class="settings-form">
+            <div class="form-group"><label>Business Name</label><input id="s-biz-name" value="Chilly's Dog Adventures"></div>
+            <div class="form-group"><label>Your Name</label><input id="s-your-name" value="Chilly"></div>
+            <div class="form-group"><label>Email</label><input id="s-email" value="hello@chillys.com.au" type="email"></div>
+            <div class="form-group"><label>Phone</label><input id="s-phone" value="+61 4XX XXX XXX"></div>
+            <div class="form-group full"><label>Website</label><input id="s-website" value="https://chillys.com.au"></div>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('business')">Save Changes</button></div>
+        </div>
+        <div class="settings-card">
+          <h3>🔌 Integrations</h3>
+          <p>Connect your tools — data flows automatically once connected.</p>
+          <div id="integrations-list"></div>
+        </div>
+        <div class="settings-card">
+          <h3>🤖 AI Settings</h3>
+          <p>Configure AI auto-reply and lead classification.</p>
+          <div class="settings-form">
+            <div class="form-group full"><label>AI Provider API Key</label><input id="s-api-key" type="password" placeholder="sk-•••••••••••••••••••" value="sk-demo-key-placeholder"></div>
+            <div class="form-group full"><label>Auto-reply to new enquiries?</label>
+              <select id="s-auto-reply"><option>Yes — send AI-drafted reply within 2 minutes</option><option>Draft only — I'll review before sending</option><option>No</option></select>
+            </div>
+            <div class="form-group full"><label>AI tone</label>
+              <select id="s-tone"><option>Warm & Friendly (Recommended)</option><option>Professional</option><option>Casual</option></select>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('ai')">Save Settings</button></div>
+        </div>
+        <div class="settings-card">
+          <h3>⚡ Make.com Webhooks</h3>
+          <p>Paste your Make.com webhook URLs here. The app triggers these automatically on key events.</p>
+          <div class="settings-form single">
+            <div class="form-group"><label>New Enquiry Created</label><input id="wh-new-enquiry" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Stage Changed to Onboarding</label><input id="wh-stage-onboarding" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Client Converted</label><input id="wh-client-converted" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Follow-up Overdue</label><input id="wh-followup-overdue" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Send Email (Automated)</label><input id="wh-send-email" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>AI Draft (Claude via Make.com)</label><input id="wh-ai-draft" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Xero Data Fetch</label><input id="wh-xero" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Fetch New Leads (FB/Instagram)</label><input id="wh-fetch-leads" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Fetch Today's Walks (Google Calendar)</label><input id="wh-fetch-walks" placeholder="https://hook.eu1.make.com/..."></div>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
+        </div>
+        <div class="settings-card">
+          <h3>📋 Automation Log</h3>
+          <p>In-app events logged automatically — enquiry changes, stage moves, templates used.</p>
+          <div class="auto-log" id="auto-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── COVERAGE MAP ── -->
+    <div class="view" id="view-coverage">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="display:flex;gap:6px" id="cov-filters">
+          <div class="filter-pill active" onclick="setCovFilter('all')">All</div>
+          <div class="filter-pill" onclick="setCovFilter('client')">🐕 Clients</div>
+          <div class="filter-pill" onclick="setCovFilter('lead')">📥 Leads</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="cov-assign-select" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;outline:none;background:var(--cream);min-width:220px;color:var(--ink)">
+            <option value="">📍 Assign address to a client or lead...</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="openAssignAddress()">Assign</button>
+        </div>
+      </div>
+      <div class="cov-stat-row">
+        <div class="cov-stat"><div class="val" id="cov-suburbs">0</div><div class="lbl">Suburbs</div></div>
+        <div class="cov-stat"><div class="val" id="cov-clients">0</div><div class="lbl">Clients on Map</div></div>
+        <div class="cov-stat"><div class="val" id="cov-leads">0</div><div class="lbl">Leads on Map</div></div>
+        <div class="cov-stat"><div class="val" id="cov-density">0</div><div class="lbl">Avg per Suburb</div></div>
+      </div>
+      <div class="cov-layout">
+        <div class="cov-sidebar">
+          <div class="cluster-card">
+            <h4>🔥 Cluster Analysis</h4>
+            <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Auto-detected from client + lead density</p>
+            <div id="cluster-tags"></div>
+          </div>
+          <div class="cluster-card">
+            <h4>📍 Suburbs</h4>
+            <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Click a suburb to zoom on map</p>
+            <div id="suburb-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+          <div class="cluster-card">
+            <h4>🏷️ Legend</h4>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Active Client</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div> Lead / Enquiry</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div> Win-back Client</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Converted (from lead)</div>
+          </div>
+          <div class="cluster-card">
+            <h4>➕ Manual Address</h4>
+            <p style="font-size:11px;color:var(--ink-light);margin-bottom:6px">Type any address to geocode onto the map</p>
+            <div class="addr-input-row">
+              <input id="addr-input" placeholder="e.g. 42 Smith St, Fitzroy VIC">
+              <button class="btn btn-primary btn-sm" onclick="geocodeAddress()">📍 Plot</button>
+            </div>
+            <div id="geocode-status" style="font-size:11px;color:var(--ink-xlight);margin-top:6px"></div>
+          </div>
+        </div>
+        <div class="cov-map-wrap">
+          <div id="coverage-map" style="height:100%;width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<!-- ── ADD ENQUIRY MODAL ── -->
+<div class="modal-overlay" id="modal-enq">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-enq-title">New Enquiry</h3>
+      <button class="modal-close" onclick="closeModal('modal-enq')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Owner Name *</label><input id="f-name" placeholder="e.g. Sarah Johnson"></div>
+        <div class="form-group"><label>Phone</label><input id="f-phone" placeholder="0412 345 678" type="tel"></div>
+        <div class="form-group"><label>Email</label><input id="f-email" placeholder="sarah@gmail.com" type="email"></div>
+        <div class="form-group"><label>Channel</label>
+          <select id="f-channel"><option>WhatsApp</option><option>Email</option><option>Instagram</option><option>Facebook</option><option>Website</option><option>Facebook Ad</option><option>Referral</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Dog's Name</label><input id="f-dogname" placeholder="e.g. Buddy"></div>
+        <div class="form-group"><label>Breed</label><input id="f-breed" placeholder="e.g. Labrador"></div>
+        <div class="form-group"><label>Suburb</label><input id="f-suburb" placeholder="e.g. Fitzroy"></div>
+        <div class="form-group"><label>Source</label>
+          <select id="f-source"><option>Facebook Ad</option><option>Instagram</option><option>Referral</option><option>Website</option><option>Google</option><option>WhatsApp</option><option>Other</option></select>
+        </div>
+        <div class="form-group full"><label>Services Interested In</label><input id="f-services" placeholder="e.g. Daily group walks, drop-ins"></div>
+        <div class="form-group"><label>Stage</label>
+          <select id="f-stage">
+            <option value="new">New</option><option value="contacted">Contacted</option>
+            <option value="info-sent">Info Sent</option><option value="meet-greet">Meet & Greet</option>
+            <option value="onboarding">Onboarding</option><option value="converted">Converted</option>
+            <option value="not-suitable">Not Suitable</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Follow-up Date</label><input id="f-followup" type="date"></div>
+        <div class="form-group full"><label>Notes</label><textarea id="f-notes" placeholder="Any details, dog behaviour, requirements..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-sm" id="btn-del-enq" style="display:none;margin-right:auto" onclick="deleteEnquiry()">Delete</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-enq')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEnquiry()">💾 Save Enquiry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── AI DRAFT MODAL ── -->
+<div class="modal-overlay" id="modal-ai-draft">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-head">
+      <h3>🤖 AI Draft Reply <span class="ai-badge">Smart Templates</span></h3>
+      <button class="modal-close" onclick="closeModal('modal-ai-draft')">×</button>
+    </div>
+    <div class="modal-body" id="ai-draft-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" style="margin-right:auto;background:var(--purple-bg);color:var(--purple)" onclick="generateAiDraft()">✨ Generate AI Draft</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-ai-draft')">Cancel</button>
+      <button class="btn btn-ghost btn-sm" onclick="sendAiDraftEmail()">✉️ Send via Outlook</button>
+      <button class="btn btn-primary btn-sm" onclick="copyAiDraft()">📋 Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STAGES ──
+const STAGES=[
+  {id:'new',label:'New',color:'#3b82f6'},
+  {id:'contacted',label:'Contacted',color:'#f59e0b'},
+  {id:'info-sent',label:'Info Sent',color:'#8b5cf6'},
+  {id:'meet-greet',label:'Meet & Greet',color:'#ec4899'},
+  {id:'onboarding',label:'Onboarding',color:'#F26B21'},
+  {id:'converted',label:'Converted',color:'#22c55e'},
+  {id:'not-suitable',label:'Not Suitable',color:'#ef4444'},
+];
+
+const OB_STEPS=[
+  'Intake form sent to client',
+  'Intake form received & reviewed',
+  'T&Cs / contract signed (Dropbox Sign)',
+  'Meet & greet scheduled (Calendly)',
+  'Meet & greet completed',
+  'Dog profile added to Time to Pet',
+  'First walk scheduled & confirmed',
+  'Welcome pack / Bonjoro video sent',
+];
+
+// ── DUMMY DATA ──
+const DUMMY_ENQ=[
+  {id:'e1',name:'Sarah Mitchell',phone:'0412 345 678',email:'sarah.mitchell@gmail.com',channel:'WhatsApp',dogName:'Buddy',dogBreed:'Golden Retriever',services:'Daily group walks',stage:'new',followup:'2026-03-28',notes:'Has a friendly dog, looking for 5 days/week.',dateAdded:'2026-03-27',source:'Facebook Ad',suburb:'Fitzroy'},
+  {id:'e2',name:'James Thompson',phone:'0423 456 789',email:'james.t@outlook.com',channel:'Instagram',dogName:'Bella',dogBreed:'Labrador',services:'Solo walks, drop-ins',stage:'new',followup:'2026-03-27',notes:'Enquired via Instagram DM. 2yr old lab.',dateAdded:'2026-03-26',source:'Instagram',suburb:'Richmond'},
+  {id:'e3',name:'Emma Chen',phone:'0434 567 890',email:'emma.chen@gmail.com',channel:'Facebook',dogName:'Max',dogBreed:'Border Collie',services:'Group walks',stage:'new',followup:'2026-04-01',notes:'Very active dog, needs stimulation.',dateAdded:'2026-03-25',source:'Facebook Ad',suburb:'Collingwood'},
+  {id:'e4',name:'Michael Torres',phone:'0445 678 901',email:'mtorres@hotmail.com',channel:'Website',dogName:'Luna',dogBreed:'Poodle',services:'Solo walks',stage:'new',followup:'2026-04-02',notes:'Prefers afternoon walks. Luna is well trained.',dateAdded:'2026-03-24',source:'Website',suburb:'South Yarra'},
+  {id:'e5',name:'Priya Sharma',phone:'0456 789 012',email:'priya.sharma@gmail.com',channel:'Referral',dogName:'Coco',dogBreed:'Cavoodle',services:'Group walks, puppy visits',stage:'contacted',followup:'2026-04-03',notes:'Referred by Amy Foster. 6-month old puppy.',dateAdded:'2026-03-23',source:'Referral',suburb:'Northcote'},
+  {id:'e6',name:'Tom Wilson',phone:'0467 890 123',email:'tom.wilson@gmail.com',channel:'Email',dogName:'Archie',dogBreed:'Staffy',services:'Daily walks',stage:'contacted',followup:'2026-04-04',notes:'Works from home, wants 9am walks Mon-Fri.',dateAdded:'2026-03-22',source:'Google',suburb:'Brunswick'},
+  {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'info-sent',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
+  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'meet-greet',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Facebook Ad',suburb:'Fitzroy North'},
+  {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'onboarding',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
+  {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'onboarding',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
+  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'converted',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Facebook Ad',suburb:'Fitzroy'},
+  {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
+];
+
+const DUMMY_CLIENTS=[
+  {id:'c1',owner:'Amy Foster',dog:'Biscuit',breed:'Spoodle',emoji:'🐶',walks:5,nextWalk:'Today 9:00am',status:'active',health:'active',tags:[],suburb:'Fitzroy',monthWalks:22,joined:'Feb 2026',phone:'0412 345 670',email:'amy.foster@gmail.com',ltv:'$880'},
+  {id:'c2',owner:'Jessica Lee',dog:'Pepper',breed:'Cavoodle',emoji:'🐾',walks:3,nextWalk:'Today 10:30am',status:'active',health:'active',tags:['vip'],suburb:'Richmond',monthWalks:13,joined:'Nov 2025',phone:'0423 456 781',email:'jessica.lee@gmail.com',ltv:'$1,560'},
+  {id:'c3',owner:'Connor Hayes',dog:'Banjo',breed:'Aust. Shepherd',emoji:'🦮',walks:5,nextWalk:'Tomorrow 8:00am',status:'active',health:'active',tags:['vip','review-due'],suburb:'Collingwood',monthWalks:21,joined:'Sep 2025',phone:'0434 567 892',email:'connor.hayes@gmail.com',ltv:'$2,100'},
+  {id:'c4',owner:'Olivia Martin',dog:'Noodle',breed:'Labradoodle',emoji:'🐕',walks:2,nextWalk:'Wed 9:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'South Yarra',monthWalks:8,joined:'Jan 2026',phone:'0445 678 903',email:'olivia.martin@gmail.com',ltv:'$640'},
+  {id:'c5',owner:'Ryan Chang',dog:'Scout',breed:'Kelpie',emoji:'🐕‍🦺',walks:5,nextWalk:'Today 2:00pm',status:'active',health:'active',tags:['vip','review-due'],suburb:'Northcote',monthWalks:20,joined:'Aug 2025',phone:'0456 789 014',email:'ryan.chang@gmail.com',ltv:'$2,600'},
+  {id:'c6',owner:'Hannah Brown',dog:'Maple',breed:'Border Collie',emoji:'🐾',walks:4,nextWalk:'Tomorrow 7:30am',status:'active',health:'active',tags:[],suburb:'Brunswick',monthWalks:17,joined:'Oct 2025',phone:'0467 890 125',email:'hannah.brown@gmail.com',ltv:'$1,980'},
+  {id:'c7',owner:'Daniel Nguyen',dog:'Bear',breed:'Samoyed',emoji:'🐶',walks:3,nextWalk:'Wed 11:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'Carlton',monthWalks:12,joined:'Dec 2025',phone:'0478 901 236',email:'daniel.nguyen@gmail.com',ltv:'$960'},
+  {id:'c8',owner:'Sophie Turner',dog:'Lola',breed:'Dachshund',emoji:'🦴',walks:1,nextWalk:'—',status:'inactive',health:'win-back',tags:['reactivation'],suburb:'St Kilda',monthWalks:2,joined:'Jul 2025',phone:'0489 012 347',email:'sophie.turner@gmail.com',ltv:'$1,740'},
+];
+
+let TODAY_WALKS=[
+  {time:'7:00am',dogs:'Biscuit (Amy F.)',type:'Solo Walk',walker:'Jake',status:'completed'},
+  {time:'8:30am',dogs:'Pepper + Scout',type:'Group Walk',walker:'Sarah',status:'inprogress'},
+  {time:'9:00am',dogs:'Banjo (Connor H.)',type:'Solo Walk',walker:'Jake',status:'upcoming'},
+  {time:'10:30am',dogs:'Noodle + Bear',type:'Group Walk',walker:'Sarah',status:'upcoming'},
+  {time:'2:00pm',dogs:'Scout (Ryan C.)',type:'Drop-in',walker:'Jake',status:'upcoming'},
+  {time:'4:00pm',dogs:'Lola + Maple',type:'Group Walk',walker:'Chris',status:'upcoming'},
+];
+
+const REVENUE=[
+  {month:'Oct',val:3200},{month:'Nov',val:3850},{month:'Dec',val:4100},
+  {month:'Jan',val:3620},{month:'Feb',val:4280},{month:'Mar',val:4850},
+];
+
+const EMAILS=[
+  {id:'m1',from:'Sarah Mitchell',email:'sarah.mitchell@gmail.com',subject:"Dog walking enquiry for Buddy 🐶",preview:"Hi! I saw your Instagram and would love to find out more...",time:'9:23am',read:false,tag:'enquiry',body:`Hi Chilly's team!\n\nI came across your Instagram and honestly your service looks amazing — Buddy would absolutely love it! 🐶\n\nHe's a 3-year-old Golden Retriever, super friendly and loves other dogs. I'm looking for someone to walk him 5 days a week while I'm at work. We're based in Fitzroy.\n\nCould you let me know your pricing and availability? Happy to arrange a meet and greet whenever suits.\n\nThanks so much!\nSarah 😊`},
+  {id:'m2',from:'Emma Chen',email:'emma.chen@gmail.com',subject:"Re: Chilly's Dog Walking - Info Pack",preview:"Thanks so much for sending through all the info! Max and I would love...",time:'8:45am',read:false,tag:'reply',body:`Hi there!\n\nThanks so much for sending through all the info — Max and I would absolutely love to get started! The group walks sound perfect for his energy levels 😄\n\nI've had a look at the pricing and we'd like to go ahead with 5 group walks per week. Is next Monday too soon to start?\n\nAlso is there a form I need to fill in? Happy to get it done today.\n\nEmma & Max 🐾`},
+  {id:'m3',from:'Time to Pet',email:'noreply@timetopet.com',subject:'New booking request — Jessica Lee',preview:'A new service request has been submitted by Jessica Lee for...',time:'Yesterday',read:true,tag:'booking',body:`Hi Chilly's,\n\nA new service request has been submitted through your client portal.\n\nClient: Jessica Lee\nPet: Pepper (Cavoodle, 2 years)\nService: Group Walk (1 hour)\nRequested dates: Mon 30 Mar – Fri 3 Apr\nTime preference: 8:30–10:30am\n\nPlease log in to Time to Pet to confirm or decline.\n\n— Time to Pet`},
+  {id:'m4',from:'Nick Patel',email:'nick.patel@gmail.com',subject:"T&Cs signed — ready to start! 🎉",preview:"Hi! Just signed the T&Cs and filled out the intake form. So excited to...",time:'Yesterday',read:true,tag:'onboarding',body:`Hi!\n\nJust signed the T&Cs and filled in Rosie's intake form. So excited to get started! 🎉\n\nRosie is a 4-year-old Golden Retriever, no medical issues, up to date on all vaccinations. Her vet is Dr. Kim at Brunswick Vet Clinic.\n\nShe LOVES other dogs so the group walks will be perfect. Looking forward to meeting the team!\n\nNick & Rosie 🐕`},
+  {id:'m5',from:'Xero',email:'no-reply@xero.com',subject:'Invoice #INV-0234 paid — $180.00',preview:'Amy Foster has paid invoice #INV-0234 for $180.00...',time:'2 days ago',read:true,tag:'payment',body:`Hi Chilly's,\n\nGreat news — the following invoice has been paid:\n\nInvoice: #INV-0234\nClient: Amy Foster\nAmount: $180.00 AUD\nDate paid: 27 March 2026\nPayment method: Credit card\n\nThis has been recorded in Xero automatically.\n\n— Xero`},
+];
+
+const TEMPLATES=[
+  {id:'t1',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'First Response to New Enquiry',
+   body:`Hi {name}! 👋\n\nThanks so much for getting in touch — we'd love to help with {dog_name}!\n\nWe're Chilly's Dog Adventures, a professional dog walking service based in Melbourne. Here's a quick overview:\n\n🐾 Group walks (1 hour) — $XX per walk\n🐾 Solo/private walks (1 hour) — $XX per walk\n🐾 Drop-in visits (30 min) — $XX per visit\n🐾 Puppy visits (30 min) — $XX per visit\n\nAll our walkers are fully insured, DBS checked, and dog-obsessed 🐶\n\nI'd love to find out more about {dog_name}! Could you let me know:\n• What service(s) are you interested in?\n• How many days per week?\n• Any medical or behavioural needs?\n\nLooking forward to hearing from you!\n\n{walker_name} 🐾\nChilly's Dog Adventures\nchillys.com.au`},
+  {id:'t2',cat:'info',catLabel:'Info Pack',catClass:'tc-info',name:'Services & Pricing Info Pack',
+   body:`Hi {name},\n\nThanks for your interest in Chilly's! Here's everything you need to know 🐾\n\n📋 OUR SERVICES & PRICING\n━━━━━━━━━━━━━━━━━━━━━━━━\n🦮 Group Walk (60 min)      — $XX/walk\n🐕 Solo Walk (60 min)       — $XX/walk\n🏠 Drop-in Visit (30 min)   — $XX/visit\n🐾 Puppy Package (30 min)   — $XX/visit\n\n📋 HOW IT WORKS\n━━━━━━━━━━━━━━━━━━━━━━━━\n1️⃣ Free meet & greet (no obligation)\n2️⃣ Complete our quick online intake form\n3️⃣ Sign our T&Cs (takes 2 minutes via DocuSign)\n4️⃣ You're in the pack! Walks tracked via our app 📱\n\nAfter every walk you'll receive a GPS-tracked report card with photos 📸\n\nWould you like to book a free meet & greet?\n\nCan't wait to meet {dog_name}! 🐶\n\n{walker_name}\nChilly's Dog Adventures`},
+  {id:'t3',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Follow-up — No Reply',
+   body:`Hi {name},\n\nJust following up on my message from the other day — didn't want it to get lost! 😊\n\nWe'd still love to welcome {dog_name} to the Chilly's pack. If you have any questions or want to chat, just reply here or give me a call/WhatsApp.\n\nNo pressure at all — just checking in!\n\n{walker_name} 🐾`},
+  {id:'t4',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Confirmation',
+   body:`Hi {name},\n\nBrilliant — looking forward to meeting you and {dog_name}! 🐾\n\nHere are the details for our free meet & greet:\n\n📅 Date: [DATE]\n⏰ Time: [TIME]\n📍 Location: [ADDRESS / your home]\n\nThis usually takes about 20-30 minutes. We'll go over {dog_name}'s routine, any needs, and answer all your questions.\n\nSee you soon!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
+  {id:'t5',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome to the Pack! 🎉',
+   body:`Hi {name},\n\nWe're SO excited to welcome {dog_name} to the Chilly's pack! 🎉🐾\n\nHere's what happens next:\n\n1️⃣ Fill in {dog_name}'s profile form: [TYPEFORM LINK]\n   (takes ~5 mins — vet details, emergency contacts, routine)\n\n2️⃣ Sign our T&Cs here: [DOCUSIGN LINK]\n\n3️⃣ We'll add you to our app (Time to Pet) — you'll get a login to view walk schedules, GPS reports, photos & invoices 📱\n\n4️⃣ Your first walk is confirmed for [DATE] at [TIME]! 🐶\n\nAny questions at all, just message me. {dog_name} is going to LOVE it!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
+  {id:'t6',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Sorry — Not the Right Fit',
+   body:`Hi {name},\n\nThank you so much for your enquiry and for thinking of us for {dog_name} 🐾\n\nAfter careful consideration, unfortunately we're not quite the right fit at this stage.\n\nI'd really recommend checking out local alternatives — I'm happy to refer you to another trusted walker in your area.\n\nWishing you and {dog_name} all the best!\n\n{walker_name}\nChilly's Dog Adventures`},
+];
+
+const INTEGRATIONS=[
+  {icon:'📔',name:'Notion',desc:'CRM database — enquiries, clients, onboarding',status:'connected',bg:'#f3f0ff'},
+  {icon:'✉️',name:'Microsoft Outlook',desc:'Email — send templates, view inbox, sync calendar',status:'connected',bg:'#dbeafe'},
+  {icon:'📊',name:'Xero',desc:'Accounting — invoices, payments, revenue reports',status:'connected',bg:'#dcfce7'},
+  {icon:'🕐',name:'Time to Pet',desc:'Client walks, scheduling, GPS reports (via Zapier)',status:'connected',bg:'#fde8d8'},
+  {icon:'📘',name:'Facebook Lead Ads',desc:'Auto-capture new ad leads into pipeline',status:'connected',bg:'#dbeafe'},
+  {icon:'📷',name:'Instagram',desc:'DM enquiries captured automatically via Make.com',status:'pending',bg:'#fce7f3'},
+  {icon:'📅',name:'Calendly',desc:'Meet & greet auto-booking — link sent in templates',status:'pending',bg:'#f0fdf4'},
+  {icon:'📝',name:'Typeform',desc:'Client intake forms — feeds into Notion + Time to Pet',status:'disconnected',bg:'#fff4ed'},
+  {icon:'⚡',name:'Make.com',desc:'Automation engine — powers all workflow automations',status:'connected',bg:'#ede9fe'},
+  {icon:'✍️',name:'Dropbox Sign',desc:'Digital T&Cs signing — triggered on onboarding',status:'disconnected',bg:'#f0f9ff'},
+];
+
+const AUTOMATION_LOG_BASE=[
+  {id:'al1',event:'Enquiry added',detail:'Sarah Mitchell → New stage (via WhatsApp)',time:'9:23am today',status:'success',icon:'📥'},
+  {id:'al2',event:'Stage changed',detail:'Emma Chen: Info Sent → Meet & Greet',time:'8:45am today',status:'success',icon:'📊'},
+  {id:'al3',event:'Template copied',detail:'First Response — used for James Thompson',time:'8:30am today',status:'info',icon:'📋'},
+  {id:'al4',event:'Follow-up overdue',detail:'Sarah Mitchell — was due 28 Mar',time:'8:00am today',status:'warning',icon:'⚠️'},
+  {id:'al5',event:'Onboarding step updated',detail:'Lisa Park: T&Cs signed (step 3 of 8)',time:'Yesterday 4:12pm',status:'success',icon:'✅'},
+  {id:'al6',event:'Stage changed',detail:'Nick Patel: Meet & Greet → Onboarding',time:'Yesterday 2:30pm',status:'success',icon:'📊'},
+  {id:'al7',event:'Enquiry added',detail:'Emma Chen → New stage (via Facebook Ad)',time:'25 Mar, 11:02am',status:'success',icon:'📥'},
+  {id:'al8',event:'Converted to client',detail:'Amy Foster: Onboarding → Converted 🎉',time:'1 Mar, 9:15am',status:'success',icon:'🎉'},
+];
+
+// ── STATE ──
+let enquiries=[...DUMMY_ENQ];
+let editingId=null;
+let activeEmail=null;
+let aiDraftText='';
+let currentAiEnqId=null;
+
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+
+const stored=load('cw_enq',null);
+if(stored&&stored.length>0)enquiries=stored;
+
+// ── UTILS ──
+function today(){return new Date().toISOString().slice(0,10)}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmtDate(d){if(!d)return '';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}
+function fuStatus(d){if(!d)return null;if(d<today())return 'overdue';if(d===today())return 'today';return 'upcoming'}
+
+function showToast(msg,emoji='✅'){
+  const el=document.getElementById('toast');
+  el.innerHTML=`<span>${emoji}</span> ${msg}`;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2400);
+}
+
+function logEvent(event,detail,status='success',icon='📊'){
+  const log=load('cw_log',[]);
+  const now=new Date();
+  const t=now.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit',hour12:true});
+  log.unshift({id:'l'+Date.now(),event,detail,time:t+' today',status,icon});
+  save('cw_log',log.slice(0,30));
+}
+
+// ── WEBHOOKS ──
+function fireWebhook(type,payload){
+  const url=getWebhookUrl('wh-'+type);
+  if(!url) return;
+  fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event:type,timestamp:new Date().toISOString(),...payload})
+  })
+  .then(r=>{if(r.ok) logEvent('Webhook fired',type+' → Make.com','success','⚡');})
+  .catch(()=>logEvent('Webhook failed',type,'warning','⚠️'));
+}
+
+// ── EMAIL ──
+function composeEmail(to,subject,body){
+  const mailto=`mailto:${encodeURIComponent(to||'')}?subject=${encodeURIComponent(subject||'')}&body=${encodeURIComponent(body||'')}`;
+  window.open(mailto,'_blank');
+  logEvent('Email composed','To: '+(to||'(blank)')+' — '+(subject||'(no subject)'),'info','✉️');
+  showToast('Opening mail client...','✉️');
+}
+function sendEmailWebhook(to,subject,body){
+  const url=getWebhookUrl('wh-send-email');
+  if(!url){composeEmail(to,subject,body);return;}
+  fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({to,subject,body,timestamp:new Date().toISOString()})
+  })
+  .then(r=>{if(r.ok){showToast('Email sent via Make.com!','✉️');logEvent('Email sent','To: '+to,'success','✉️');}else{composeEmail(to,subject,body);}})
+  .catch(()=>composeEmail(to,subject,body));
+}
+
+// ── FIT SCORE ──
+function calcFitScore(e){
+  let s=0;
+  const src={Referral:5,'Facebook Ad':3,WhatsApp:3,Instagram:3,Facebook:2,Website:2,Email:1,Google:1,Other:1};
+  s+=src[e.source]||src[e.channel]||1;
+  const svc=(e.services||'').toLowerCase();
+  if(/daily|5 day/i.test(svc))s+=3;
+  else if(/solo|private/i.test(svc))s+=2;
+  else if(/group/i.test(svc))s+=2;
+  else s+=1;
+  if(e.followup)s+=1;
+  if(e.followup&&fuStatus(e.followup)!=='overdue')s+=1;
+  const sb={new:0,contacted:1,'info-sent':2,'meet-greet':3,onboarding:3};
+  s+=sb[e.stage]||0;
+  const norm=Math.min(10,Math.max(1,Math.round((s/13)*10)));
+  let label,cls;
+  if(norm>=8){label='Hot';cls='fit-hot';}
+  else if(norm>=6){label='Good';cls='fit-good';}
+  else if(norm>=4){label='Medium';cls='fit-medium';}
+  else{label='Low';cls='fit-low';}
+  return{score:norm,label,cls};
+}
+
+// ── NEXT ACTIONS ──
+function getEnqNextAction(e){
+  if(['converted','not-suitable'].includes(e.stage))return null;
+  const fu=fuStatus(e.followup);
+  if(e.stage==='new'&&!e.followup)return{icon:'📅',text:'Set a follow-up date'};
+  if(e.stage==='new'&&fu==='overdue')return{icon:'⚠️',text:'Follow up now — overdue!'};
+  if(e.stage==='new'&&fu==='today')return{icon:'📞',text:'Call or message today'};
+  if(e.stage==='new')return{icon:'💬',text:'Send first reply'};
+  if(e.stage==='contacted')return{icon:'📄',text:'Send info pack'};
+  if(e.stage==='info-sent')return{icon:'📅',text:'Book a meet & greet'};
+  if(e.stage==='meet-greet')return{icon:'✅',text:'Confirm meet & greet'};
+  if(e.stage==='onboarding')return{icon:'📋',text:'Check onboarding steps'};
+  return null;
+}
+
+function getClientNextAction(c){
+  if(c.health==='win-back')return{icon:'💌',text:'Send reactivation offer'};
+  if(c.health==='at-risk')return{icon:'💬',text:'Check in this week'};
+  if(c.tags&&c.tags.includes('review-due'))return{icon:'⭐',text:'Schedule review call'};
+  return null;
+}
+
+function getObNextAction(e){
+  const checks=load('cw_ob_'+e.id,new Array(OB_STEPS.length).fill(false));
+  const nextIdx=checks.findIndex(c=>!c);
+  if(nextIdx===-1)return{icon:'🎉',text:'All done — ready to convert!'};
+  return{icon:'▶️',text:'Next: '+OB_STEPS[nextIdx].split('(')[0].trim()};
+}
+
+// ── NAV ──
+const VIEW_TITLES={
+  dashboard:'Dashboard',enquiries:'Enquiry Pipeline',onboarding:'Onboarding Tracker',
+  clients:'Clients & Walks',inbox:'Inbox',coverage:'Coverage Map',templates:'Message Templates',
+  reports:'Reports & KPIs',settings:'Settings',
+};
+
+function navigate(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  document.querySelector(`.nav-item[data-view="${v}"]`).classList.add('active');
+  document.getElementById('topbar-title').textContent=VIEW_TITLES[v];
+  const actions={
+    enquiries:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button><button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>`,
+    templates:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft Reply</button>`,
+    reports:`<button class="btn btn-secondary btn-sm" onclick="window.print()">📥 Export PDF</button>`,
+    coverage:`<button class="btn btn-ghost btn-sm" onclick="assignedPins={};save('cw_map_pins',{});renderCoverage();showToast('All pins cleared — defaults will reload','🗑️')">🗑️ Reset Map</button>`,
+  };
+  document.getElementById('topbar-actions').innerHTML=actions[v]||'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-light)"><span class="int-live-dot"></span> Live sync</div>';
+  if(v==='dashboard')renderDashboard();
+  if(v==='enquiries')renderPipeline();
+  if(v==='onboarding')renderOnboarding();
+  if(v==='clients')renderClients();
+  if(v==='inbox')renderInbox();
+  if(v==='coverage')renderCoverage();
+  if(v==='templates')renderTemplates();
+  if(v==='reports')renderReports();
+  if(v==='settings')renderSettings();
+  updateBadges();
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(el=>{
+  el.addEventListener('click',()=>navigate(el.dataset.view));
+});
+
+function updateBadges(){
+  const n=enquiries.filter(e=>e.stage==='new').length;
+  const be=document.getElementById('badge-enq');
+  be.textContent=n;be.style.display=n>0?'inline-block':'none';
+  const ob=enquiries.filter(e=>e.stage==='onboarding').length;
+  const bo=document.getElementById('badge-ob');
+  bo.textContent=ob;bo.style.display=ob>0?'inline-block':'none';
+}
+
+// ── CHART ──
+function buildChart(containerId,labelId,data,h=110){
+  const max=Math.max(...data.map(d=>d.val))*1.1;
+  const min=Math.min(...data.map(d=>d.val))*.85;
+  const W=600,H=h,n=data.length;
+  const pts=data.map((d,i)=>{
+    const x=i*(W/(n-1));
+    const y=H-((d.val-min)/(max-min))*H;
+    return[x,y];
+  });
+  const pathD=pts.map((p,i)=>i===0?`M${p[0]},${p[1]}`:`C${pts[i-1][0]+40},${pts[i-1][1]} ${p[0]-40},${p[1]} ${p[0]},${p[1]}`).join(' ');
+  const areaD=pathD+` L${pts[n-1][0]},${H} L0,${H} Z`;
+  const uid='g'+Math.random().toString(36).slice(2,7);
+  document.getElementById(containerId).innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg" preserveAspectRatio="none" style="height:${H}px">
+    <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F26B21" stop-opacity=".18"/><stop offset="100%" stop-color="#F26B21" stop-opacity="0"/></linearGradient></defs>
+    <path d="${areaD}" fill="url(#${uid})"/>
+    <path d="${pathD}" fill="none" stroke="#F26B21" stroke-width="2.5" stroke-linecap="round"/>
+    ${pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#F26B21" stroke="#fff" stroke-width="2"/><text x="${p[0]}" y="${p[1]-10}" text-anchor="middle" font-size="11" fill="#6b6b6b" font-family="Inter">$${(data[i].val/1000).toFixed(1)}k</text>`).join('')}
+  </svg>`;
+  document.getElementById(labelId).innerHTML=data.map(d=>`<span>${d.month}</span>`).join('');
+}
+
+// ── DASHBOARD ──
+function renderDashboard(){
+  buildChart('revenue-chart','chart-labels',REVENUE);
+
+  document.getElementById('dash-walks').innerHTML=TODAY_WALKS.map(w=>`
+    <div class="walk-item">
+      <div class="walk-time">${w.time}</div>
+      <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs}</div><div class="walk-type">${w.type}</div></div>
+      <div class="walk-walker">${w.walker}</div>
+      <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+    </div>`).join('');
+
+  const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>a.followup.localeCompare(b.followup));
+  const fuBadge=document.getElementById('fu-badge-count');
+  const overdue=due.filter(e=>fuStatus(e.followup)==='overdue').length;
+  // Fire overdue webhook once per day
+  const lastFuCheck=load('cw_fu_last_check','');
+  if(lastFuCheck!==today()&&overdue>0){
+    due.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>fireWebhook('followup-overdue',{name:e.name,email:e.email,dogName:e.dogName,followup:e.followup,stage:e.stage}));
+    save('cw_fu_last_check',today());
+  }
+  fuBadge.textContent=overdue>0?overdue+' overdue':due.length+' today';
+  fuBadge.style.background=overdue>0?'var(--danger-bg)':'var(--warning-bg)';
+  fuBadge.style.color=overdue>0?'var(--danger)':'var(--warning)';
+
+  const fuEl=document.getElementById('dash-followups');
+  if(!due.length){fuEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">🎉 All caught up!</div>';}
+  else fuEl.innerHTML=due.map(e=>{
+    const s=fuStatus(e.followup);
+    return `<div class="followup-item" onclick="navigate('enquiries')">
+      <div class="fu-dot ${s}"></div>
+      <div style="flex:1"><div class="followup-name">${esc(e.name)} · ${esc(e.dogName)}</div><div class="followup-detail">${STAGES.find(st=>st.id===e.stage)?.label||''} · ${esc(e.channel)}</div></div>
+      <div class="followup-date ${s}">${s==='overdue'?'⚠️ ':'📅 '}${fmtDate(e.followup)}</div>
+    </div>`;
+  }).join('');
+
+  const pipelineEl=document.getElementById('dash-pipeline');
+  const total=enquiries.filter(e=>!['converted','not-suitable'].includes(e.stage)).length||1;
+  pipelineEl.innerHTML=STAGES.filter(s=>!['converted','not-suitable'].includes(s.id)).map(s=>{
+    const c=enquiries.filter(e=>e.stage===s.id).length;
+    return `<div class="pm-row">
+      <div class="pm-dot" style="background:${s.color}"></div>
+      <div class="pm-label">${s.label}</div>
+      <div class="pm-bar-wrap"><div class="pm-bar" style="width:${(c/total)*100}%;background:${s.color}"></div></div>
+      <div class="pm-count">${c}</div>
+    </div>`;
+  }).join('');
+
+  acTab('urgent');
+  fetchXeroData();
+  fetchNewLeads();
+  fetchTodaysWalks();
+}
+
+// ── XERO FETCH ──
+async function fetchXeroData(){
+  const url=getWebhookUrl('wh-xero');
+  if(!url){
+    const cache=load('cw_xero_cache',null);
+    if(cache){
+      document.getElementById('xero-paid').textContent=cache.paid;
+      document.getElementById('xero-outstanding').textContent=cache.outstanding;
+      document.getElementById('xero-overdue').textContent=cache.overdue;
+      document.getElementById('xero-expenses').textContent=cache.expenses;
+    }
+    return;
+  }
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await res.json();
+    if(data.paid) document.getElementById('xero-paid').textContent=data.paid;
+    if(data.outstanding) document.getElementById('xero-outstanding').textContent=data.outstanding;
+    if(data.overdue) document.getElementById('xero-overdue').textContent=data.overdue;
+    if(data.expenses) document.getElementById('xero-expenses').textContent=data.expenses;
+    save('cw_xero_cache',data);
+  }catch(e){/* silent fail — keep showing current values */}
+}
+
+// ── FETCH TODAY'S WALKS (Google Calendar via Make.com) ──
+async function fetchTodaysWalks(){
+  const url=getWebhookUrl('wh-fetch-walks');
+  // Try cache first
+  const cache=load('cw_walks_cache',null);
+  if(cache&&cache.date===today()){
+    TODAY_WALKS=cache.walks;
+    renderWalksList();
+    if(!url) return;
+  }
+  if(!url) return;
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today()})});
+    const data=await res.json();
+    const walks=Array.isArray(data)?data:(data.walks||[]);
+    if(walks.length>0){
+      TODAY_WALKS=walks;
+      save('cw_walks_cache',{date:today(),walks});
+      renderWalksList();
+      document.querySelector('#dash-walks')?.closest('.card')?.querySelector('.badge')?.textContent&&
+        (document.querySelector('#dash-walks').closest('.card').querySelector('.badge').textContent=walks.length+' walks');
+    }
+  }catch(e){/* silent fail — keep showing current data */}
+}
+function renderWalksList(){
+  const el=document.getElementById('dash-walks');
+  if(!el) return;
+  el.innerHTML=TODAY_WALKS.map(w=>`
+    <div class="walk-item">
+      <div class="walk-time">${w.time}</div>
+      <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs}</div><div class="walk-type">${w.type}</div></div>
+      <div class="walk-walker">${w.walker}</div>
+      <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+    </div>`).join('');
+}
+
+// ── FETCH NEW LEADS (FB/Instagram) ──
+let lastLeadFetch=0;
+async function fetchNewLeads(){
+  const url=getWebhookUrl('wh-fetch-leads');
+  if(!url) return;
+  if(Date.now()-lastLeadFetch<300000) return; // max once per 5 min
+  lastLeadFetch=Date.now();
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lastFetch:load('cw_leads_last','')})});
+    const data=await res.json();
+    const leads=Array.isArray(data)?data:(data.leads||[]);
+    if(!leads.length) return;
+    let added=0;
+    leads.forEach(lead=>{
+      const exists=enquiries.some(e=>e.email===lead.email||e.phone===lead.phone||(e.name===lead.name&&e.dogName===lead.dogName));
+      if(exists) return;
+      enquiries.push({
+        id:'e'+Date.now()+Math.random().toString(36).slice(2,6),
+        name:lead.name||'',phone:lead.phone||'',email:lead.email||'',
+        channel:lead.channel||lead.source||'Facebook',
+        dogName:lead.dogName||lead.dog_name||'',dogBreed:lead.dogBreed||lead.dog_breed||'',
+        services:lead.services||'',stage:'new',followup:null,
+        notes:lead.notes||lead.message||'',suburb:lead.suburb||'',
+        source:lead.source||'Facebook Ad',dateAdded:today()
+      });
+      added++;
+    });
+    if(added>0){
+      save('cw_enq',enquiries);
+      save('cw_leads_last',new Date().toISOString());
+      showToast(`${added} new lead${added>1?'s':''} imported!`,'📥');
+      logEvent('Leads imported',`${added} new lead${added>1?'s':''} from Facebook/Instagram`,'success','📥');
+      renderPipeline();updateBadges();
+    }
+  }catch(e){/* silent fail */}
+}
+
+// ── ACTION CENTRE ──
+function acTab(tab){
+  document.querySelectorAll('.ac-tab').forEach(t=>t.classList.toggle('active',t.dataset.ac===tab));
+  document.querySelectorAll('.ac-panel').forEach(p=>p.classList.toggle('active',p.id==='ac-'+tab));
+  renderAcPanel(tab);
+}
+
+function renderAcPanel(tab){
+  const el=document.getElementById('ac-'+tab);
+  if(!el)return;
+  let items=[];
+
+  if(tab==='urgent'){
+    enquiries.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>{
+      items.push({cls:'urgent',icon:'⚠️',title:`Follow up ${esc(e.name)}`,sub:`${esc(e.dogName)} · ${STAGES.find(s=>s.id===e.stage)?.label} · Overdue since ${fmtDate(e.followup)}`,cta:'Open enquiry',fn:`openEditEnquiry('${e.id}')`});
+    });
+    enquiries.filter(e=>e.stage==='onboarding').forEach(e=>{
+      const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
+      if(days>=14)items.push({cls:'urgent',icon:'🔄',title:`Onboarding stalled: ${esc(e.name)}`,sub:`${days} days in onboarding — check progress with client`,cta:'View checklist',fn:`navigate('onboarding')`});
+    });
+    DUMMY_CLIENTS.filter(c=>c.health==='win-back').forEach(c=>{
+      items.push({cls:'urgent',icon:'💔',title:`Re-engage ${esc(c.owner)}`,sub:`${esc(c.dog)} hasn't walked recently — send reactivation message`,cta:'Email client',fn:`composeEmail('${c.email||''}','We miss ${esc(c.dog)}!','Hi ${esc(c.owner)},\\n\\nWe noticed ${esc(c.dog)} hasn\\'t been on a walk recently. We\\'d love to have them back!\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">🎉 Nothing urgent right now — great work!</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+
+  if(tab==='today'){
+    enquiries.filter(e=>fuStatus(e.followup)==='today').forEach(e=>{
+      items.push({cls:'warn',icon:'📅',title:`Follow up today: ${esc(e.name)}`,sub:`${esc(e.dogName)} · ${STAGES.find(s=>s.id===e.stage)?.label}`,cta:'Open',fn:`openEditEnquiry('${e.id}')`});
+    });
+    TODAY_WALKS.filter(w=>w.status==='upcoming').forEach(w=>{
+      items.push({cls:'',icon:'🦮',title:`Walk at ${w.time}: ${w.dogs}`,sub:`${w.type} · Walker: ${w.walker}`,cta:'View clients',fn:`navigate('clients')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">✅ Nothing else on for today!</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+
+  if(tab==='opportunities'){
+    enquiries.filter(e=>e.stage==='new'&&e.source==='Referral').forEach(e=>{
+      items.push({cls:'',icon:'⭐',title:`Referral lead: ${esc(e.name)}`,sub:`${esc(e.dogName)} · Referrals convert at 2× the rate — contact now`,cta:'Contact now',fn:`openEditEnquiry('${e.id}')`});
+    });
+    DUMMY_CLIENTS.filter(c=>c.health==='at-risk').forEach(c=>{
+      items.push({cls:'warn',icon:'📉',title:`At risk: ${esc(c.owner)}`,sub:`${esc(c.dog)}'s walk frequency has dropped — check in this week`,cta:'Send message',fn:`composeEmail('${c.email||''}','Checking in — ${esc(c.dog)}','Hi ${esc(c.owner)},\\n\\nJust checking in — we noticed ${esc(c.dog)}\\'s walk schedule has dropped off. Everything okay?\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
+    });
+    enquiries.filter(e=>e.stage==='new').forEach(e=>{
+      const fit=calcFitScore(e);
+      if(fit.score>=8)items.push({cls:'',icon:'🔥',title:`Hot lead: ${esc(e.name)}`,sub:`${esc(e.dogName)} · Fit score ${fit.score}/10 — don't let this one cool`,cta:'Follow up',fn:`openEditEnquiry('${e.id}')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">👀 Check back later for opportunities.</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+}
+
+function renderAcItem(item){
+  return `<div class="ac-item ${item.cls}" onclick="${item.fn}">
+    <div class="ac-icon">${item.icon}</div>
+    <div class="ac-content"><div class="ac-title">${item.title}</div><div class="ac-sub">${item.sub}</div></div>
+    <div class="ac-cta">${item.cta} →</div>
+  </div>`;
+}
+
+// ── PIPELINE ──
+function renderPipeline(){
+  document.getElementById('kanban-board').innerHTML=STAGES.map(s=>{
+    const cards=enquiries.filter(e=>e.stage===s.id);
+    return `<div class="k-col">
+      <div class="k-col-head">
+        <div class="k-stage-dot" style="background:${s.color}"></div>
+        <div class="k-stage-title">${s.label}</div>
+        <div class="k-count">${cards.length}</div>
+      </div>
+      <div class="k-cards">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">○</div>'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderEnqCard(e){
+  const fs=fuStatus(e.followup);
+  const fuHtml=fs?`<div class="fu-badge ${fs}">${fs==='overdue'?'⚠️':'📅'} ${fs==='upcoming'?fmtDate(e.followup):fs.charAt(0).toUpperCase()+fs.slice(1)}</div>`:'';
+  const fit=calcFitScore(e);
+  const na=getEnqNextAction(e);
+  return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
+    <div class="enq-name">${esc(e.name)}</div>
+    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' ('+esc(e.dogBreed)+')':''}`:'<span style="color:var(--ink-xlight)">No dog info</span>'}</div>
+    <div class="enq-tags">
+      ${e.channel?`<span class="tag tag-channel">${esc(e.channel)}</span>`:''}
+      ${e.source&&e.source!==e.channel?`<span class="tag tag-source">${esc(e.source)}</span>`:''}
+      ${e.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(e.suburb)}</span>`:''}
+      <span class="fit-badge ${fit.cls}">🎯 ${fit.score}/10 ${fit.label}</span>
+    </div>
+    <div class="enq-footer">
+      <div class="enq-date">Added ${fmtDate(e.dateAdded)}</div>
+      <div style="display:flex;align-items:center;gap:4px">
+        ${fuHtml}
+        <button style="background:none;border:1px solid var(--border);border-radius:20px;padding:1px 6px;font-size:10px;cursor:pointer;color:var(--ink-light)" onclick="event.stopPropagation();openAiDraft('${e.id}')">🤖</button>
+      </div>
+    </div>
+    ${na?`<div class="next-action"><span>${na.icon}</span>${na.text}</div>`:''}
+  </div>`;
+}
+
+// ── ONBOARDING ──
+function renderOnboarding(){
+  const clients=enquiries.filter(e=>e.stage==='onboarding');
+  const el=document.getElementById('ob-list');
+  if(!clients.length){el.innerHTML=`<div class="empty"><div class="ei">✅</div><h4>No clients in onboarding</h4><p>Move an enquiry to "Onboarding" to track them here.</p></div>`;return;}
+  el.innerHTML=clients.map(e=>{
+    const checks=load('cw_ob_'+e.id,new Array(OB_STEPS.length).fill(false));
+    const done=checks.filter(Boolean).length;
+    const pct=Math.round((done/OB_STEPS.length)*100);
+    const na=getObNextAction(e);
+    const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
+    return `<div class="ob-card">
+      <div class="ob-head" onclick="toggleOb('${e.id}')">
+        <div style="font-size:28px">🐕</div>
+        <div>
+          <div class="name">${esc(e.name)}</div>
+          <div class="dog">${e.dogName?`${esc(e.dogName)} · ${esc(e.dogBreed||'')}`:'No dog info'}</div>
+          ${na?`<div class="next-action" style="margin-top:4px"><span>${na.icon}</span>${na.text}</div>`:''}
+        </div>
+        <div class="ob-meta">
+          <div style="text-align:right">
+            <div class="progress-wrap">
+              <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+              <div class="progress-label">${done}/${OB_STEPS.length} complete · ${pct}%</div>
+            </div>
+            <div style="font-size:10px;color:${days>=14?'var(--danger)':'var(--ink-xlight)'};margin-top:3px">${days} days in onboarding${days>=14?' ⚠️':''}</div>
+          </div>
+          <span class="ob-toggle" id="ob-tog-${e.id}">▼</span>
+        </div>
+      </div>
+      <div class="ob-checklist" id="ob-cl-${e.id}">
+        ${OB_STEPS.map((step,i)=>`
+          <div class="check-item">
+            <input type="checkbox" id="ck-${e.id}-${i}" ${checks[i]?'checked':''} onchange="toggleObStep('${e.id}',${i},this.checked)">
+            <label for="ck-${e.id}-${i}">${step}</label>
+            <span class="check-badge ${checks[i]?'done':'pending'}">${checks[i]?'Done':'Pending'}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleOb(id){
+  document.getElementById('ob-cl-'+id).classList.toggle('open');
+  document.getElementById('ob-tog-'+id).classList.toggle('open');
+}
+
+function toggleObStep(id,i,val){
+  const checks=load('cw_ob_'+id,new Array(OB_STEPS.length).fill(false));
+  checks[i]=val;save('cw_ob_'+id,checks);
+  logEvent('Onboarding step updated',`${enquiries.find(e=>e.id===id)?.name||id}: step ${i+1} ${val?'completed':'unchecked'}`,'success','✅');
+  renderOnboarding();
+  document.getElementById('ob-cl-'+id)?.classList.add('open');
+  document.getElementById('ob-tog-'+id)?.classList.add('open');
+  showToast(val?'Step marked complete':'Step unchecked');
+}
+
+// ── CLIENTS ──
+function renderClients(){
+  document.getElementById('clients-grid').innerHTML=DUMMY_CLIENTS.map(c=>{
+    const healthLabel={active:'● Active','at-risk':'⚠️ At Risk','win-back':'💔 Win-back'}[c.health]||'● Active';
+    const tagHtml=(c.tags||[]).map(t=>{
+      const cfg={vip:['ctag-vip','⭐ VIP'],'review-due':['ctag-review','📋 Review Due'],'reactivation':['ctag-reactivation','💌 Reactivation'],'low-frequency':['ctag-low','📉 Low Freq']}[t];
+      return cfg?`<span class="ctag ${cfg[0]}">${cfg[1]}</span>`:'';
+    }).join('');
+    const na=getClientNextAction(c);
+    return `<div class="client-card">
+      <div class="client-top">
+        <div class="client-avatar">${c.emoji}</div>
+        <div>
+          <div class="client-name">${esc(c.owner)}</div>
+          <div class="client-dog">🐶 ${esc(c.dog)} · ${esc(c.breed)}</div>
+          <span class="client-badge health-${c.health}">${healthLabel}</span>
+          ${tagHtml?`<div class="client-tags">${tagHtml}</div>`:''}
+        </div>
+      </div>
+      <div class="next-walk">📅 Next: ${esc(c.nextWalk)}</div>
+      <div class="client-stats">
+        <div class="cs-stat"><div class="cs-val">${c.walks}</div><div class="cs-lbl">walks/wk</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.monthWalks}</div><div class="cs-lbl">this month</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.ltv}</div><div class="cs-lbl">lifetime</div></div>
+      </div>
+      ${na?`<div class="next-action" style="margin-top:10px;justify-content:center"><span>${na.icon}</span>${na.text}</div>`:''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="window.open('https://www.timetopet.com/portal','_blank')">📋 Time to Pet</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="composeEmail('${c.email||''}','','')">✉️ Email</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── INBOX ──
+function renderInbox(){
+  document.getElementById('email-list').innerHTML=EMAILS.map(m=>`
+    <div class="email-item ${m.read?'':'unread'} ${activeEmail===m.id?'active':''}" onclick="openEmail('${m.id}')">
+      <div class="ei-from">${esc(m.from)}<span class="ei-time">${m.time}</span></div>
+      <div class="ei-subject">${esc(m.subject)}</div>
+      <div class="ei-preview">${esc(m.preview)}</div>
+      <div class="ei-tags"><span class="ei-tag ${m.tag}">${m.tag}</span></div>
+    </div>`).join('');
+}
+
+function getEmailContext(m){
+  const enq=enquiries.find(e=>e.name===m.from||e.email===m.email);
+  if(enq){
+    const fit=calcFitScore(enq);
+    const na=getEnqNextAction(enq);
+    return `<div class="ctx-header">📥 Linked Enquiry</div>
+    <div class="ctx-card">
+      <div class="ctx-field"><div class="ctx-label">Name</div><div class="ctx-value">${esc(enq.name)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Dog</div><div class="ctx-value">${esc(enq.dogName)} (${esc(enq.dogBreed||'?')})</div></div>
+      <div class="ctx-field"><div class="ctx-label">Stage</div><div class="ctx-value" style="color:${STAGES.find(s=>s.id===enq.stage)?.color};font-weight:700">${STAGES.find(s=>s.id===enq.stage)?.label}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Channel</div><div class="ctx-value">${esc(enq.channel)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Suburb</div><div class="ctx-value">${esc(enq.suburb||'—')}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Fit Score</div><div class="ctx-value"><span class="fit-badge ${fit.cls}">🎯 ${fit.score}/10 ${fit.label}</span></div></div>
+      ${na?`<div class="ctx-field"><div class="ctx-label">Next Action</div><div class="next-action" style="margin-top:4px"><span>${na.icon}</span>${na.text}</div></div>`:''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+      <button class="btn btn-primary btn-sm" onclick="openAiDraft('${enq.id}')">🤖 AI Draft Reply</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditEnquiry('${enq.id}')">📝 Open Enquiry</button>
+    </div>`;
+  }
+  const client=DUMMY_CLIENTS.find(c=>c.owner===m.from);
+  if(client){
+    const na=getClientNextAction(client);
+    return `<div class="ctx-header">🐕 Linked Client</div>
+    <div class="ctx-card">
+      <div class="ctx-field"><div class="ctx-label">Owner</div><div class="ctx-value">${esc(client.owner)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Dog</div><div class="ctx-value">${esc(client.dog)} (${esc(client.breed)})</div></div>
+      <div class="ctx-field"><div class="ctx-label">Health</div><div class="ctx-value"><span class="client-badge health-${client.health}" style="font-size:11px">${{active:'● Active','at-risk':'⚠️ At Risk','win-back':'💔 Win-back'}[client.health]}</span></div></div>
+      <div class="ctx-field"><div class="ctx-label">Next Walk</div><div class="ctx-value">${esc(client.nextWalk)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Lifetime Value</div><div class="ctx-value" style="font-weight:700;color:var(--orange)">${esc(client.ltv)}</div></div>
+      ${na?`<div class="next-action" style="margin-top:6px"><span>${na.icon}</span>${na.text}</div>`:''}
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="composeEmail('${client.email||''}','Re: ','')">✉️ Reply to ${esc(client.owner)}</button>
+    </div>`;
+  }
+  return `<div class="ctx-header">Context</div><div style="font-size:12px;color:var(--ink-xlight);line-height:1.7">No matched enquiry or client for this sender.<br><br>If this is a new lead, <span style="color:var(--orange);cursor:pointer;font-weight:600" onclick="openAddEnquiry()">add to pipeline →</span></div>`;
+}
+
+function openEmail(id){
+  activeEmail=id;
+  const m=EMAILS.find(e=>e.id===id);
+  if(!m)return;
+  m.read=true;
+  const unread=EMAILS.filter(e=>!e.read).length;
+  document.getElementById('badge-inbox').textContent=unread;
+  document.getElementById('badge-inbox').style.display=unread>0?'inline-block':'none';
+  renderInbox();
+  document.getElementById('inbox-main').innerHTML=`
+    <div class="inbox-email-view">
+      <div class="email-view-header">
+        <div class="email-view-subject">${esc(m.subject)}</div>
+        <div class="email-view-meta">
+          <div><strong>${esc(m.from)}</strong> &lt;${esc(m.email)}&gt;</div>
+          <div style="display:flex;gap:8px"><span class="ei-tag ${m.tag}">${m.tag}</span><span>${m.time}</span></div>
+        </div>
+      </div>
+      <div class="email-view-body">${esc(m.body)}</div>
+      <div style="margin-top:20px;display:flex;gap:8px;border-top:1px solid var(--border);padding-top:16px">
+        <button class="btn btn-primary btn-sm" onclick="composeEmail('${m.email}','Re: ${esc(m.subject)}','')">↩️ Reply</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAiDraftFromEmail('${m.id}')">🤖 AI Draft Reply</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAddEnquiry()">📥 Add to Pipeline</button>
+      </div>
+    </div>`;
+  document.getElementById('inbox-context').innerHTML=getEmailContext(m);
+}
+
+// ── TEMPLATES ──
+function renderTemplates(){
+  document.getElementById('templates-list').innerHTML=TEMPLATES.map(t=>{
+    const bodyHtml=t.body.replace(/\{(\w+)\}/g,'<span class="merge-field">{$1}</span>').replace(/\n/g,'<br>');
+    return `<div class="tmpl-card">
+      <div class="tmpl-head" onclick="toggleTmpl('${t.id}')">
+        <span class="tmpl-cat ${t.catClass}">${t.catLabel}</span>
+        <span class="tmpl-name">${esc(t.name)}</span>
+        <span class="tmpl-toggle" id="tt-${t.id}">▼</span>
+      </div>
+      <div class="tmpl-body" id="tb-${t.id}">
+        <div class="tmpl-text">${bodyHtml}</div>
+        <div class="tmpl-actions">
+          <button class="btn btn-primary btn-sm" onclick="copyTmpl('${t.id}')">📋 Copy to Clipboard</button>
+          <button class="btn btn-ghost btn-sm" onclick="composeEmail('','${esc(t.name)}',\`${t.body.replace(/`/g,"\\`")}\`)">✉️ Send via Outlook</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.open('https://wa.me/?text='+encodeURIComponent(\`${t.body.replace(/`/g,"\\`")}\`))">💬 WhatsApp</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTmpl(id){
+  document.getElementById('tb-'+id).classList.toggle('open');
+  document.getElementById('tt-'+id).classList.toggle('open');
+}
+
+function copyTmpl(id){
+  const t=TEMPLATES.find(x=>x.id===id);if(!t)return;
+  navigator.clipboard.writeText(t.body).then(()=>{
+    logEvent('Template copied',t.name+' — copied to clipboard','info','📋');
+    showToast('Template copied!','📋');
+  });
+}
+
+// ── REPORTS ──
+function renderReports(){
+  buildChart('reports-chart','reports-labels',REVENUE,100);
+  const sources=[
+    {label:'Facebook Ads',pct:45,color:'#3b82f6'},{label:'Instagram',pct:22,color:'#ec4899'},
+    {label:'Referral',pct:18,color:'#22c55e'},{label:'Website / SEO',pct:10,color:'#8b5cf6'},{label:'Other',pct:5,color:'#a0a0a0'},
+  ];
+  document.getElementById('source-list').innerHTML=sources.map(s=>`
+    <div class="source-row"><div class="source-label">${s.label}</div><div class="source-bar-bg"><div class="source-bar" style="width:${s.pct}%;background:${s.color}"></div></div><div class="source-pct">${s.pct}%</div></div>`).join('');
+  const funnel=[
+    {label:'Enquiries received',val:48,pct:100,color:'#3b82f6'},{label:'Contacted',val:42,pct:88,color:'#f59e0b'},
+    {label:'Info sent',val:35,pct:73,color:'#8b5cf6'},{label:'Meet & greet',val:28,pct:58,color:'#ec4899'},{label:'Converted to client',val:22,pct:46,color:'#22c55e'},
+  ];
+  document.getElementById('conversion-funnel').innerHTML=funnel.map(f=>`
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:12px;color:var(--ink-mid);width:150px;flex-shrink:0">${f.label}</div>
+      <div style="flex:1;background:var(--cream-dark);border-radius:4px;height:10px;overflow:hidden"><div style="width:${f.pct}%;height:100%;background:${f.color};border-radius:4px"></div></div>
+      <div style="font-size:12px;font-weight:700;color:var(--ink-mid);width:30px;text-align:right">${f.val}</div>
+    </div>`).join('');
+  const walkers=[{name:'Jake',util:92,walks:18,color:'#F26B21'},{name:'Sarah',util:88,walks:16,color:'#3b82f6'},{name:'Chris',util:75,walks:14,color:'#22c55e'}];
+  document.getElementById('walker-util').innerHTML=walkers.map(w=>`
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">${w.name}</span><span style="font-size:12px;color:var(--ink-light)">${w.walks} walks/wk · <strong>${w.util}%</strong> utilised</span></div>
+      <div style="background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden"><div style="width:${w.util}%;height:100%;background:${w.color};border-radius:4px"></div></div>
+    </div>`).join('');
+}
+
+function reportTab(tab){
+  document.querySelectorAll('.report-tab').forEach(t=>t.classList.toggle('active',t.dataset.rtab===tab));
+  document.querySelectorAll('.report-panel').forEach(p=>p.classList.toggle('active',p.id==='rp-'+tab));
+  if(tab==='by-source')renderBySource();
+  if(tab==='by-service')renderByService();
+  if(tab==='by-suburb')renderBySuburb();
+}
+
+function reportTableWrap(title,subtitle,theadHtml,tbodyHtml){
+  return `<div class="card"><div class="card-header"><h3>${title}</h3><span style="font-size:11px;color:var(--ink-xlight)">${subtitle}</span></div><div class="card-body" style="padding:0"><table class="report-table"><thead><tr>${theadHtml}</tr></thead><tbody>${tbodyHtml}</tbody></table></div></div>`;
+}
+
+function renderBySource(){
+  const map={};
+  enquiries.forEach(e=>{
+    const s=e.source||'Unknown';
+    if(!map[s])map[s]={total:0,converted:0};
+    map[s].total++;
+    if(e.stage==='converted')map[s].converted++;
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100);
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-source').innerHTML=reportTableWrap('Leads by Source','All time','<th>Source</th><th>Leads</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+function renderByService(){
+  const map={};
+  enquiries.forEach(e=>{
+    const svc=(e.services||'').toLowerCase();
+    const keys=[];
+    if(/group/i.test(svc))keys.push('Group Walks');
+    if(/solo|private/i.test(svc))keys.push('Solo Walks');
+    if(/drop/i.test(svc))keys.push('Drop-ins');
+    if(/puppy/i.test(svc))keys.push('Puppy Visits');
+    if(!keys.length)keys.push('Other');
+    keys.forEach(k=>{
+      if(!map[k])map[k]={total:0,converted:0};
+      map[k].total++;
+      if(e.stage==='converted')map[k].converted++;
+    });
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100);
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-service').innerHTML=reportTableWrap('Leads by Service','All time','<th>Service Type</th><th>Enquiries</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+function renderBySuburb(){
+  const map={};
+  enquiries.forEach(e=>{
+    const s=e.suburb||'Unknown';
+    if(!map[s])map[s]={total:0,converted:0};
+    map[s].total++;
+    if(e.stage==='converted')map[s].converted++;
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100)||0;
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${d.total>=3?'var(--success)':'var(--ink-xlight)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-suburb').innerHTML=reportTableWrap('Leads by Suburb','All time — shows best coverage areas','<th>Suburb</th><th>Enquiries</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+// ── SETTINGS ──
+// ── SETTINGS PERSISTENCE ──
+const SETTINGS_FIELDS={
+  business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
+  ai:['s-api-key','s-auto-reply','s-tone'],
+  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks']
+};
+function saveSettings(section){
+  const s=load('cw_settings',{});
+  const fields=section?SETTINGS_FIELDS[section]:Object.values(SETTINGS_FIELDS).flat();
+  fields.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) s[id]=el.tagName==='SELECT'?el.selectedIndex:el.value;
+  });
+  save('cw_settings',s);
+  showToast('Settings saved!','✅');
+  logEvent('Settings updated',section||'all','info','⚙️');
+}
+function loadSettings(){
+  const s=load('cw_settings',{});
+  Object.entries(s).forEach(([id,val])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(el.tagName==='SELECT') el.selectedIndex=val;
+    else el.value=val;
+  });
+}
+function getSetting(id,fallback){
+  const s=load('cw_settings',{});
+  return s[id]!==undefined?s[id]:fallback;
+}
+function getWebhookUrl(id){
+  return getSetting(id,'')||'';
+}
+
+const INTEGRATION_URLS={
+  'Notion':'https://notion.so','Microsoft Outlook':'https://outlook.live.com',
+  'Xero':'https://go.xero.com','Time to Pet':'https://www.timetopet.com',
+  'Facebook Lead Ads':'https://business.facebook.com','Instagram':'https://business.instagram.com',
+  'Calendly':'https://calendly.com','Typeform':'https://typeform.com',
+  'Make.com':'https://www.make.com','Dropbox Sign':'https://sign.dropbox.com'
+};
+function openIntegration(name){
+  const url=INTEGRATION_URLS[name];
+  if(url) window.open(url,'_blank');
+  showToast(`Opening ${name}...`,'🔌');
+}
+
+function renderSettings(){
+  document.getElementById('integrations-list').innerHTML=INTEGRATIONS.map(i=>`
+    <div class="integration-row">
+      <div class="int-info">
+        <div class="int-icon" style="background:${i.bg}">${i.icon}</div>
+        <div><div class="int-name">${i.name}</div><div class="int-desc">${i.desc}</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="int-status ${i.status==='connected'?'int-connected':i.status==='pending'?'int-pending':'int-disconnected'}">
+          ${i.status==='connected'?'● Connected':i.status==='pending'?'◌ Setup needed':'○ Not connected'}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openIntegration('${i.name}')">${i.status==='connected'?'Manage':'Connect'}</button>
+      </div>
+    </div>`).join('');
+
+  const userLog=load('cw_log',[]);
+  const allLog=[...userLog,...AUTOMATION_LOG_BASE].slice(0,12);
+  document.getElementById('auto-log').innerHTML=allLog.map(al=>`
+    <div class="al-item">
+      <div class="al-icon-wrap al-${al.status}">${al.icon}</div>
+      <div class="al-content"><div class="al-event">${al.event}</div><div class="al-detail">${al.detail}</div></div>
+      <div class="al-time">${al.time}</div>
+    </div>`).join('');
+  loadSettings();
+}
+
+// ── AI DRAFT ──
+function fillTemplate(body,e){
+  return (body||'')
+    .replace(/\{name\}/g,e?.name||'there')
+    .replace(/\{dog_name\}/g,e?.dogName||'your dog')
+    .replace(/\{walker_name\}/g,getSetting('s-your-name','Chilly'))
+    .replace(/\{business_name\}/g,getSetting('s-biz-name',"Chilly's Dog Adventures"));
+}
+
+function openAiDraft(enqId){
+  currentAiEnqId=enqId;
+  const e=enquiries.find(x=>x.id===enqId);
+  const stageMap={new:'t1',contacted:'t2','info-sent':'t3','meet-greet':'t4',onboarding:'t5'};
+  const recId=stageMap[e?.stage]||'t1';
+  const recT=TEMPLATES.find(t=>t.id===recId);
+  aiDraftText=fillTemplate(recT?.body,e);
+
+  document.getElementById('ai-draft-body').innerHTML=`
+    ${e?`<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;border:1px solid var(--border-light)">
+      <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:3px">📋 Context: ${esc(e.name)} · ${esc(e.dogName||'')} · ${STAGES.find(s=>s.id===e.stage)?.label}</div>
+      <div style="font-size:11px;color:var(--ink-light)">Channel: ${esc(e.channel)} · Source: ${esc(e.source||'Unknown')} · Suburb: ${esc(e.suburb||'Unknown')}</div>
+    </div>`:''}
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Select template</div>
+    <div id="ai-tmpl-list">
+      ${TEMPLATES.map(t=>`<div class="ai-tmpl-opt ${t.id===recId?'active':''}" onclick="selectAiTemplate('${t.id}',this)">
+        <span class="tmpl-cat ${t.catClass}" style="font-size:9px;white-space:nowrap">${t.catLabel}</span>
+        <span style="font-size:12px">${t.name}</span>
+      </div>`).join('')}
+    </div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin:16px 0 8px">Preview — merge fields filled</div>
+    <div class="ai-preview" id="ai-draft-preview">${esc(aiDraftText)}</div>`;
+  openModal('modal-ai-draft');
+}
+
+function openAiDraftNew(){
+  const newEnq=enquiries.filter(e=>e.stage==='new');
+  if(newEnq.length>0)openAiDraft(newEnq[0].id);
+  else{
+    currentAiEnqId=null;
+    const recT=TEMPLATES[0];
+    aiDraftText=fillTemplate(recT?.body,null);
+    document.getElementById('ai-draft-body').innerHTML=`
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Select template</div>
+      <div id="ai-tmpl-list">
+        ${TEMPLATES.map((t,i)=>`<div class="ai-tmpl-opt ${i===0?'active':''}" onclick="selectAiTemplate('${t.id}',this)">
+          <span class="tmpl-cat ${t.catClass}" style="font-size:9px;white-space:nowrap">${t.catLabel}</span>
+          <span style="font-size:12px">${t.name}</span>
+        </div>`).join('')}
+      </div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin:16px 0 8px">Preview</div>
+      <div class="ai-preview" id="ai-draft-preview">${esc(aiDraftText)}</div>`;
+    openModal('modal-ai-draft');
+  }
+}
+
+function openAiDraftFromEmail(emailId){
+  const m=EMAILS.find(e=>e.id===emailId);
+  const enq=enquiries.find(e=>e.name===m?.from||e.email===m?.email);
+  if(enq)openAiDraft(enq.id);
+  else openAiDraftNew();
+}
+
+function selectAiTemplate(tId,el){
+  document.querySelectorAll('.ai-tmpl-opt').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
+  const t=TEMPLATES.find(x=>x.id===tId);
+  aiDraftText=fillTemplate(t?.body,e);
+  document.getElementById('ai-draft-preview').textContent=aiDraftText;
+}
+
+async function generateAiDraft(){
+  const url=getWebhookUrl('wh-ai-draft');
+  if(!url){showToast('Set up AI Draft webhook in Settings first','⚠️');return;}
+  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
+  const preview=document.getElementById('ai-draft-preview');
+  preview.textContent='✨ Generating AI draft...';
+  preview.style.opacity='0.6';
+  const toneIdx=getSetting('s-tone',0);
+  const tones=['warm and friendly','professional','casual'];
+  try{
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        name:e?.name||'',dogName:e?.dogName||'',dogBreed:e?.dogBreed||'',
+        services:e?.services||'',stage:e?.stage||'',channel:e?.channel||'',
+        suburb:e?.suburb||'',notes:e?.notes||'',source:e?.source||'',
+        tone:tones[toneIdx]||'warm and friendly',
+        businessName:getSetting('s-biz-name',"Chilly's Dog Adventures"),
+        walkerName:getSetting('s-your-name','Chilly')
+      })
+    });
+    const data=await res.json();
+    aiDraftText=data.draft||data.text||data.message||'AI generation failed — check Make.com scenario.';
+    preview.textContent=aiDraftText;
+    preview.style.opacity='1';
+    logEvent('AI draft generated',e?.name||'Unknown','success','🤖');
+    showToast('AI draft ready!','🤖');
+  }catch(err){
+    preview.textContent='Failed to reach AI webhook. Check your Make.com URL in Settings.';
+    preview.style.opacity='1';
+    showToast('AI draft failed — check webhook URL','⚠️');
+  }
+}
+
+function copyAiDraft(){
+  navigator.clipboard.writeText(aiDraftText).then(()=>{
+    logEvent('AI Draft copied','Template filled and copied to clipboard','info','🤖');
+    showToast('AI draft copied!','🤖');
+    closeModal('modal-ai-draft');
+  });
+}
+function sendAiDraftEmail(){
+  const e=enquiries.find(x=>x.id===currentAiEnqId);
+  const to=e?.email||'';
+  const subject='Re: Dog Walking — '+(e?.dogName||'');
+  composeEmail(to,subject,aiDraftText);
+  closeModal('modal-ai-draft');
+}
+
+// ── ENQUIRY CRUD ──
+function openAddEnquiry(){
+  editingId=null;
+  document.getElementById('modal-enq-title').textContent='New Enquiry';
+  document.getElementById('btn-del-enq').style.display='none';
+  ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-stage').value='new';
+  document.getElementById('f-channel').value='WhatsApp';
+  document.getElementById('f-source').value='Facebook Ad';
+  openModal('modal-enq');
+}
+
+function openEditEnquiry(id){
+  const e=enquiries.find(x=>x.id===id);if(!e)return;
+  editingId=id;
+  document.getElementById('modal-enq-title').textContent='Edit Enquiry — '+e.name;
+  document.getElementById('btn-del-enq').style.display='inline-flex';
+  document.getElementById('f-name').value=e.name||'';
+  document.getElementById('f-phone').value=e.phone||'';
+  document.getElementById('f-email').value=e.email||'';
+  document.getElementById('f-channel').value=e.channel||'WhatsApp';
+  document.getElementById('f-dogname').value=e.dogName||'';
+  document.getElementById('f-breed').value=e.dogBreed||'';
+  document.getElementById('f-services').value=e.services||'';
+  document.getElementById('f-stage').value=e.stage||'new';
+  document.getElementById('f-followup').value=e.followup||'';
+  document.getElementById('f-notes').value=e.notes||'';
+  document.getElementById('f-suburb').value=e.suburb||'';
+  document.getElementById('f-source').value=e.source||'Facebook Ad';
+  openModal('modal-enq');
+}
+
+function saveEnquiry(){
+  const name=document.getElementById('f-name').value.trim();
+  if(!name){document.getElementById('f-name').style.borderColor='var(--danger)';return;}
+  document.getElementById('f-name').style.borderColor='';
+  const oldEnq=editingId?enquiries.find(x=>x.id===editingId):null;
+  const data={
+    id:editingId||('e'+Date.now()),name,
+    phone:document.getElementById('f-phone').value.trim(),
+    email:document.getElementById('f-email').value.trim(),
+    channel:document.getElementById('f-channel').value,
+    dogName:document.getElementById('f-dogname').value.trim(),
+    dogBreed:document.getElementById('f-breed').value.trim(),
+    services:document.getElementById('f-services').value.trim(),
+    stage:document.getElementById('f-stage').value,
+    followup:document.getElementById('f-followup').value||null,
+    notes:document.getElementById('f-notes').value.trim(),
+    suburb:document.getElementById('f-suburb').value.trim(),
+    source:document.getElementById('f-source').value,
+    dateAdded:editingId?oldEnq?.dateAdded:today(),
+  };
+  if(editingId){
+    if(oldEnq&&oldEnq.stage!==data.stage){
+      logEvent('Stage changed',`${name}: ${STAGES.find(s=>s.id===oldEnq.stage)?.label} → ${STAGES.find(s=>s.id===data.stage)?.label}`);
+      if(data.stage==='onboarding') fireWebhook('stage-onboarding',data);
+      if(data.stage==='converted') fireWebhook('client-converted',data);
+    }
+    enquiries=enquiries.map(x=>x.id===editingId?data:x);
+    showToast('Enquiry updated');
+  }else{
+    logEvent('Enquiry added',`${name} → ${STAGES[0].label} (via ${data.channel})`,'success','📥');
+    enquiries.push(data);
+    fireWebhook('new-enquiry',data);
+    showToast('Enquiry added to pipeline 🎉');
+  }
+  save('cw_enq',enquiries);
+  closeModal('modal-enq');
+  renderPipeline();updateBadges();
+}
+
+function deleteEnquiry(){
+  if(!editingId||!confirm('Delete this enquiry? This cannot be undone.'))return;
+  enquiries=enquiries.filter(x=>x.id!==editingId);
+  localStorage.removeItem('cw_ob_'+editingId);
+  save('cw_enq',enquiries);
+  closeModal('modal-enq');renderPipeline();updateBadges();
+  showToast('Enquiry deleted','🗑️');
+}
+
+// ── MODAL ──
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(el=>closeModal(el.id));
+});
+
+// ── COVERAGE MAP ──
+const SUBURB_COORDS={
+  'Fitzroy':[-37.7988,144.9784],'Fitzroy North':[-37.7878,144.9784],
+  'Richmond':[-37.8183,144.9981],'Collingwood':[-37.7984,144.9874],
+  'South Yarra':[-37.8380,144.9930],'Northcote':[-37.7698,144.9973],
+  'Brunswick':[-37.7668,144.9600],'Carlton':[-37.7996,144.9671],
+  'St Kilda':[-37.8617,144.9803],'Prahran':[-37.8493,144.9917],
+};
+
+// Stored assigned pins: keyed by refId (c1, e1, etc.) to prevent duplicates
+// Format: { refId, refType:'client'|'lead', name, dog, suburb, addr, lat, lng, health?, stage? }
+let assignedPins=load('cw_map_pins',{});
+let covMap=null;
+let covMarkers=null;
+let covFilter='all'; // 'all','client','lead'
+
+// Seed default pins from dummy data (only if no saved data)
+function seedDefaultPins(){
+  if(Object.keys(assignedPins).length>0)return;
+  const defaults=[
+    {refId:'c1',refType:'client',name:'Amy Foster',dog:'Biscuit',health:'active',suburb:'Fitzroy',addr:'48 Napier St, Fitzroy VIC',lat:-37.7963,lng:144.9778},
+    {refId:'c2',refType:'client',name:'Jessica Lee',dog:'Pepper',health:'active',suburb:'Richmond',addr:'112 Church St, Richmond VIC',lat:-37.8199,lng:144.9977},
+    {refId:'c3',refType:'client',name:'Connor Hayes',dog:'Banjo',health:'active',suburb:'Collingwood',addr:'76 Smith St, Collingwood VIC',lat:-37.7991,lng:144.9869},
+    {refId:'c4',refType:'client',name:'Olivia Martin',dog:'Noodle',health:'at-risk',suburb:'South Yarra',addr:'20 Toorak Rd, South Yarra VIC',lat:-37.8392,lng:144.9908},
+    {refId:'c5',refType:'client',name:'Ryan Chang',dog:'Scout',health:'active',suburb:'Northcote',addr:'195 High St, Northcote VIC',lat:-37.7710,lng:144.9989},
+    {refId:'c6',refType:'client',name:'Hannah Brown',dog:'Maple',health:'active',suburb:'Brunswick',addr:'330 Sydney Rd, Brunswick VIC',lat:-37.7660,lng:144.9612},
+    {refId:'c7',refType:'client',name:'Daniel Nguyen',dog:'Bear',health:'at-risk',suburb:'Carlton',addr:'155 Lygon St, Carlton VIC',lat:-37.7996,lng:144.9660},
+    {refId:'c8',refType:'client',name:'Sophie Turner',dog:'Lola',health:'win-back',suburb:'St Kilda',addr:'62 Acland St, St Kilda VIC',lat:-37.8612,lng:144.9785},
+    {refId:'e1',refType:'lead',name:'Sarah Mitchell',dog:'Buddy',stage:'new',suburb:'Fitzroy',addr:'22 Brunswick St, Fitzroy VIC',lat:-37.7984,lng:144.9780},
+    {refId:'e2',refType:'lead',name:'James Thompson',dog:'Bella',stage:'new',suburb:'Richmond',addr:'88 Bridge Rd, Richmond VIC',lat:-37.8180,lng:144.9952},
+    {refId:'e3',refType:'lead',name:'Emma Chen',dog:'Max',stage:'new',suburb:'Collingwood',addr:'40 Johnston St, Collingwood VIC',lat:-37.7974,lng:144.9882},
+    {refId:'e4',refType:'lead',name:'Michael Torres',dog:'Luna',stage:'new',suburb:'South Yarra',addr:'5 Chapel St, South Yarra VIC',lat:-37.8395,lng:144.9940},
+    {refId:'e5',refType:'lead',name:'Priya Sharma',dog:'Coco',stage:'contacted',suburb:'Northcote',addr:'280 High St, Northcote VIC',lat:-37.7695,lng:144.9985},
+    {refId:'e6',refType:'lead',name:'Tom Wilson',dog:'Archie',stage:'contacted',suburb:'Brunswick',addr:'400 Sydney Rd, Brunswick VIC',lat:-37.7645,lng:144.9605},
+    {refId:'e7',refType:'lead',name:'Rachel Green',dog:'Daisy',stage:'info-sent',suburb:'Carlton',addr:'210 Lygon St, Carlton VIC',lat:-37.8005,lng:144.9665},
+    {refId:'e8',refType:'lead',name:'David Kim',dog:'Milo',stage:'meet-greet',suburb:'Fitzroy North',addr:'12 Scotchmer St, Fitzroy North VIC',lat:-37.7880,lng:144.9780},
+    {refId:'e9',refType:'lead',name:'Lisa Park',dog:'Charlie',stage:'onboarding',suburb:'St Kilda',addr:'15 Fitzroy St, St Kilda VIC',lat:-37.8580,lng:144.9735},
+    {refId:'e10',refType:'lead',name:'Nick Patel',dog:'Rosie',stage:'onboarding',suburb:'Prahran',addr:'166 Commercial Rd, Prahran VIC',lat:-37.8500,lng:144.9920},
+  ];
+  defaults.forEach(p=>assignedPins[p.refId]=p);
+  save('cw_map_pins',assignedPins);
+}
+
+function setCovFilter(f){
+  covFilter=f;
+  document.querySelectorAll('#cov-filters .filter-pill').forEach((el,i)=>{
+    const map=['all','client','lead'];
+    el.classList.toggle('active',map[i]===f);
+  });
+  renderCoverage();
+}
+
+function buildAssignDropdown(){
+  const sel=document.getElementById('cov-assign-select');
+  const already=new Set(Object.keys(assignedPins));
+  let html='<option value="">📍 Assign address to a client or lead...</option>';
+  html+='<optgroup label="🐕 Clients">';
+  DUMMY_CLIENTS.forEach(c=>{
+    const on=already.has(c.id);
+    html+=`<option value="${c.id}" ${on?'disabled':''}>${c.owner} — ${c.dog}${on?' (already mapped)':''}</option>`;
+  });
+  html+='</optgroup><optgroup label="📥 Leads / Enquiries">';
+  enquiries.forEach(e=>{
+    const on=already.has(e.id);
+    html+=`<option value="${e.id}" ${on?'disabled':''}>${e.name} — ${e.dogName||'?'}${on?' (already mapped)':''}</option>`;
+  });
+  html+='</optgroup>';
+  sel.innerHTML=html;
+}
+
+function openAssignAddress(){
+  const sel=document.getElementById('cov-assign-select');
+  const refId=sel.value;
+  if(!refId){showToast('Select a client or lead first','⚠️');return;}
+  if(assignedPins[refId]){showToast('Already on the map — no duplicates','⚠️');return;}
+
+  // Find the record
+  const client=DUMMY_CLIENTS.find(c=>c.id===refId);
+  const lead=enquiries.find(e=>e.id===refId);
+  const record=client||lead;
+  if(!record)return;
+
+  const name=client?client.owner:lead.name;
+  const dog=client?client.dog:lead.dogName||'?';
+  const suburb=client?client.suburb:lead.suburb;
+  const refType=client?'client':'lead';
+
+  // Prompt for address
+  const addr=prompt(`Enter the street address for ${name} (${dog}):\ne.g. 42 Smith St, Fitzroy VIC`);
+  if(!addr||!addr.trim())return;
+
+  showToast('Geocoding address...','🔍');
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr.trim())}&countrycodes=au&limit=1`,{
+    headers:{'Accept':'application/json'}
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    if(!data.length){showToast('Address not found — try adding VIC or postcode','⚠️');return;}
+    const loc=data[0];
+    const lat=parseFloat(loc.lat);
+    const lng=parseFloat(loc.lon);
+    const pin={
+      refId,refType,name,dog,suburb:suburb||addr.split(',')[1]?.trim()||'Unknown',
+      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
+      lat,lng,
+    };
+    if(client)pin.health=client.health;
+    if(lead)pin.stage=lead.stage;
+    assignedPins[refId]=pin;
+    save('cw_map_pins',assignedPins);
+    renderCoverage();
+    covMap.setView([lat,lng],15,{animate:true});
+    showToast(`${name} plotted on map!`,'📍');
+  })
+  .catch(()=>showToast('Geocoding failed — check connection','⚠️'));
+}
+
+function renderCoverage(){
+  seedDefaultPins();
+
+  const pins=Object.values(assignedPins);
+  const filteredPins=covFilter==='all'?pins:pins.filter(p=>p.refType===covFilter);
+
+  // Suburb stats from filtered pins
+  const allSuburbs={};
+  filteredPins.forEach(p=>{
+    if(!p.suburb)return;
+    if(!allSuburbs[p.suburb])allSuburbs[p.suburb]={clients:0,leads:0};
+    if(p.refType==='client')allSuburbs[p.suburb].clients++;
+    else allSuburbs[p.suburb].leads++;
+  });
+
+  const suburbArr=Object.entries(allSuburbs).sort((a,b)=>(b[1].clients+b[1].leads)-(a[1].clients+a[1].leads));
+  const clientCount=filteredPins.filter(p=>p.refType==='client').length;
+  const leadCount=filteredPins.filter(p=>p.refType==='lead').length;
+  const suburbCount=suburbArr.length;
+  const avg=suburbCount?((clientCount+leadCount)/suburbCount).toFixed(1):'0';
+
+  document.getElementById('cov-suburbs').textContent=suburbCount;
+  document.getElementById('cov-clients').textContent=clientCount;
+  document.getElementById('cov-leads').textContent=leadCount;
+  document.getElementById('cov-density').textContent=avg;
+
+  // Cluster analysis
+  const maxCount=suburbArr.length?(suburbArr[0][1].clients+suburbArr[0][1].leads):0;
+  document.getElementById('cluster-tags').innerHTML=suburbArr.map(([name,d])=>{
+    const total=d.clients+d.leads;
+    let cls='ct-new',label='New area';
+    if(total>=4){cls='ct-hot';label='🔥 Hotspot';}
+    else if(total>=3){cls='ct-growing';label='📈 Growing';}
+    else if(d.leads>d.clients){cls='ct-opportunity';label='💡 Opportunity';}
+    return `<span class="cluster-tag ${cls}">${name}: ${total} ${label}</span>`;
+  }).join('');
+
+  // Suburb list
+  document.getElementById('suburb-list').innerHTML=suburbArr.map(([name,d])=>{
+    const total=d.clients+d.leads;
+    const pct=maxCount?(total/maxCount)*100:0;
+    return `<div class="suburb-row" onclick="zoomToSuburb('${name}',this)">
+      <div class="suburb-dot" style="background:${total>=4?'var(--orange)':total>=3?'var(--warning)':'var(--info)'}"></div>
+      <div class="suburb-name">${name}</div>
+      <div style="font-size:10px;color:var(--ink-xlight);white-space:nowrap">${d.clients}C ${d.leads}L</div>
+      <div class="suburb-bar"><div class="suburb-bar-fill" style="width:${pct}%"></div></div>
+      <div class="suburb-count">${total}</div>
+    </div>`;
+  }).join('');
+
+  // Build dropdown (excluding already-assigned)
+  buildAssignDropdown();
+
+  // Init map
+  setTimeout(()=>{
+    if(!covMap){
+      covMap=L.map('coverage-map',{zoomControl:true}).setView([-37.8136,144.9631],13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'&copy; OpenStreetMap contributors',maxZoom:19
+      }).addTo(covMap);
+    }
+    renderMapPins(filteredPins);
+    covMap.invalidateSize();
+  },100);
+}
+
+function renderMapPins(pins){
+  if(!pins)pins=covFilter==='all'?Object.values(assignedPins):Object.values(assignedPins).filter(p=>p.refType===covFilter);
+  if(covMarkers)covMap.removeLayer(covMarkers);
+  covMarkers=L.markerClusterGroup({
+    maxClusterRadius:50,spiderfyOnMaxZoom:true,showCoverageOnHover:false,
+    iconCreateFunction:function(cluster){
+      const count=cluster.getChildCount();
+      let c='#3b82f6';
+      if(count>=5)c='#dc2626'; else if(count>=3)c='#F26B21';
+      const sz=count>=5?44:count>=3?38:32;
+      return L.divIcon({
+        html:`<div style="background:${c};color:#fff;border-radius:50%;width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center;font-weight:800;font-family:Readex Pro,sans-serif;font-size:${count>=5?14:12}px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)">${count}</div>`,
+        className:'',iconSize:[sz,sz]
+      });
+    }
+  });
+
+  pins.forEach(p=>{
+    let color='#F26B21';
+    if(p.refType==='lead')color='#3b82f6';
+    if(p.health==='win-back')color='#dc2626';
+    if(p.stage==='converted')color='#22c55e';
+    if(p.health==='at-risk')color='#d97706';
+
+    const icon=L.divIcon({
+      html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
+      className:'',iconSize:[14,14],iconAnchor:[7,7]
+    });
+
+    const marker=L.marker([p.lat,p.lng],{icon});
+    const badge=p.refType==='client'
+      ?`🏠 Client <span style="font-size:10px;font-weight:700;color:${p.health==='active'?'#16a34a':p.health==='at-risk'?'#d97706':'#dc2626'}">${p.health||''}</span>`
+      :`📥 Lead <span style="font-size:10px;font-weight:700;color:#3b82f6">${p.stage||''}</span>`;
+    marker.bindPopup(`
+      <div style="font-family:Inter,sans-serif;min-width:180px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">${p.name}</div>
+        <div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">🐶 ${p.dog} · ${p.suburb}</div>
+        <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${p.addr}</div>
+        <div>${badge}</div>
+        <div style="margin-top:6px"><button onclick="removePin('${p.refId}')" style="background:none;border:1px solid #fca5a5;color:#dc2626;padding:2px 8px;border-radius:12px;font-size:10px;cursor:pointer;font-weight:600">Remove from map</button></div>
+      </div>`);
+    covMarkers.addLayer(marker);
+  });
+  covMap.addLayer(covMarkers);
+}
+
+function removePin(refId){
+  delete assignedPins[refId];
+  save('cw_map_pins',assignedPins);
+  renderCoverage();
+  showToast('Pin removed','🗑️');
+}
+
+function zoomToSuburb(name,el){
+  document.querySelectorAll('.suburb-row').forEach(r=>r.classList.remove('active'));
+  if(el)el.classList.add('active');
+  const coords=SUBURB_COORDS[name];
+  if(coords&&covMap)covMap.setView(coords,15,{animate:true});
+}
+
+function geocodeAddress(){
+  const input=document.getElementById('addr-input').value.trim();
+  const status=document.getElementById('geocode-status');
+  if(!input){status.textContent='Enter an address first.';status.style.color='var(--danger)';return;}
+  status.textContent='Geocoding...';status.style.color='var(--ink-light)';
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=au&limit=1`,{
+    headers:{'Accept':'application/json'}
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    if(!data.length){status.textContent='Address not found — try adding VIC or postcode.';status.style.color='var(--danger)';return;}
+    const loc=data[0];
+    const lat=parseFloat(loc.lat);
+    const lng=parseFloat(loc.lon);
+    const refId='manual_'+Date.now();
+    const pin={
+      refId,refType:'lead',name:'Manual Pin',dog:'—',stage:'new',
+      suburb:input.split(',')[1]?.trim()||'Unknown',
+      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
+      lat,lng
+    };
+    assignedPins[refId]=pin;
+    save('cw_map_pins',assignedPins);
+    renderCoverage();
+    covMap.setView([lat,lng],16,{animate:true});
+    status.innerHTML=`✅ Plotted! <span style="color:var(--orange);cursor:pointer;font-weight:600" onclick="document.getElementById('addr-input').value=''">Add another</span>`;
+    status.style.color='var(--success)';
+    document.getElementById('addr-input').value='';
+    showToast('Address plotted on map!','📍');
+  })
+  .catch(()=>{status.textContent='Geocoding failed — check connection.';status.style.color='var(--danger)';});
+}
+
+// ── FILTER PILLS ──
+document.querySelectorAll('.filter-pill').forEach(p=>{
+  p.addEventListener('click',function(){
+    this.closest('.pipeline-header,.view')?.querySelectorAll('.filter-pill').forEach(x=>x.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// ── INIT ──
+renderDashboard();
+updateBadges();
+</script>
+</body>
+</html>
