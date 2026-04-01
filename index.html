@@ -505,8 +505,19 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
   .card{break-inside:avoid}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"></script>
 </head>
 <body>
+
+<!-- ── AUTH OVERLAY ── -->
+<div id="auth-overlay" style="position:fixed;inset:0;z-index:9999;background:var(--cream);display:flex;align-items:center;justify-content:center;flex-direction:column">
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="font-size:48px;margin-bottom:8px">🐾</div>
+    <h1 style="font-family:'Readex Pro',sans-serif;font-size:24px;font-weight:800;color:var(--ink)">Chilly's Business Hub</h1>
+    <p style="color:var(--ink-light);font-size:13px;margin-top:4px">Sign in to continue</p>
+  </div>
+  <div id="clerk-auth"></div>
+</div>
 
 <!-- ── SIDEBAR ── -->
 <aside class="sidebar">
@@ -941,6 +952,52 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 <div class="toast" id="toast"></div>
 
 <script>
+// ── CLERK AUTH ──
+const CLERK_PK='pk_test_Y2VydGFpbi1ib25lZmlzaC0xMi5jbGVyay5hY2NvdW50cy5kZXYk';
+let clerkInstance=null;
+let authToken=null;
+
+async function initClerk(){
+  try{
+    const clerk=new window.Clerk(CLERK_PK);
+    await clerk.load();
+    clerkInstance=clerk;
+    if(!clerk.user){
+      // Show sign-in UI
+      clerk.mountSignIn(document.getElementById('clerk-auth'));
+      // Wait for sign-in
+      await new Promise(resolve=>{
+        clerk.addListener(({user})=>{if(user) resolve();});
+      });
+    }
+    // User is signed in — get token and show app
+    authToken=await clerk.session?.getToken();
+    document.getElementById('auth-overlay').style.display='none';
+    // Refresh token periodically (tokens expire after ~60s)
+    setInterval(async()=>{
+      if(clerkInstance?.session) authToken=await clerkInstance.session.getToken();
+    },50000);
+    // Add user info to sidebar
+    const userPill=document.querySelector('.user-pill');
+    if(userPill&&clerk.user){
+      userPill.innerHTML=`<span style="font-size:12px">👤 ${clerk.user.firstName||clerk.user.emailAddresses?.[0]?.emailAddress||'User'}</span>
+        <button onclick="clerkInstance.signOut().then(()=>location.reload())" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--ink-light);margin-left:8px">Sign out</button>`;
+    }
+  }catch(e){
+    console.warn('Clerk init failed, running without auth:',e.message);
+    document.getElementById('auth-overlay').style.display='none';
+  }
+}
+initClerk();
+
+// Auth-aware fetch wrapper
+function authFetch(url,options={}){
+  if(authToken){
+    options.headers={...options.headers,'Authorization':'Bearer '+authToken};
+  }
+  return fetch(url,options);
+}
+
 // ── STAGES ──
 const STAGES=[
   {id:'new',label:'New',color:'#3b82f6'},
@@ -1075,8 +1132,8 @@ if(storedClients&&storedClients.length>0)clients=storedClients;
 async function loadFromNotion(){
   try{
     const [enqRes,cliRes]=await Promise.all([
-      fetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
-      fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
+      authFetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
+      authFetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
     if(enqRes&&enqRes.length>0){
       enquiries=enqRes;
@@ -1343,7 +1400,7 @@ async function fetchXeroData(){
 // ── FETCH TODAY'S WALKS (Google Calendar via Make.com) ──
 async function fetchTodaysWalks(){
   try{
-    const res=await fetch('/api/walks/today?range=today');
+    const res=await authFetch('/api/walks/today?range=today');
     if(!res.ok) return;
     const walks=await res.json();
     if(walks.length>0){
@@ -1742,7 +1799,7 @@ function setWalksRange(r){
 
 async function fetchWalks(range){
   try{
-    const res=await fetch('/api/walks/today?range='+range);
+    const res=await authFetch('/api/walks/today?range='+range);
     if(!res.ok) return [];
     return await res.json();
   }catch(e){return [];}
@@ -2384,11 +2441,11 @@ function saveEnquiry(){
     enquiries=enquiries.map(x=>x.id===editingId?data:x);
     showToast('Enquiry updated');
     // Sync to Notion
-    fetch('/api/notion/enquiries/'+editingId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
+    authFetch('/api/notion/enquiries/'+editingId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
   }else{
     logEvent('Enquiry added',`${name} → ${STAGES[0].label} (via ${data.channel})`,'success','📥');
     // Create in Notion, use returned ID
-    fetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    authFetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
       .then(r=>r.ok?r.json():null).then(saved=>{if(saved){data.id=saved.id;save('cw_enq',enquiries);}}).catch(()=>{});
     enquiries.push(data);
     fireWebhook('new-enquiry',data);
@@ -2408,7 +2465,7 @@ function deleteEnquiry(){
   closeModal('modal-enq');renderPipeline();updateBadges();
   showToast('Enquiry deleted','🗑️');
   // Archive in Notion
-  fetch('/api/notion/enquiries/'+delId,{method:'DELETE'}).catch(()=>{});
+  authFetch('/api/notion/enquiries/'+delId,{method:'DELETE'}).catch(()=>{});
 }
 
 // ── MODAL ──
@@ -2461,7 +2518,7 @@ async function loadCoverageData(){
   covDataLoaded=true;// Prevent duplicate calls
 
   // Load client data from TTP (addresses, no geocoding yet)
-  const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
+  const locRes=await authFetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
   const allItems=[...(locRes||[])];
 
   // Add enquiries with suburbs
