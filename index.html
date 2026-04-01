@@ -199,6 +199,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .enq-list-stage{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff}
 .show-closed-toggle{font-size:11px;color:var(--ink-light);cursor:pointer;padding:4px 10px;border:1px dashed var(--border);border-radius:20px;background:none;transition:all .15s}
 .show-closed-toggle:hover{border-color:var(--orange);color:var(--orange)}
+.k-show-more{width:100%;padding:8px;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--ink-light);font-size:12px;cursor:pointer;transition:all .15s}
+.k-show-more:hover{border-color:var(--orange);color:var(--orange);background:var(--orange-light)}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -1475,21 +1477,31 @@ function renderPipeline(){
       <div class="k-grid">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">No enquiries</div>'}</div>`;
   }else{
     const stagesToShow=showClosedStages?STAGES:ACTIVE_STAGES;
+    const MAX_VISIBLE=5;
     board.innerHTML=stagesToShow.map(s=>{
       const cards=filtered.filter(e=>e.stage===s.id);
+      const visible=cards.slice(0,MAX_VISIBLE);
+      const hidden=cards.length-MAX_VISIBLE;
       return `<div class="k-col">
         <div class="k-col-head">
           <div class="k-stage-dot" style="background:${s.color}"></div>
           <div class="k-stage-title">${s.label}</div>
           <div class="k-count">${cards.length}</div>
         </div>
-        <div class="k-cards">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">○</div>'}</div>
+        <div class="k-cards">${cards.length?visible.map(renderEnqCard).join('')+''+(hidden>0?`<button class="k-show-more" onclick="expandColumn(this,'${s.id}')">Show ${hidden} more...</button>`:''):'<div class="k-empty">○</div>'}</div>
       </div>`;
     }).join('');
   }
 }
 function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
 function setViewMode(m){pipelineViewMode=m;renderPipeline();}
+function expandColumn(btn,stageId){
+  const filtered=getFilteredEnquiries();
+  const cards=filtered.filter(e=>e.stage===stageId);
+  const container=btn.closest('.k-cards');
+  btn.remove();
+  container.innerHTML+=cards.slice(5).map(renderEnqCard).join('');
+}
 
 function renderEnqCard(e){
   const fs=fuStatus(e.followup);
