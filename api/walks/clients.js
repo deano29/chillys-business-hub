@@ -23,11 +23,15 @@ function fetchURL(url) {
   });
 }
 
+const { rateLimit, requireAuth, safeError } = require('../_lib/security');
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (rateLimit(req, res)) return;
+  if (await requireAuth(req, res)) return;
 
   const calUrl = process.env.TTP_CALENDAR_URL;
-  if (!calUrl) return res.status(500).json({ error: 'TTP_CALENDAR_URL not configured' });
+  if (!calUrl) return res.status(500).json({ error: 'Calendar not configured' });
 
   try {
     const icsText = await fetchURL(calUrl);
@@ -125,8 +129,7 @@ module.exports = async function handler(req, res) {
 
     res.json(clients);
   } catch (err) {
-    console.error('Walks clients error:', err.message);
-    res.status(500).json({ error: err.message });
+    safeError(res, 'Failed to fetch client data', err);
   }
 };
 

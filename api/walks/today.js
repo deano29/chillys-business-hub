@@ -24,18 +24,23 @@ function fetchURL(url) {
   });
 }
 
+const { rateLimit, requireAuth, safeError } = require('../_lib/security');
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (rateLimit(req, res)) return;
+  if (await requireAuth(req, res)) return;
 
   const calUrl = process.env.TTP_CALENDAR_URL;
-  if (!calUrl) return res.status(500).json({ error: 'TTP_CALENDAR_URL not configured' });
+  if (!calUrl) return res.status(500).json({ error: 'Calendar not configured' });
 
   try {
     const icsText = await fetchURL(calUrl);
     const events = parseICS(icsText);
 
-    // Filter and return based on query params
-    const range = req.query.range || 'today'; // today, week, month
+    // Validate range param
+    const validRanges = ['today', 'week', 'month', 'all'];
+    const range = validRanges.includes(req.query.range) ? req.query.range : 'today';
     const now = new Date();
     const filtered = filterByRange(events, now, range);
 
@@ -44,8 +49,7 @@ module.exports = async function handler(req, res) {
 
     res.json(filtered);
   } catch (err) {
-    console.error('Walks fetch error:', err.message);
-    res.status(500).json({ error: err.message });
+    safeError(res, 'Failed to fetch walks', err);
   }
 };
 

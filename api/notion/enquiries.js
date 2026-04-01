@@ -1,7 +1,10 @@
 const { notion, ENQUIRIES_DB, mapEnquiryFromNotion, mapEnquiryToNotion } = require('../_lib/notion');
+const { rateLimit, sanitizeEnquiryInput, requireAuth, safeError } = require('../_lib/security');
 
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (rateLimit(req, res)) return;
+  if (await requireAuth(req, res)) return;
 
   try {
     if (req.method === 'GET') {
@@ -20,7 +23,8 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const data = req.body;
+      const data = sanitizeEnquiryInput(req.body);
+      if (!data.name) return res.status(400).json({ error: 'Name is required' });
       const page = await notion.pages.create({
         parent: { database_id: ENQUIRIES_DB },
         properties: mapEnquiryToNotion(data),
@@ -30,7 +34,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('Notion enquiries error:', err.message);
-    res.status(500).json({ error: err.message });
+    safeError(res, 'Failed to process enquiries', err);
   }
 };
