@@ -681,22 +681,14 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 
     <!-- ── INBOX ── -->
     <div class="view" id="view-inbox">
-      <div class="inbox-wrap">
-        <div class="inbox-list">
-          <div class="inbox-search"><input type="text" placeholder="🔍 Search emails..."></div>
-          <div id="email-list"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:3px 9px;border-radius:20px;font-weight:600">Powered by Chatwoot</span>
+          <span style="font-size:11px;color:var(--ink-light)">Facebook · Instagram · Email — all in one inbox</span>
         </div>
-        <div class="inbox-main" id="inbox-main">
-          <div class="inbox-empty">
-            <div class="icon">✉️</div>
-            <p style="font-size:13px;color:var(--ink-light)">Select an email to read</p>
-          </div>
-        </div>
-        <div class="inbox-context" id="inbox-context">
-          <div class="ctx-header">Context</div>
-          <div style="font-size:12px;color:var(--ink-xlight)">Select an email to see the linked enquiry or client.</div>
-        </div>
+        <a href="https://app.chatwoot.com/app/accounts/158742/dashboard" target="_blank" class="btn btn-ghost btn-sm">Open full dashboard ↗</a>
       </div>
+      <iframe id="chatwoot-frame" src="https://app.chatwoot.com/app/accounts/158742/dashboard" style="width:100%;height:calc(100vh - 120px);border:1px solid var(--border);border-radius:var(--radius);background:var(--white)"></iframe>
     </div>
 
     <!-- ── TEMPLATES ── -->
