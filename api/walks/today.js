@@ -34,11 +34,6 @@ module.exports = async function handler(req, res) {
     const icsText = await fetchURL(calUrl);
     const events = parseICS(icsText);
 
-    // Debug mode: return all events + raw stats
-    if (req.query.debug) {
-      return res.json({ total: events.length, first3: events.slice(0, 3), last3: events.slice(-3), rawLength: icsText.length, rawSample: icsText.substring(0, 1500) });
-    }
-
     // Filter and return based on query params
     const range = req.query.range || 'today'; // today, week, month
     const now = new Date();
@@ -88,6 +83,10 @@ function parseICS(text) {
       const walker = parts[1] || '';
       const service = parts.slice(2).join(', ').trim() || '';
 
+      // Convert UTC to AEST/AEDT for display
+      const startLocal = start ? toAEST(start) : null;
+      const endLocal = end ? toAEST(end) : null;
+
       events.push({
         id: event.uid || '',
         client,
@@ -96,9 +95,9 @@ function parseICS(text) {
         location: event.location || '',
         start: start ? start.toISOString() : '',
         end: end ? end.toISOString() : '',
-        time: start ? formatTime(start) : '',
-        endTime: end ? formatTime(end) : '',
-        date: start ? start.toISOString().split('T')[0] : '',
+        time: startLocal ? formatTime(startLocal) : '',
+        endTime: endLocal ? formatTime(endLocal) : '',
+        date: startLocal ? formatLocalDate(startLocal) : '',
         status: getWalkStatus(start, end),
       });
     }
@@ -125,13 +124,33 @@ function parseICSDate(str) {
   return new Date(str);
 }
 
-function formatTime(d) {
-  if (!d) return '';
-  let h = d.getHours();
-  const m = d.getMinutes();
+// Convert UTC Date to AEST/AEDT (Melbourne)
+function toAEST(d) {
+  // Use Intl to get the correct offset including DST
+  const str = d.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+  // Parse "DD/MM/YYYY, HH:MM:SS AM/PM" format
+  const parts = str.match(/(\d+)\/(\d+)\/(\d+),?\s+(\d+):(\d+):(\d+)\s*(AM|PM)?/i);
+  if (!parts) return d;
+  let [, day, month, year, hours, mins, secs, ampm] = parts;
+  if (ampm) {
+    hours = +hours;
+    if (ampm.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+    if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+  }
+  return { year: +year, month: +month, day: +day, hours: +hours, minutes: +mins };
+}
+
+function formatLocalDate(local) {
+  return `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+}
+
+function formatTime(local) {
+  if (!local) return '';
+  let h = local.hours;
+  const m = local.minutes;
   const ampm = h >= 12 ? 'pm' : 'am';
   h = h % 12 || 12;
-  return `${h}:${m.toString().padStart(2, '0')}${ampm}`;
+  return `${h}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
 function getWalkStatus(start, end) {
@@ -143,30 +162,29 @@ function getWalkStatus(start, end) {
 }
 
 function filterByRange(events, now, range) {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Use Melbourne time for filtering
+  const melb = toAEST(now);
+  const todayStr = formatLocalDate(melb);
+
   if (range === 'today') {
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-    return events.filter(e => {
-      const d = new Date(e.start);
-      return d >= today && d < tomorrow;
-    });
+    return events.filter(e => e.date === todayStr);
   }
   if (range === 'week') {
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
-    const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
-    return events.filter(e => {
-      const d = new Date(e.start);
-      return d >= weekStart && d < weekEnd;
-    });
+    // Get Monday of current week
+    const d = new Date(melb.year, melb.month - 1, melb.day);
+    const dow = d.getDay() || 7; // Sunday=7
+    const monday = new Date(d); monday.setDate(d.getDate() - dow + 1);
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    const weekStart = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+    const weekEnd = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+    return events.filter(e => e.date >= weekStart && e.date <= weekEnd);
   }
   if (range === 'month') {
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    return events.filter(e => {
-      const d = new Date(e.start);
-      return d >= monthStart && d < monthEnd;
-    });
+    const monthPrefix = `${melb.year}-${String(melb.month).padStart(2, '0')}`;
+    return events.filter(e => e.date.startsWith(monthPrefix));
+  }
+  if (range === 'all') {
+    return events;
   }
   return events;
 }
