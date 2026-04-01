@@ -24,12 +24,18 @@ function text(prop) {
 // --- Enquiry mapping ---
 // Actual Notion properties:
 // Lead Name (title), Qualification Stage (multi_select), Source (select),
-// Urgency (rich_text), Dog Count (number), Next Follow-up (rich_text),
-// Enquiry date (date), Notes (rich_text), Preferred Days (rich_text),
-// Last Contacted (date), Suburb (rich_text), Enquiry Type (select)
+// Email (email), Phone Number (phone_number), Dog Name (select),
+// Dog Breed (rich_text), Dog Count (number), Enquiry Type (select),
+// Urgency (rich_text), Next Follow-up (rich_text), Enquiry date (date),
+// Notes (rich_text), Preferred Days (rich_text), Last Contacted (date),
+// Suburb (rich_text), Post Code (number)
 
 const ENQ_PROP_MAP = {
   'Lead Name': 'name',
+  'Phone Number': 'phone',
+  'Email': 'email',
+  'Dog Name': 'dogName',
+  'Dog Breed': 'dogBreed',
   'Qualification Stage': 'stage',
   'Enquiry date': 'dateAdded',
   'Last Contacted': 'followup',
@@ -41,6 +47,7 @@ const ENQ_PROP_MAP = {
   'Next Follow-up': 'nextFollowup',
   'Preferred Days': 'preferredDays',
   'Enquiry Type': 'enquiryType',
+  'Post Code': 'postCode',
 };
 
 // Map app stage labels to IDs
@@ -71,12 +78,12 @@ function mapEnquiryFromNotion(page) {
   return {
     id: page.id,
     name: raw.name || '',
-    phone: '',
-    email: '',
-    dogName: '',
-    dogBreed: '',
+    phone: raw.phone || '',
+    email: raw.email || '',
+    dogName: raw.dogName || '',
+    dogBreed: raw.dogBreed || '',
     dogCount: raw.dogCount || '',
-    services: '',
+    services: raw.enquiryType || '',
     stage: STAGE_TO_ID[primaryStageRaw] || primaryStageRaw?.toLowerCase().replace(/\s+/g, '-') || 'new',
     stageTags: secondaryStages,
     dateAdded: raw.dateAdded || '',
@@ -84,6 +91,7 @@ function mapEnquiryFromNotion(page) {
     nextFollowup: raw.nextFollowup || '',
     source: raw.source || '',
     suburb: raw.suburb || '',
+    postCode: raw.postCode || '',
     notes: raw.notes || '',
     channel: raw.source || '',
     urgency: raw.urgency || '',
@@ -95,6 +103,10 @@ function mapEnquiryFromNotion(page) {
 function mapEnquiryToNotion(data) {
   const props = {};
   if (data.name !== undefined) props['Lead Name'] = { title: [{ text: { content: data.name } }] };
+  if (data.phone !== undefined) props['Phone Number'] = { phone_number: data.phone || null };
+  if (data.email !== undefined) props['Email'] = { email: data.email || null };
+  if (data.dogName !== undefined) props['Dog Name'] = { select: { name: data.dogName || 'Unknown' } };
+  if (data.dogBreed !== undefined) props['Dog Breed'] = { rich_text: [{ text: { content: data.dogBreed } }] };
   if (data.stage !== undefined) props['Qualification Stage'] = { multi_select: [{ name: ID_TO_STAGE[data.stage] || data.stage }] };
   if (data.dateAdded !== undefined) props['Enquiry date'] = { date: data.dateAdded ? { start: data.dateAdded } : null };
   if (data.followup !== undefined) props['Last Contacted'] = { date: data.followup ? { start: data.followup } : null };
