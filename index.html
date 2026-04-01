@@ -865,11 +865,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
             <div class="form-group"><label>Yellow Margin Threshold (%)</label><input id="s-margin-yellow" type="number" value="20"></div>
             <div class="form-group"><label>Travel Load Warn (%)</label><input id="s-travel-warn" type="number" value="30"></div>
             <div class="form-group"><label>Travel Load Danger (%)</label><input id="s-travel-danger" type="number" value="45"></div>
-            <div class="form-group"><label>Founder Notional Hourly ($)</label><input id="s-founder-rate" type="number" value="0"></div>
+            <div class="form-group"><label>Founder Notional Hourly ($)</label><input id="s-founder-rate" type="number" value="30"></div>
             <div class="form-group"><label>Founder Target Hourly ($)</label><input id="s-founder-target" type="number" value="80"></div>
             <div class="form-group"><label>Default Buffer (mins)</label><input id="s-buffer-mins" type="number" value="15"></div>
             <div class="form-group"><label>Max Dogs Per Shift</label><input id="s-max-dogs" type="number" value="6"></div>
-            <div class="form-group"><label>Founder Hourly Rate ($)</label><input id="s-rate-founder" type="number" value="0"></div>
+            <div class="form-group"><label>Founder Hourly Rate ($)</label><input id="s-rate-founder" type="number" value="30"></div>
             <div class="form-group"><label>Employee Hourly Rate ($)</label><input id="s-rate-employee" type="number" value="30"></div>
             <div class="form-group"><label>Contractor Hourly Rate ($)</label><input id="s-rate-contractor" type="number" value="40"></div>
             <div class="form-group"><label>Avg Price — 2hr Adventure ($)</label><input id="s-price-adventure" type="number" value="75"></div>
@@ -3034,17 +3034,24 @@ async function renderRpDashboard(){
       };
     });
 
+    // Calculate realistic shift duration from service time + travel between slots
+    const estimatedTravelBetweenSlots=Math.max(0,(slots.length-1)*10);// ~10 mins travel between each slot
+    const totalShiftMins=actualServiceMins+estimatedTravelBetweenSlots;
+    // Estimate travel km based on number of stops
+    const estimatedKm=slots.length*5;// ~5km between each stop
+
     const shift={
       id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+date,
-      date,walker:g.walker,walkerType:'employee',
+      date,walker:g.walker,walkerType:'founder',
       startTime:parseAmPmTo24(firstStart),
       endTime:parseAmPmTo24(lastEnd),
-      breakMins:30,maxDogs:settings.maxDogsPerShift,
-      hourlyRate:settings.defaultRates.employee,
-      travelDistanceKm:15,travelMins:30,
+      breakMins:0,maxDogs:settings.maxDogsPerShift,
+      hourlyRate:settings.defaultRates.founder,
+      travelDistanceKm:estimatedKm,travelMins:estimatedTravelBetweenSlots,
       variableCost:0,paymentFee:0,adminAlloc:0,
       bookings,source:'ttp-auto',
-      _actualServiceMins:actualServiceMins,// Override for grouped walks
+      _actualServiceMins:actualServiceMins,
+      _overrideShiftMins:totalShiftMins,// Use realistic duration, not full window
     };
 
     const metrics=calcShiftMetrics(shift,settings);
@@ -3397,7 +3404,7 @@ function calcShiftMetrics(shift, settings){
   const s=settings||getRouteSettings();
   const startMins=timeToMins(shift.startTime);
   const endMins=timeToMins(shift.endTime);
-  const shiftMins=endMins-startMins;
+  const shiftMins=shift._overrideShiftMins||(endMins-startMins);
   const breakMins=shift.breakMins||0;
   const availableMins=shiftMins-breakMins;
   const bookings=shift.bookings||[];
