@@ -611,15 +611,20 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     <!-- ── CLIENTS ── -->
     <div class="view" id="view-clients">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div style="display:flex;gap:8px">
-          <div class="filter-pill active" style="cursor:pointer">All Clients <strong style="margin-left:4px">18</strong></div>
-          <div class="filter-pill" style="cursor:pointer">Active <strong style="margin-left:4px">15</strong></div>
-          <div class="filter-pill" style="cursor:pointer">At Risk <strong style="margin-left:4px">2</strong></div>
-          <div class="filter-pill" style="cursor:pointer">Win-back <strong style="margin-left:4px">1</strong></div>
+        <div class="pipeline-filters" id="client-filters"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="enq-search-wrap"><input type="text" id="client-search" placeholder="Search clients..." oninput="renderClients()"></div>
+          <span style="font-size:11px;background:var(--info-bg);color:var(--info);padding:3px 9px;border-radius:20px;font-weight:600">Synced via Notion</span>
         </div>
-        <span style="font-size:11px;background:var(--info-bg);color:var(--info);padding:3px 9px;border-radius:20px;font-weight:600">Synced via Time to Pet</span>
       </div>
       <div class="clients-grid" id="clients-grid"></div>
+      <div style="margin-top:24px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <h3 style="margin:0;font-size:15px;font-weight:700">Today's Walks</h3>
+          <span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:3px 9px;border-radius:20px;font-weight:600">Via Google Calendar</span>
+        </div>
+        <div id="client-walks-list"></div>
+      </div>
     </div>
 
     <!-- ── INBOX ── -->
@@ -1585,37 +1590,71 @@ function toggleObStep(id,i,val){
 }
 
 // ── CLIENTS ──
+let clientFilter='all';
 function renderClients(){
-  document.getElementById('clients-grid').innerHTML=clients.map(c=>{
-    const healthLabel={active:'● Active','at-risk':'⚠️ At Risk','win-back':'💔 Win-back'}[c.health]||'● Active';
-    const tagHtml=(c.tags||[]).map(t=>{
-      const cfg={vip:['ctag-vip','⭐ VIP'],'review-due':['ctag-review','📋 Review Due'],'reactivation':['ctag-reactivation','💌 Reactivation'],'low-frequency':['ctag-low','📉 Low Freq']}[t];
-      return cfg?`<span class="ctag ${cfg[0]}">${cfg[1]}</span>`:'';
-    }).join('');
-    const na=getClientNextAction(c);
+  const search=(document.getElementById('client-search')?.value||'').toLowerCase().trim();
+  let list=clients;
+  if(search){
+    list=list.filter(c=>(c.owner||'').toLowerCase().includes(search)||(c.suburb||'').toLowerCase().includes(search)||(c.primaryService||'').toLowerCase().includes(search)||(c.notes||'').toLowerCase().includes(search));
+  }
+  if(clientFilter!=='all') list=list.filter(c=>c.health===clientFilter);
+
+  // Build filter pills
+  const filtersEl=document.getElementById('client-filters');
+  if(filtersEl){
+    const statusCounts={all:clients.length,active:clients.filter(c=>c.health==='active').length,onboarding:clients.filter(c=>c.health==='onboarding').length,churning:clients.filter(c=>c.health==='churning').length};
+    filtersEl.innerHTML=[
+      {id:'all',label:'All Clients',count:statusCounts.all},
+      {id:'active',label:'Active',count:statusCounts.active,color:'#22c55e'},
+      {id:'onboarding',label:'Onboarding',count:statusCounts.onboarding,color:'#F26B21'},
+      {id:'churning',label:'Churning',count:statusCounts.churning,color:'#ef4444'},
+    ].filter(f=>f.count>0).map(f=>
+      `<div class="filter-pill${clientFilter===f.id?' active':''}" style="cursor:pointer" onclick="clientFilter='${f.id}';renderClients()">
+        ${f.color?`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.color};margin-right:4px"></span>`:''}${f.label} <strong>${f.count}</strong>
+      </div>`
+    ).join('');
+  }
+
+  const healthLabel={active:'● Active',onboarding:'🔄 Onboarding',churning:'⚠️ Churning'};
+  const healthColor={active:'var(--success)',onboarding:'var(--orange)',churning:'var(--danger)'};
+
+  document.getElementById('clients-grid').innerHTML=list.length?list.map(c=>{
     return `<div class="client-card">
       <div class="client-top">
-        <div class="client-avatar">${c.emoji}</div>
+        <div class="client-avatar">🐕</div>
         <div>
           <div class="client-name">${esc(c.owner)}</div>
-          <div class="client-dog">🐶 ${esc(c.dog)} · ${esc(c.breed)}</div>
-          <span class="client-badge health-${c.health}">${healthLabel}</span>
-          ${tagHtml?`<div class="client-tags">${tagHtml}</div>`:''}
+          <span class="client-badge" style="color:${healthColor[c.health]||'var(--success)'}">${healthLabel[c.health]||'● Active'}</span>
         </div>
       </div>
-      <div class="next-walk">📅 Next: ${esc(c.nextWalk)}</div>
-      <div class="client-stats">
-        <div class="cs-stat"><div class="cs-val">${c.walks}</div><div class="cs-lbl">walks/wk</div></div>
-        <div class="cs-stat"><div class="cs-val">${c.monthWalks}</div><div class="cs-lbl">this month</div></div>
-        <div class="cs-stat"><div class="cs-val">${c.ltv}</div><div class="cs-lbl">lifetime</div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0">
+        ${c.primaryService?`<span class="tag tag-channel">${esc(c.primaryService)}</span>`:''}
+        ${c.planPackage?`<span class="tag tag-source">${esc(c.planPackage)}</span>`:''}
+        ${c.clientType?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">${esc(c.clientType)}</span>`:''}
+        ${c.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(c.suburb)}</span>`:''}
       </div>
-      ${na?`<div class="next-action" style="margin-top:10px;justify-content:center"><span>${na.icon}</span>${na.text}</div>`:''}
+      <div class="client-stats">
+        <div class="cs-stat"><div class="cs-val">${c.dogs||'—'}</div><div class="cs-lbl">dogs</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.walks||'—'}</div><div class="cs-lbl">days/wk</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.preferredDays||'—'}</div><div class="cs-lbl">pref. days</div></div>
+      </div>
+      ${c.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light)">${esc(c.notes)}</div>`:''}
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="window.open('https://www.timetopet.com/portal','_blank')">📋 Time to Pet</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="composeEmail('${c.email||''}','','')">✉️ Email</button>
       </div>
     </div>`;
-  }).join('');
+  }).join(''):'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No clients found</div>';
+
+  // Render today's walks section
+  const walksEl=document.getElementById('client-walks-list');
+  if(walksEl){
+    walksEl.innerHTML=TODAY_WALKS.map(w=>`
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-light);min-width:60px">${w.time}</div>
+        <div style="flex:1"><strong>${esc(w.dogs)}</strong><div style="font-size:11px;color:var(--ink-light)">${esc(w.type)} · ${esc(w.walker)}</div></div>
+        <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;background:${w.status==='completed'?'var(--success-bg)':w.status==='inprogress'?'var(--warning-bg)':'var(--cream-dark)'};color:${w.status==='completed'?'var(--success)':w.status==='inprogress'?'var(--warning)':'var(--ink-light)'}">${w.status==='completed'?'✓ Done':w.status==='inprogress'?'● In Progress':'○ Upcoming'}</span>
+      </div>`).join('');
+  }
 }
 
 // ── INBOX ──
