@@ -236,6 +236,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .heat-2{background:#dcfce7}
 .heat-3{background:#bbf7d0}
 .heat-4{background:#86efac}
+.inbox-channel-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:24px 28px;cursor:pointer;text-align:center;transition:all .15s;min-width:180px}
+.inbox-channel-card:hover{border-color:var(--orange);box-shadow:var(--shadow-lg);transform:translateY(-2px)}
+.inbox-channel-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px;color:#fff}
+.inbox-channel-name{font-weight:700;font-size:14px;margin-bottom:4px}
+.inbox-channel-desc{font-size:11px;color:var(--ink-light)}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -681,14 +686,31 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 
     <!-- ── INBOX ── -->
     <div class="view" id="view-inbox">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:3px 9px;border-radius:20px;font-weight:600">Powered by Chatwoot</span>
-          <span style="font-size:11px;color:var(--ink-light)">Facebook · Instagram · Email — all in one inbox</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 140px);gap:20px">
+        <div style="text-align:center;max-width:500px">
+          <div style="font-size:32px;margin-bottom:8px">✉️</div>
+          <h3 style="margin:0 0 4px;font-size:18px">Unified Inbox</h3>
+          <p style="color:var(--ink-light);font-size:13px;margin:0 0 20px">Access all your messaging channels from one place. Click to open in a new tab.</p>
         </div>
-        <a href="https://app.chatwoot.com/app/accounts/158742/dashboard" target="_blank" class="btn btn-ghost btn-sm">Open full dashboard ↗</a>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+          <div class="inbox-channel-card" onclick="window.open('https://www.facebook.com/messages','_blank')">
+            <div class="inbox-channel-icon" style="background:#1877f2">💬</div>
+            <div class="inbox-channel-name">Facebook Messenger</div>
+            <div class="inbox-channel-desc">Page messages & enquiries</div>
+          </div>
+          <div class="inbox-channel-card" onclick="window.open('https://www.instagram.com/direct/inbox/','_blank')">
+            <div class="inbox-channel-icon" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)">📸</div>
+            <div class="inbox-channel-name">Instagram DMs</div>
+            <div class="inbox-channel-desc">Direct messages & story replies</div>
+          </div>
+          <div class="inbox-channel-card" onclick="window.open('https://outlook.live.com/mail/','_blank')">
+            <div class="inbox-channel-icon" style="background:#0078d4">📧</div>
+            <div class="inbox-channel-name">Outlook Email</div>
+            <div class="inbox-channel-desc">Business email inbox</div>
+          </div>
+        </div>
+        <p style="color:var(--ink-xlight);font-size:11px;margin-top:12px">Tip: Keep each inbox open in a separate browser tab for quick switching</p>
       </div>
-      <iframe id="chatwoot-frame" src="https://app.chatwoot.com/app/accounts/158742/dashboard" style="width:100%;height:calc(100vh - 120px);border:1px solid var(--border);border-radius:var(--radius);background:var(--white)"></iframe>
     </div>
 
     <!-- ── TEMPLATES ── -->
@@ -1905,15 +1927,7 @@ async function renderClientBookings(){
 }
 
 // ── INBOX ──
-function renderInbox(){
-  document.getElementById('email-list').innerHTML=EMAILS.map(m=>`
-    <div class="email-item ${m.read?'':'unread'} ${activeEmail===m.id?'active':''}" onclick="openEmail('${m.id}')">
-      <div class="ei-from">${esc(m.from)}<span class="ei-time">${m.time}</span></div>
-      <div class="ei-subject">${esc(m.subject)}</div>
-      <div class="ei-preview">${esc(m.preview)}</div>
-      <div class="ei-tags"><span class="ei-tag ${m.tag}">${m.tag}</span></div>
-    </div>`).join('');
-}
+function renderInbox(){/* static view — no dynamic rendering needed */}
 
 function getEmailContext(m){
   const enq=enquiries.find(e=>e.name===m.from||e.email===m.email);
