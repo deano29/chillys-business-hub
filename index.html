@@ -186,6 +186,19 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .kanban-grid{min-width:0}
 .k-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .k-grid .enq-card{margin:0}
+.enq-search-wrap input{padding:6px 12px;border:1px solid var(--border);border-radius:20px;font-size:12px;width:180px;outline:none;transition:border-color .15s}
+.enq-search-wrap input:focus{border-color:var(--orange)}
+.view-toggle{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.vt-btn{background:var(--white);border:none;padding:4px 8px;cursor:pointer;font-size:14px;color:var(--ink-light);line-height:1}
+.vt-btn.active{background:var(--orange);color:#fff}
+.enq-list-table{width:100%;border-collapse:collapse;font-size:13px}
+.enq-list-table th{text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--cream)}
+.enq-list-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.enq-list-table tr{cursor:pointer;transition:background .1s}
+.enq-list-table tr:hover{background:var(--orange-light)}
+.enq-list-stage{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff}
+.show-closed-toggle{font-size:11px;color:var(--ink-light);cursor:pointer;padding:4px 10px;border:1px dashed var(--border);border-radius:20px;background:none;transition:all .15s}
+.show-closed-toggle:hover{border-color:var(--orange);color:var(--orange)}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -571,7 +584,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     <div class="view" id="view-enquiries">
       <div class="pipeline-header">
         <div class="pipeline-filters" id="pipeline-filters"></div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="enq-search-wrap"><input type="text" id="enq-search" placeholder="Search leads..." oninput="renderPipeline()"></div>
+          <div class="view-toggle" id="view-toggle">
+            <button class="vt-btn active" onclick="setViewMode('cards')" title="Card view">▦</button>
+            <button class="vt-btn" onclick="setViewMode('list')" title="List view">☰</button>
+          </div>
           <button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button>
           <button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>
         </div>
@@ -1383,27 +1401,72 @@ function renderAcItem(item){
 
 // ── PIPELINE ──
 let pipelineFilter='all';
+let pipelineViewMode='cards';
+let showClosedStages=false;
+const CLOSED_STAGES=['closed-won','not-suitable','closed-lost','uncontactable','not-interested','archived'];
+const ACTIVE_STAGES=STAGES.filter(s=>!CLOSED_STAGES.includes(s.id));
+
+function getFilteredEnquiries(){
+  const search=(document.getElementById('enq-search')?.value||'').toLowerCase().trim();
+  let list=enquiries;
+  if(search){
+    list=list.filter(e=>(e.name||'').toLowerCase().includes(search)||(e.suburb||'').toLowerCase().includes(search)||(e.source||'').toLowerCase().includes(search)||(e.dogName||'').toLowerCase().includes(search)||(e.email||'').toLowerCase().includes(search)||(e.phone||'').toLowerCase().includes(search));
+  }
+  return list;
+}
+
 function renderPipeline(){
+  const filtered=getFilteredEnquiries();
   // Build filter pills
   const filtersEl=document.getElementById('pipeline-filters');
   if(filtersEl){
-    const counts={all:enquiries.length};
-    STAGES.forEach(s=>{counts[s.id]=enquiries.filter(e=>e.stage===s.id).length;});
-    filtersEl.innerHTML=`<div class="filter-pill${pipelineFilter==='all'?' active':''}" onclick="setPipelineFilter('all')">All <strong>${counts.all}</strong></div>`+
-      STAGES.filter(s=>counts[s.id]>0).map(s=>
+    const activeCount=filtered.filter(e=>!CLOSED_STAGES.includes(e.stage)).length;
+    const closedCount=filtered.filter(e=>CLOSED_STAGES.includes(e.stage)).length;
+    const counts={all:activeCount};
+    const visibleStages=showClosedStages?STAGES:ACTIVE_STAGES;
+    visibleStages.forEach(s=>{counts[s.id]=filtered.filter(e=>e.stage===s.id).length;});
+    filtersEl.innerHTML=`<div class="filter-pill${pipelineFilter==='all'?' active':''}" onclick="setPipelineFilter('all')">Active <strong>${activeCount}</strong></div>`+
+      visibleStages.filter(s=>counts[s.id]>0).map(s=>
         `<div class="filter-pill${pipelineFilter===s.id?' active':''}" style="cursor:pointer" onclick="setPipelineFilter('${s.id}')">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:4px"></span>${s.label} <strong>${counts[s.id]}</strong>
         </div>`
-      ).join('');
+      ).join('')+
+      `<button class="show-closed-toggle" onclick="showClosedStages=!showClosedStages;if(!showClosedStages&&CLOSED_STAGES.includes(pipelineFilter))pipelineFilter='all';renderPipeline()">${showClosedStages?'Hide closed ▲':'Closed '+closedCount+' ▼'}</button>`;
   }
-  // Render cards
-  const stagesToShow=pipelineFilter==='all'?STAGES:STAGES.filter(s=>s.id===pipelineFilter);
+  // Update view toggle buttons
+  document.querySelectorAll('.vt-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.vt-btn[onclick*="${pipelineViewMode}"]`)?.classList.add('active');
+
   const board=document.getElementById('kanban-board');
+
+  if(pipelineViewMode==='list'){
+    board.className='kanban-grid';
+    const stagesToShow=pipelineFilter==='all'?(showClosedStages?STAGES:ACTIVE_STAGES):STAGES.filter(s=>s.id===pipelineFilter);
+    const rows=stagesToShow.flatMap(s=>filtered.filter(e=>e.stage===s.id));
+    board.innerHTML=rows.length?`<table class="enq-list-table">
+      <thead><tr><th>Name</th><th>Stage</th><th>Source</th><th>Suburb</th><th>Dog</th><th>Date</th><th>Follow-up</th></tr></thead>
+      <tbody>${rows.map(e=>{
+        const s=STAGES.find(s=>s.id===e.stage);
+        const fs=fuStatus(e.followup);
+        return `<tr onclick="openEditEnquiry('${e.id}')">
+          <td><strong>${esc(e.name)}</strong>${e.email?`<div style="font-size:11px;color:var(--ink-light)">${esc(e.email)}</div>`:''}</td>
+          <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span>${(e.stageTags||[]).map(t=>`<span style="font-size:9px;color:#6b7280;margin-left:4px">${esc(t)}</span>`).join('')}</td>
+          <td>${esc(e.source||'—')}</td>
+          <td>${esc(e.suburb||'—')}</td>
+          <td>${esc(e.dogName||'—')}</td>
+          <td>${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
+          <td>${fs?`<span style="color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ ':''}${e.followup?fmtDate(e.followup):fs}</span>`:'—'}</td>
+        </tr>`}).join('')}</tbody></table>`
+      :'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No enquiries found</div>';
+    return;
+  }
+
+  // Card view
   const singleStage=pipelineFilter!=='all';
   board.className=singleStage?'kanban-grid':'kanban';
   if(singleStage){
-    const s=stagesToShow[0];
-    const cards=enquiries.filter(e=>e.stage===s.id);
+    const s=STAGES.find(s=>s.id===pipelineFilter);
+    const cards=filtered.filter(e=>e.stage===pipelineFilter);
     board.innerHTML=`<div class="k-col-head" style="margin-bottom:12px">
         <div class="k-stage-dot" style="background:${s.color}"></div>
         <div class="k-stage-title">${s.label}</div>
@@ -1411,8 +1474,9 @@ function renderPipeline(){
       </div>
       <div class="k-grid">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">No enquiries</div>'}</div>`;
   }else{
+    const stagesToShow=showClosedStages?STAGES:ACTIVE_STAGES;
     board.innerHTML=stagesToShow.map(s=>{
-      const cards=enquiries.filter(e=>e.stage===s.id);
+      const cards=filtered.filter(e=>e.stage===s.id);
       return `<div class="k-col">
         <div class="k-col-head">
           <div class="k-stage-dot" style="background:${s.color}"></div>
@@ -1425,6 +1489,7 @@ function renderPipeline(){
   }
 }
 function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
+function setViewMode(m){pipelineViewMode=m;renderPipeline();}
 
 function renderEnqCard(e){
   const fs=fuStatus(e.followup);
