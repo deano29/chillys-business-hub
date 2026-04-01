@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
 
     // Debug mode: return all events + raw stats
     if (req.query.debug) {
-      return res.json({ total: events.length, first3: events.slice(0, 3), last3: events.slice(-3), rawLength: icsText.length });
+      return res.json({ total: events.length, first3: events.slice(0, 3), last3: events.slice(-3), rawLength: icsText.length, rawSample: icsText.substring(0, 1500) });
     }
 
     // Filter and return based on query params
