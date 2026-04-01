@@ -1,8 +1,22 @@
 const https = require('https');
+const { URL } = require('url');
 
 function fetchURL(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, (resp) => {
+    const parsed = new URL(url);
+    const options = {
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Google-Calendar-Importer)',
+        'Accept': 'text/calendar, text/plain, */*',
+      },
+    };
+    https.get(options, (resp) => {
+      // Follow redirects
+      if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+        return fetchURL(resp.headers.location).then(resolve).catch(reject);
+      }
       let data = '';
       resp.on('data', chunk => data += chunk);
       resp.on('end', () => resolve(data));
