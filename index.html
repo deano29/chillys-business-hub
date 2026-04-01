@@ -2982,34 +2982,61 @@ async function renderRpDashboard(){
     walkerGroups[walker].walks.push(w);
   });
 
-  // Convert each walker group into a shift and calculate metrics
+  // Convert each walker group into a shift — detect group walks (overlapping times)
   const shifts=Object.values(walkerGroups).map(g=>{
     const sorted=g.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
     const firstStart=sorted[0]?.time||'';
     const lastEnd=sorted[sorted.length-1]?.endTime||'';
-    const bookings=g.walks.map(w=>({
-      dogName:w.client,client:w.client,suburb:'',
-      serviceType:w.service,price:0,// No pricing in TTP
-      durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
-      groupSuitable:true
-    }));
-    // Build a shift object
+
+    // Detect service slots: group overlapping walks into slots
+    const slots=[];
+    sorted.forEach(w=>{
+      const ws=new Date(w.start).getTime();
+      const we=new Date(w.end).getTime();
+      // Find existing slot that overlaps
+      const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+      if(existing){
+        existing.dogs.push(w);
+        existing.start=Math.min(existing.start,ws);
+        existing.end=Math.max(existing.end,we);
+      }else{
+        slots.push({start:ws,end:we,dogs:[w]});
+      }
+    });
+
+    // Actual occupied service time = sum of unique slot durations (not sum of all individual walks)
+    const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+    const groupSlots=slots.filter(sl=>sl.dogs.length>1);
+    const soloSlots=slots.filter(sl=>sl.dogs.length===1);
+    const maxGroupSize=Math.max(0,...slots.map(sl=>sl.dogs.length));
+
+    const bookings=g.walks.map(w=>{
+      const slot=slots.find(sl=>sl.dogs.includes(w));
+      const isGroup=slot&&slot.dogs.length>1;
+      return {
+        dogName:w.client,client:w.client,suburb:'',
+        serviceType:w.service,price:0,
+        durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+        groupSuitable:isGroup,
+        _slotDogs:slot?slot.dogs.length:1
+      };
+    });
+
     const shift={
       id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+date,
       date,walker:g.walker,walkerType:'employee',
-      startTime:firstStart.replace(/(am|pm)/,''),
-      endTime:lastEnd.replace(/(am|pm)/,''),
+      startTime:parseAmPmTo24(firstStart),
+      endTime:parseAmPmTo24(lastEnd),
       breakMins:30,maxDogs:settings.maxDogsPerShift,
       hourlyRate:settings.defaultRates.employee,
       travelDistanceKm:15,travelMins:30,
       variableCost:0,paymentFee:0,adminAlloc:0,
-      bookings,source:'ttp-auto'
+      bookings,source:'ttp-auto',
+      _actualServiceMins:actualServiceMins,// Override for grouped walks
     };
-    // Parse times properly
-    shift.startTime=parseAmPmTo24(firstStart);
-    shift.endTime=parseAmPmTo24(lastEnd);
+
     const metrics=calcShiftMetrics(shift,settings);
-    return {shift,metrics,walkCount:g.walks.length};
+    return {shift,metrics,walkCount:g.walks.length,slots:slots.length,groupSlots:groupSlots.length,soloSlots:soloSlots.length,maxGroupSize,actualServiceMins};
   });
 
   // Weekly summary
@@ -3039,6 +3066,8 @@ async function renderRpDashboard(){
     if(metrics.dogCount<metrics.maxDogs*0.5) flags.push('<span class="rp-flag rp-flag-underfilled">Underfilled</span>');
     if(metrics.travelLoad>getRouteSettings().travelLoadThresholdWarn) flags.push('<span class="rp-flag rp-flag-travel-heavy">Travel Heavy</span>');
 
+    const groupInfo=groupSlots>0?`${groupSlots} group walk${groupSlots>1?'s':''} (up to ${maxGroupSize} dogs)`:'All solo walks';
+
     return `<div class="rp-shift-card">
       <div class="rp-shift-header">
         <div>
@@ -3052,13 +3081,19 @@ async function renderRpDashboard(){
         </div>
       </div>
       <div class="rp-shift-stats">
-        <div>🐕 <strong>${walkCount}</strong> walks</div>
+        <div>🐕 <strong>${walkCount}</strong> dogs</div>
+        <div>🔗 <strong>${slots}</strong> service slots</div>
         <div>⏱ <strong>${(metrics.shiftMins/60).toFixed(1)}h</strong> shift</div>
+        <div>⏳ <strong>${(actualServiceMins/60).toFixed(1)}h</strong> actual service</div>
         <div>📊 <strong>${metrics.utilisation.toFixed(0)}%</strong> utilised</div>
         <div>🚗 <strong>${metrics.travelLoad.toFixed(0)}%</strong> travel load</div>
       </div>
-      <div style="margin-top:10px;font-size:12px;color:var(--ink-light)">
-        <em>Note: Revenue not shown — TTP doesn't include pricing. Add prices via Shift Builder for full profitability analysis.</em>
+      <div style="margin-top:8px;font-size:12px">
+        <span style="color:var(--info);font-weight:600">${groupInfo}</span>
+        ${soloSlots>0?` · <span style="color:var(--ink-light)">${soloSlots} solo walk${soloSlots>1?'s':''}</span>`:''}
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink-xlight)">
+        <em>Add prices via Shift Builder for full profitability. Group walks = higher revenue density per hour.</em>
       </div>
     </div>`;
   }).join('');
@@ -3350,7 +3385,8 @@ function calcShiftMetrics(shift, settings){
   const availableMins=shiftMins-breakMins;
   const bookings=shift.bookings||[];
   const totalRevenue=bookings.reduce((sum,b)=>sum+(parseFloat(b.price)||0),0);
-  const totalServiceMins=bookings.reduce((sum,b)=>sum+(parseFloat(b.durationMins)||0),0);
+  // Use actual occupied service time if available (accounts for grouped/overlapping walks)
+  const totalServiceMins=shift._actualServiceMins||bookings.reduce((sum,b)=>sum+(parseFloat(b.durationMins)||0),0);
   const dogCount=bookings.length;
   const maxDogs=shift.maxDogs||s.maxDogsPerShift;
   const travelMins=parseFloat(shift.travelMins)||0;
