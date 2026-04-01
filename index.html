@@ -1032,12 +1032,12 @@ if(stored&&stored.length>0)enquiries=stored;
 const storedClients=load('cw_clients',null);
 if(storedClients&&storedClients.length>0)clients=storedClients;
 
-// Async load from Notion API
+// Async load from APIs
 async function loadFromNotion(){
   try{
     const [enqRes,cliRes]=await Promise.all([
       fetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
-      fetch('/api/notion/clients').then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
     if(enqRes&&enqRes.length>0){
       enquiries=enqRes;
@@ -1049,7 +1049,7 @@ async function loadFromNotion(){
     }
     dataLoaded=true;
     renderDashboard();
-    logEvent('Notion sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients','success','📔');
+    logEvent('Data sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients from TTP','success','📔');
   }catch(e){
     console.warn('Notion sync failed, using cached data:',e.message);
   }
@@ -1627,19 +1627,17 @@ function renderClients(){
   const search=(document.getElementById('client-search')?.value||'').toLowerCase().trim();
   let list=clients;
   if(search){
-    list=list.filter(c=>(c.owner||'').toLowerCase().includes(search)||(c.suburb||'').toLowerCase().includes(search)||(c.primaryService||'').toLowerCase().includes(search)||(c.notes||'').toLowerCase().includes(search));
+    list=list.filter(c=>((c.name||c.owner||'').toLowerCase().includes(search))||(c.suburb||'').toLowerCase().includes(search)||(c.primaryService||'').toLowerCase().includes(search)||(c.services||'').toLowerCase().includes(search));
   }
-  if(clientFilter!=='all') list=list.filter(c=>c.health===clientFilter);
 
   // Build filter pills
   const filtersEl=document.getElementById('client-filters');
   if(filtersEl){
-    const statusCounts={all:clients.length,active:clients.filter(c=>c.health==='active').length,onboarding:clients.filter(c=>c.health==='onboarding').length,churning:clients.filter(c=>c.health==='churning').length};
+    const statusCounts={all:clients.length,active:clients.filter(c=>c.status==='active').length,'no-upcoming':clients.filter(c=>c.status==='no-upcoming').length};
     filtersEl.innerHTML=[
       {id:'all',label:'All Clients',count:statusCounts.all},
       {id:'active',label:'Active',count:statusCounts.active,color:'#22c55e'},
-      {id:'onboarding',label:'Onboarding',count:statusCounts.onboarding,color:'#F26B21'},
-      {id:'churning',label:'Churning',count:statusCounts.churning,color:'#ef4444'},
+      {id:'no-upcoming',label:'No Upcoming Walks',count:statusCounts['no-upcoming'],color:'#ef4444'},
     ].filter(f=>f.count>0).map(f=>
       `<div class="filter-pill${clientFilter===f.id?' active':''}" style="cursor:pointer" onclick="clientFilter='${f.id}';renderClients()">
         ${f.color?`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.color};margin-right:4px"></span>`:''}${f.label} <strong>${f.count}</strong>
@@ -1647,38 +1645,38 @@ function renderClients(){
     ).join('');
   }
 
-  const healthLabel={active:'● Active',onboarding:'🔄 Onboarding',churning:'⚠️ Churning'};
-  const healthColor={active:'var(--success)',onboarding:'var(--orange)',churning:'var(--danger)'};
+  if(clientFilter!=='all') list=list.filter(c=>c.status===clientFilter);
 
   document.getElementById('clients-grid').innerHTML=list.length?list.map(c=>{
+    const statusLabel=c.status==='active'?'● Active':c.status==='no-upcoming'?'⚠️ No Upcoming':'○ Inactive';
+    const statusColor=c.status==='active'?'var(--success)':c.status==='no-upcoming'?'var(--danger)':'var(--ink-light)';
+    const bookingInfo=c.daysAhead>0?`Booked ${c.daysAhead}d ahead · ${c.futureWalks} walks`:(c.lastWalk?`Last walk: ${fmtDate(c.lastWalk)}`:'No walk history');
+    const bookingColor=c.daysAhead>=14?'var(--success)':c.daysAhead>=7?'var(--warning)':'var(--danger)';
     return `<div class="client-card">
       <div class="client-top">
         <div class="client-avatar">🐕</div>
         <div>
-          <div class="client-name">${esc(c.owner)}</div>
-          <span class="client-badge" style="color:${healthColor[c.health]||'var(--success)'}">${healthLabel[c.health]||'● Active'}</span>
+          <div class="client-name">${esc(c.name||c.owner||'')}</div>
+          <span class="client-badge" style="color:${statusColor}">${statusLabel}</span>
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0">
         ${c.primaryService?`<span class="tag tag-channel">${esc(c.primaryService)}</span>`:''}
-        ${c.planPackage?`<span class="tag tag-source">${esc(c.planPackage)}</span>`:''}
-        ${c.clientType?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">${esc(c.clientType)}</span>`:''}
         ${c.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(c.suburb)}</span>`:''}
+        ${c.walker?`<span class="tag" style="background:var(--info-bg);color:var(--info)">${esc(c.walker)}</span>`:''}
       </div>
       <div class="client-stats">
-        <div class="cs-stat"><div class="cs-val">${c.dogs||'—'}</div><div class="cs-lbl">dogs</div></div>
-        <div class="cs-stat"><div class="cs-val">${c.walks||'—'}</div><div class="cs-lbl">days/wk</div></div>
-        <div class="cs-stat"><div class="cs-val">${c.preferredDays||'—'}</div><div class="cs-lbl">pref. days</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.walksPerWeek||0}</div><div class="cs-lbl">walks/wk</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.totalWalks||0}</div><div class="cs-lbl">total walks</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.futureWalks||0}</div><div class="cs-lbl">upcoming</div></div>
       </div>
-      ${c.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light)">${esc(c.notes)}</div>`:''}
+      <div style="font-size:11px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);color:${bookingColor}">${bookingInfo}</div>
+      ${c.nextWalk?`<div style="font-size:11px;color:var(--ink-light);margin-top:4px">Next walk: ${fmtDate(c.nextWalk)}</div>`:''}
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="window.open('https://www.timetopet.com/portal','_blank')">📋 Time to Pet</button>
       </div>
     </div>`;
   }).join(''):'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No clients found</div>';
-
-  // Render booking visibility
-  renderClientBookings();
 }
 
 // ── WALKS ──
