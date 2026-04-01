@@ -20,6 +20,11 @@ module.exports = async function handler(req, res) {
     const icsText = await fetchURL(calUrl);
     const events = parseICS(icsText);
 
+    // Debug mode: return all events + raw stats
+    if (req.query.debug) {
+      return res.json({ total: events.length, first3: events.slice(0, 3), last3: events.slice(-3), rawLength: icsText.length });
+    }
+
     // Filter and return based on query params
     const range = req.query.range || 'today'; // today, week, month
     const now = new Date();
