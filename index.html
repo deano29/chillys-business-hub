@@ -241,6 +241,36 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .inbox-channel-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px;color:#fff}
 .inbox-channel-name{font-weight:700;font-size:14px;margin-bottom:4px}
 .inbox-channel-desc{font-size:11px;color:var(--ink-light)}
+/* ── ROUTE PLANNER ── */
+.rp-metric-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.rp-metric{background:var(--cream);border-radius:var(--radius-sm);padding:10px 12px;border:1px solid var(--border-light)}
+.rp-metric-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--ink-xlight)}
+.rp-metric-value{font-family:'Readex Pro',sans-serif;font-size:18px;font-weight:800;color:var(--ink);margin-top:2px}
+.rp-metric.good .rp-metric-value{color:var(--success)}
+.rp-metric.warn .rp-metric-value{color:var(--warning)}
+.rp-metric.bad .rp-metric-value{color:var(--danger)}
+.rp-health{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px}
+.rp-health-profitable{background:#dcfce7;color:var(--success)}
+.rp-health-borderline{background:#fef3c7;color:var(--warning)}
+.rp-health-not-viable{background:#fee2e2;color:var(--danger)}
+.rp-shift-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:10px;transition:all .15s}
+.rp-shift-card:hover{border-color:var(--orange-light);box-shadow:var(--shadow)}
+.rp-shift-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.rp-shift-stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-light)}
+.rp-shift-stats strong{color:var(--ink);font-weight:700}
+.rp-flag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;display:inline-block;margin-left:4px}
+.rp-flag-low-margin{background:#fee2e2;color:var(--danger)}
+.rp-flag-underfilled{background:#fef3c7;color:var(--warning)}
+.rp-flag-travel-heavy{background:#f3e8ff;color:var(--purple)}
+.rp-score-ring{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Readex Pro',sans-serif;font-size:18px;font-weight:800;border:3px solid}
+.rp-score-excellent{border-color:var(--success);color:var(--success)}
+.rp-score-workable{border-color:var(--info);color:var(--info)}
+.rp-score-weak{border-color:var(--warning);color:var(--warning)}
+.rp-score-poor{border-color:var(--danger);color:var(--danger)}
+.rp-rec-item{display:flex;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--cream);border:1px solid var(--border-light);font-size:12px;margin-bottom:4px}
+.rp-weekly-stat{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;flex:1;text-align:center}
+.rp-weekly-val{font-size:20px;font-weight:800;color:var(--ink);font-family:'Readex Pro',sans-serif}
+.rp-weekly-lbl{font-size:10px;color:var(--ink-light);margin-top:2px}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -543,6 +573,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     </div>
     <div class="nav-section">
       <div class="nav-label">Tools</div>
+      <div class="nav-item" data-view="routes"><span class="ni">🛣️</span><span class="nl">Route Planner</span></div>
       <div class="nav-item" data-view="coverage"><span class="ni">🗺️</span><span class="nl">Coverage Map</span></div>
       <div class="nav-item" data-view="templates"><span class="ni">💬</span><span class="nl">Templates</span></div>
       <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
@@ -849,6 +880,58 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <p>In-app events logged automatically — enquiry changes, stage moves, templates used.</p>
           <div class="auto-log" id="auto-log"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── ROUTE PLANNER ── -->
+    <div class="view" id="view-routes">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="pipeline-filters" id="rp-tabs">
+          <div class="filter-pill active" onclick="rpTab('dashboard')">Dashboard</div>
+          <div class="filter-pill" onclick="rpTab('quick')">Quick Assess</div>
+          <div class="filter-pill" onclick="rpTab('builder')">Shift Builder</div>
+          <div class="filter-pill" onclick="rpTab('compare')">Founder vs Staff</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="date" id="rp-date" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif" onchange="renderRpDashboard()">
+        </div>
+      </div>
+      <!-- Dashboard Tab -->
+      <div id="rp-tab-dashboard">
+        <div id="rp-weekly-summary" style="display:flex;gap:12px;margin-bottom:16px"></div>
+        <div id="rp-shift-cards"></div>
+      </div>
+      <!-- Quick Assess Tab -->
+      <div id="rp-tab-quick" style="display:none">
+        <div style="max-width:700px">
+          <div class="card">
+            <div class="card-header"><h3>Quick Route Assessment</h3></div>
+            <div class="card-body">
+              <p style="font-size:12px;color:var(--ink-light);margin-bottom:14px">Fast napkin-math — is this route worth running?</p>
+              <div class="form-grid">
+                <div class="form-group"><label>Walker Type</label><select id="qa-type" onchange="recalcQuickAssess()"><option value="founder">Founder</option><option value="employee" selected>Employee</option><option value="contractor">Contractor</option></select></div>
+                <div class="form-group"><label>Hourly Rate ($)</label><input id="qa-rate" type="number" value="30" oninput="recalcQuickAssess()"></div>
+                <div class="form-group"><label>Shift Hours</label><input id="qa-hours" type="number" value="4" step="0.5" oninput="recalcQuickAssess()"></div>
+                <div class="form-group"><label>Number of Dogs</label><input id="qa-dogs" type="number" value="5" oninput="recalcQuickAssess()"></div>
+                <div class="form-group"><label>Avg Price Per Dog ($)</label><input id="qa-price" type="number" value="45" oninput="recalcQuickAssess()"></div>
+                <div class="form-group"><label>Est. Travel KM</label><input id="qa-km" type="number" value="15" oninput="recalcQuickAssess()"></div>
+              </div>
+              <div id="qa-results" style="margin-top:16px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Builder Tab -->
+      <div id="rp-tab-builder" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <p style="font-size:13px;color:var(--ink-light)">Create and manage route scenarios</p>
+          <button class="btn btn-primary btn-sm" onclick="openShiftBuilder()">+ New Shift</button>
+        </div>
+        <div id="rp-saved-shifts"></div>
+      </div>
+      <!-- Compare Tab -->
+      <div id="rp-tab-compare" style="display:none">
+        <div id="rp-compare-content"></div>
       </div>
     </div>
 
@@ -1288,7 +1371,7 @@ function getObNextAction(e){
 // ── NAV ──
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
-  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',coverage:'Coverage Map',templates:'Message Templates',
+  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Route Planner',coverage:'Coverage Map',templates:'Message Templates',
   reports:'Reports & KPIs',settings:'Settings',
 };
 
@@ -1309,6 +1392,7 @@ function navigate(v){
   if(v==='enquiries')renderPipeline();
   if(v==='clients')renderClients();
   if(v==='walks')renderWalks();
+  if(v==='routes')renderRoutes();
   if(v==='inbox')renderInbox();
   if(v==='coverage')renderCoverage();
   if(v==='templates')renderTemplates();
@@ -2847,6 +2931,288 @@ document.querySelectorAll('.filter-pill').forEach(p=>{
     this.classList.add('active');
   });
 });
+
+// ── ROUTE PLANNER — UI ──
+let rpShifts=load('cw_shifts',[]);
+let rpActiveTab='dashboard';
+
+function renderRoutes(){
+  // Set default date to today
+  const dateInput=document.getElementById('rp-date');
+  if(dateInput&&!dateInput.value) dateInput.value=new Date().toISOString().split('T')[0];
+  rpTab(rpActiveTab);
+}
+
+function rpTab(tab){
+  rpActiveTab=tab;
+  ['dashboard','quick','builder','compare'].forEach(t=>{
+    const el=document.getElementById('rp-tab-'+t);
+    if(el) el.style.display=t===tab?'block':'none';
+  });
+  document.querySelectorAll('#rp-tabs .filter-pill').forEach(p=>{
+    const labels={Dashboard:'dashboard','Quick Assess':'quick','Shift Builder':'builder','Founder vs Staff':'compare'};
+    p.classList.toggle('active',labels[p.textContent.trim()]===tab);
+  });
+  if(tab==='dashboard') renderRpDashboard();
+  if(tab==='quick') recalcQuickAssess();
+  if(tab==='builder') renderSavedShifts();
+  if(tab==='compare') renderRpCompare();
+}
+
+// ── ROUTE DASHBOARD (auto from TTP) ──
+async function renderRpDashboard(){
+  const dateInput=document.getElementById('rp-date');
+  const date=dateInput?.value||new Date().toISOString().split('T')[0];
+  const cardsEl=document.getElementById('rp-shift-cards');
+  const summaryEl=document.getElementById('rp-weekly-summary');
+  if(!cardsEl) return;
+
+  cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data...</div>';
+
+  // Fetch walks for the selected date
+  const walks=await authFetch('/api/walks/today?range=week').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const todayWalks=walks.filter(w=>w.date===date);
+  const settings=getRouteSettings();
+
+  // Group walks by walker into shifts
+  const walkerGroups={};
+  todayWalks.forEach(w=>{
+    const walker=w.walker||'Unknown';
+    if(!walkerGroups[walker]) walkerGroups[walker]={walks:[],walker};
+    walkerGroups[walker].walks.push(w);
+  });
+
+  // Convert each walker group into a shift and calculate metrics
+  const shifts=Object.values(walkerGroups).map(g=>{
+    const sorted=g.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+    const firstStart=sorted[0]?.time||'';
+    const lastEnd=sorted[sorted.length-1]?.endTime||'';
+    const bookings=g.walks.map(w=>({
+      dogName:w.client,client:w.client,suburb:'',
+      serviceType:w.service,price:0,// No pricing in TTP
+      durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+      groupSuitable:true
+    }));
+    // Build a shift object
+    const shift={
+      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+date,
+      date,walker:g.walker,walkerType:'employee',
+      startTime:firstStart.replace(/(am|pm)/,''),
+      endTime:lastEnd.replace(/(am|pm)/,''),
+      breakMins:30,maxDogs:settings.maxDogsPerShift,
+      hourlyRate:settings.defaultRates.employee,
+      travelDistanceKm:15,travelMins:30,
+      variableCost:0,paymentFee:0,adminAlloc:0,
+      bookings,source:'ttp-auto'
+    };
+    // Parse times properly
+    shift.startTime=parseAmPmTo24(firstStart);
+    shift.endTime=parseAmPmTo24(lastEnd);
+    const metrics=calcShiftMetrics(shift,settings);
+    return {shift,metrics,walkCount:g.walks.length};
+  });
+
+  // Weekly summary
+  const weekWalks=walks;
+  const weekShiftCount=new Set(weekWalks.map(w=>w.walker+'_'+w.date)).size;
+  const weekTotalHrs=weekWalks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
+
+  summaryEl.innerHTML=`
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekWalks.length}</div><div class="rp-weekly-lbl">Walks This Week</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekShiftCount}</div><div class="rp-weekly-lbl">Walker-Days</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekTotalHrs.toFixed(1)}h</div><div class="rp-weekly-lbl">Total Walk Hours</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${todayWalks.length}</div><div class="rp-weekly-lbl">Walks Today</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${shifts.length}</div><div class="rp-weekly-lbl">Shifts Today</div></div>
+  `;
+
+  if(!shifts.length){
+    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this date</div>';
+    return;
+  }
+
+  cardsEl.innerHTML=shifts.map(({shift,metrics,walkCount})=>{
+    const band=getScoreBand(metrics.score);
+    const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[metrics.health];
+    const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[metrics.health];
+    const flags=[];
+    if(metrics.grossMargin<getRouteSettings().marginThresholdYellow) flags.push('<span class="rp-flag rp-flag-low-margin">Low Margin</span>');
+    if(metrics.dogCount<metrics.maxDogs*0.5) flags.push('<span class="rp-flag rp-flag-underfilled">Underfilled</span>');
+    if(metrics.travelLoad>getRouteSettings().travelLoadThresholdWarn) flags.push('<span class="rp-flag rp-flag-travel-heavy">Travel Heavy</span>');
+
+    return `<div class="rp-shift-card">
+      <div class="rp-shift-header">
+        <div>
+          <strong style="font-size:15px">${esc(shift.walker)}</strong>
+          <span style="font-size:12px;color:var(--ink-light);margin-left:8px">${shift.startTime} — ${shift.endTime}</span>
+          ${flags.join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="rp-health ${healthCls}">${healthLabel}</span>
+          <div class="rp-score-ring ${band.cls}">${metrics.score}</div>
+        </div>
+      </div>
+      <div class="rp-shift-stats">
+        <div>🐕 <strong>${walkCount}</strong> walks</div>
+        <div>⏱ <strong>${(metrics.shiftMins/60).toFixed(1)}h</strong> shift</div>
+        <div>📊 <strong>${metrics.utilisation.toFixed(0)}%</strong> utilised</div>
+        <div>🚗 <strong>${metrics.travelLoad.toFixed(0)}%</strong> travel load</div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--ink-light)">
+        <em>Note: Revenue not shown — TTP doesn't include pricing. Add prices via Shift Builder for full profitability analysis.</em>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function parseAmPmTo24(t){
+  if(!t) return '08:00';
+  const m=t.match(/(\d+):(\d+)\s*(am|pm)?/i);
+  if(!m) return '08:00';
+  let h=parseInt(m[1]),min=m[2];
+  if(m[3]&&m[3].toLowerCase()==='pm'&&h!==12) h+=12;
+  if(m[3]&&m[3].toLowerCase()==='am'&&h===12) h=0;
+  return `${String(h).padStart(2,'0')}:${min}`;
+}
+
+// ── QUICK ASSESS ──
+function recalcQuickAssess(){
+  const type=document.getElementById('qa-type')?.value||'employee';
+  const rate=parseFloat(document.getElementById('qa-rate')?.value)||30;
+  const hours=parseFloat(document.getElementById('qa-hours')?.value)||4;
+  const dogs=parseInt(document.getElementById('qa-dogs')?.value)||5;
+  const price=parseFloat(document.getElementById('qa-price')?.value)||45;
+  const km=parseFloat(document.getElementById('qa-km')?.value)||15;
+  const settings=getRouteSettings();
+  const shiftMins=hours*60;
+  const revenue=dogs*price;
+  const labour=calcLabourCost(type,rate,shiftMins,settings.superRate,settings.casualLoading);
+  const travel=calcTravelCost(km,settings.costPerKm);
+  const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(revenue,labour,travel,0);
+  const profitPerHr=hours>0?grossProfit/hours:0;
+  const health=calcRouteHealth(grossMargin,20,80,settings);
+  const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[health];
+  const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[health];
+  const el=document.getElementById('qa-results');
+  if(!el) return;
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <span class="rp-health ${healthCls}" style="font-size:13px;padding:6px 14px">${healthLabel}</span>
+      <span style="font-size:13px;color:var(--ink-light)">Gross Margin: <strong style="color:${grossMargin>=40?'var(--success)':grossMargin>=20?'var(--warning)':'var(--danger)'}">${grossMargin.toFixed(1)}%</strong></span>
+    </div>
+    <div class="rp-metric-grid">
+      <div class="rp-metric"><div class="rp-metric-label">Revenue</div><div class="rp-metric-value">$${revenue.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Labour Cost</div><div class="rp-metric-value">$${labour.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Travel Cost</div><div class="rp-metric-value">$${travel.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${totalDirectCost.toFixed(0)}</div></div>
+      <div class="rp-metric ${grossProfit>0?'good':'bad'}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${grossProfit.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${profitPerHr.toFixed(0)}</div></div>
+    </div>
+  `;
+}
+
+// ── SAVED SHIFTS LIST ──
+function renderSavedShifts(){
+  const el=document.getElementById('rp-saved-shifts');
+  if(!el) return;
+  if(!rpShifts.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)"><div style="font-size:32px;margin-bottom:8px">🛣️</div><h4>No saved shifts yet</h4><p style="font-size:12px">Click "+ New Shift" to create your first route scenario.</p></div>';
+    return;
+  }
+  const settings=getRouteSettings();
+  el.innerHTML=rpShifts.map(shift=>{
+    const m=calcShiftMetrics(shift,settings);
+    const band=getScoreBand(m.score);
+    const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[m.health];
+    const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[m.health];
+    return `<div class="rp-shift-card" onclick="openShiftBuilder('${shift.id}')">
+      <div class="rp-shift-header">
+        <div>
+          <strong>${esc(shift.walker||'Unnamed')}</strong>
+          <span style="font-size:12px;color:var(--ink-light);margin-left:8px">${shift.date} · ${shift.startTime}—${shift.endTime} · ${shift.walkerType}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="rp-health ${healthCls}">${healthLabel}</span>
+          <div class="rp-score-ring ${band.cls}" style="width:40px;height:40px;font-size:14px;border-width:2px">${m.score}</div>
+        </div>
+      </div>
+      <div class="rp-shift-stats">
+        <div>🐕 <strong>${m.dogCount}</strong> dogs</div>
+        <div>💰 <strong>$${m.totalRevenue.toFixed(0)}</strong> revenue</div>
+        <div>📈 <strong>$${m.grossProfit.toFixed(0)}</strong> profit</div>
+        <div>📊 <strong>${m.grossMargin.toFixed(0)}%</strong> margin</div>
+        <div>⏱ <strong>${m.utilisation.toFixed(0)}%</strong> utilised</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── FOUNDER VS STAFF COMPARISON ──
+function renderRpCompare(){
+  const el=document.getElementById('rp-compare-content');
+  if(!el) return;
+  if(!rpShifts.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Save a shift in the Shift Builder first to compare founder vs staff profitability.</div>';
+    return;
+  }
+  const settings=getRouteSettings();
+  const selectHtml=`<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;margin-right:8px">Select shift:</label><select id="rp-compare-select" onchange="renderCompareShift()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif">`+
+    rpShifts.map(s=>`<option value="${s.id}">${esc(s.walker||'Unnamed')} — ${s.date} ${s.startTime}</option>`).join('')+
+    `</select></div><div id="rp-compare-result"></div>`;
+  el.innerHTML=selectHtml;
+  renderCompareShift();
+}
+
+function renderCompareShift(){
+  const sel=document.getElementById('rp-compare-select');
+  const resultEl=document.getElementById('rp-compare-result');
+  if(!sel||!resultEl) return;
+  const shift=rpShifts.find(s=>s.id===sel.value);
+  if(!shift){resultEl.innerHTML='';return;}
+  const settings=getRouteSettings();
+  const metrics=calcShiftMetrics(shift,settings);
+  const comp=calcFounderComparison(metrics,settings);
+  const f=comp.founder,s=comp.staff;
+
+  resultEl.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="card-header"><h3>👤 Founder</h3></div>
+        <div class="card-body">
+          <div class="rp-metric-grid">
+            <div class="rp-metric"><div class="rp-metric-label">Notional Labour</div><div class="rp-metric-value">$${f.labour.toFixed(0)}</div></div>
+            <div class="rp-metric ${f.profit>0?'good':'bad'}"><div class="rp-metric-label">Cash Profit</div><div class="rp-metric-value">$${f.profit.toFixed(0)}</div></div>
+            <div class="rp-metric"><div class="rp-metric-label">Margin</div><div class="rp-metric-value">${f.margin.toFixed(1)}%</div></div>
+            <div class="rp-metric"><div class="rp-metric-label">Opportunity Cost</div><div class="rp-metric-value">$${f.opportunityCost.toFixed(0)}</div></div>
+            <div class="rp-metric ${f.netValue>0?'good':'bad'}"><div class="rp-metric-label">Net Strategic Value</div><div class="rp-metric-value">$${f.netValue.toFixed(0)}</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>🧑‍💼 Staff (Employee)</h3></div>
+        <div class="card-body">
+          <div class="rp-metric-grid">
+            <div class="rp-metric"><div class="rp-metric-label">Labour Cost</div><div class="rp-metric-value">$${s.labour.toFixed(0)}</div></div>
+            <div class="rp-metric ${s.profit>0?'good':'bad'}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${s.profit.toFixed(0)}</div></div>
+            <div class="rp-metric"><div class="rp-metric-label">Margin</div><div class="rp-metric-value">${s.margin.toFixed(1)}%</div></div>
+            <div class="rp-metric"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${s.profitPerHr.toFixed(0)}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-body" style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:24px">${comp.profitDiff>0?'🧑‍💼':'👤'}</span>
+        <div>
+          <div style="font-weight:700;font-size:14px">${comp.recommendation}</div>
+          <div style="font-size:12px;color:var(--ink-light);margin-top:2px">Profit difference: <strong>$${Math.abs(comp.profitDiff).toFixed(0)}</strong> ${comp.profitDiff>0?'more with staff':'more with founder'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Placeholder for shift builder (Stage 4)
+function openShiftBuilder(id){showToast('Shift Builder coming in next stage','🛣️');}
 
 // ── ROUTE PLANNER — CALCULATION ENGINE ──
 
