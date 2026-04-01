@@ -78,7 +78,7 @@ function parseICS(text) {
       const start = parseICSDate(event.dtstart);
       const end = event.dtend ? parseICSDate(event.dtend) : null;
       // Parse summary: "Client Name, Walker Name, Service Type"
-      const parts = (event.summary || '').split(',').map(s => s.trim());
+      const parts = (event.summary || '').replace(/\\+$/g, '').split(',').map(s => s.trim().replace(/\\+$/g, ''));
       const client = parts[0] || '';
       const walker = parts[1] || '';
       const service = parts.slice(2).join(', ').trim() || '';

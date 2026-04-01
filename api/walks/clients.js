@@ -155,7 +155,7 @@ function parseICS(text) {
     if (event.summary && event.dtstart) {
       const start = parseICSDate(event.dtstart);
       const end = event.dtend ? parseICSDate(event.dtend) : null;
-      const parts = (event.summary || '').split(',').map(s => s.trim());
+      const parts = (event.summary || '').replace(/\\+$/g, '').split(',').map(s => s.trim().replace(/\\+$/g, ''));
       events.push({
         client: parts[0] || '',
         walker: parts[1] || '',
