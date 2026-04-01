@@ -2440,48 +2440,63 @@ let covFilter='all'; // 'all','client','lead'
 // Seed default pins from dummy data (only if no saved data)
 let covDataLoaded=false;
 
+async function geocodeAddr(addr){
+  const cache=load('cw_geocache',{});
+  if(cache[addr]) return cache[addr];
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', VIC, Australia')}&countrycodes=au&limit=1`,{headers:{'Accept':'application/json'}});
+    const data=await res.json();
+    if(data.length){
+      const coords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
+      cache[addr]=coords;
+      save('cw_geocache',cache);
+      return coords;
+    }
+  }catch{}
+  return null;
+}
+
 async function loadCoverageData(){
   if(covDataLoaded) return;
-  try{
-    // Load client locations from TTP
-    const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
-    if(locRes&&locRes.length>0){
-      locRes.forEach(p=>{ assignedPins[p.refId]=p; });
-    }
-    // Add enquiries with suburbs as leads (geocode suburb names)
-    const activeEnq=enquiries.filter(e=>e.suburb&&!['closed-won','archived'].includes(e.stage));
-    for(const e of activeEnq.slice(0,30)){// Limit to avoid rate limits
-      const refId='enq_'+e.id;
-      if(assignedPins[refId]) continue;
-      // Use suburb centroid — geocode the suburb name
-      const cached=load('cw_geocache',{});
-      let coords=cached[e.suburb];
-      if(!coords){
-        try{
-          const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(e.suburb+', VIC, Australia')}&countrycodes=au&limit=1`,{headers:{'Accept':'application/json'}});
-          const data=await res.json();
-          if(data.length){
-            coords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
-            cached[e.suburb]=coords;
-            save('cw_geocache',cached);
-          }
-        }catch{}
-        await new Promise(r=>setTimeout(r,300));// Rate limit
+  covDataLoaded=true;// Prevent duplicate calls
+
+  // Load client data from TTP (addresses, no geocoding yet)
+  const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
+  const allItems=[...(locRes||[])];
+
+  // Add enquiries with suburbs
+  enquiries.filter(e=>e.suburb).forEach(e=>{
+    allItems.push({
+      refId:'enq_'+e.id,refType:'lead',name:e.name,dog:e.dogName||'',
+      stage:e.stage,suburb:e.suburb,addr:e.suburb,service:'',
+    });
+  });
+
+  // Geocode progressively — add pins as they resolve
+  let count=0;
+  for(const item of allItems){
+    if(assignedPins[item.refId]&&assignedPins[item.refId].lat) continue;// Already geocoded
+    const searchAddr=item.addr||item.suburb;
+    if(!searchAddr) continue;
+    const coords=await geocodeAddr(searchAddr);
+    if(coords){
+      const jitter=item.refType==='lead'?(Math.random()-0.5)*0.003:0;
+      item.lat=coords.lat+jitter;
+      item.lng=coords.lng+(item.refType==='lead'?(Math.random()-0.5)*0.003:0);
+      assignedPins[item.refId]=item;
+      count++;
+      // Re-render every 5 pins to show progress
+      if(count%5===0){
+        save('cw_map_pins',assignedPins);
+        renderMapPins();
+        document.getElementById('cov-clients').textContent=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat).length;
+        document.getElementById('cov-leads').textContent=Object.values(assignedPins).filter(p=>p.refType==='lead'&&p.lat).length;
       }
-      if(coords){
-        // Add small random offset so pins in same suburb don't stack
-        const jitter=()=>(Math.random()-0.5)*0.003;
-        assignedPins[refId]={
-          refId,refType:'lead',name:e.name,dog:e.dogName||'',
-          stage:e.stage,suburb:e.suburb,
-          addr:e.suburb+', VIC',
-          lat:coords.lat+jitter(),lng:coords.lng+jitter(),
-        };
-      }
+      await new Promise(r=>setTimeout(r,250));// Nominatim rate limit
     }
-    save('cw_map_pins',assignedPins);
-    covDataLoaded=true;
-  }catch(e){console.warn('Coverage data load failed:',e);}
+  }
+  save('cw_map_pins',assignedPins);
+  renderCoverage();// Final render
 }
 
 function seedDefaultPins(){

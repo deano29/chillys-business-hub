@@ -23,29 +23,6 @@ function fetchURL(url) {
   });
 }
 
-function geocodeAddress(addr) {
-  return new Promise((resolve, reject) => {
-    const q = encodeURIComponent(addr + ', VIC, Australia');
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${q}&countrycodes=au&limit=1`;
-    const parsed = new URL(url);
-    https.get({
-      hostname: parsed.hostname,
-      path: parsed.pathname + parsed.search,
-      headers: { 'User-Agent': 'ChillysBusinessHub/1.0', 'Accept': 'application/json' },
-    }, (resp) => {
-      let data = '';
-      resp.on('data', chunk => data += chunk);
-      resp.on('end', () => {
-        try {
-          const results = JSON.parse(data);
-          if (results.length) resolve({ lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) });
-          else resolve(null);
-        } catch { resolve(null); }
-      });
-    }).on('error', () => resolve(null));
-  });
-}
-
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -57,60 +34,38 @@ module.exports = async function handler(req, res) {
     const events = parseICS(icsText);
     const now = new Date();
 
-    // Build unique client locations from walks
+    // Build unique client locations from walks — NO geocoding, just return addresses
     const clientMap = {};
     events.forEach(e => {
       if (!e.client || e.client === 'Potential Client (general)') return;
-      if (!e.location) return;
       if (!clientMap[e.client]) {
         clientMap[e.client] = { locations: new Set(), services: new Set(), futureWalks: 0, pastWalks: 0 };
       }
-      clientMap[e.client].locations.add(e.location);
+      if (e.location) clientMap[e.client].locations.add(e.location);
       if (e.service) clientMap[e.client].services.add(e.service);
       if (new Date(e.start) > now) clientMap[e.client].futureWalks++;
       else clientMap[e.client].pastWalks++;
     });
 
-    // Geocode unique addresses (with caching in response)
-    const locations = [];
-    const geocodeCache = {};
-    const entries = Object.entries(clientMap);
+    const clients = Object.entries(clientMap).map(([name, data]) => {
+      const addr = [...data.locations][0] || '';
+      const parts = addr.split(',').map(s => s.trim());
+      const suburb = parts.length >= 2 ? parts[1].replace(/\s*(VIC|Victoria|AU-VIC)\s*/gi, '').trim() : '';
 
-    for (const [name, data] of entries) {
-      const addr = [...data.locations][0]; // Use first/primary address
-      if (!addr) continue;
+      return {
+        refId: 'ttp_' + name.replace(/[^a-zA-Z0-9]/g, '_'),
+        refType: 'client',
+        name: name.replace(/\\+$/g, ''),
+        status: data.futureWalks > 0 ? 'active' : 'inactive',
+        suburb,
+        addr,
+        service: [...data.services][0] || '',
+        futureWalks: data.futureWalks,
+        pastWalks: data.pastWalks,
+      };
+    });
 
-      let coords = geocodeCache[addr];
-      if (!coords) {
-        coords = await geocodeAddress(addr);
-        if (coords) geocodeCache[addr] = coords;
-        // Rate limit: small delay between geocode requests
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      if (coords) {
-        const status = data.futureWalks > 0 ? 'active' : 'inactive';
-        // Extract suburb from address
-        const parts = addr.split(',').map(s => s.trim());
-        const suburb = parts.length >= 2 ? parts[1].replace(/\s*(VIC|Victoria|AU-VIC)\s*/gi, '').trim() : parts[0];
-
-        locations.push({
-          refId: 'ttp_' + name.replace(/\s+/g, '_'),
-          refType: 'client',
-          name: name.replace(/\\+$/g, ''),
-          status,
-          suburb,
-          addr,
-          lat: coords.lat,
-          lng: coords.lng,
-          service: [...data.services][0] || '',
-          futureWalks: data.futureWalks,
-          pastWalks: data.pastWalks,
-        });
-      }
-    }
-
-    res.json(locations);
+    res.json(clients);
   } catch (err) {
     console.error('Locations error:', err.message);
     res.status(500).json({ error: err.message });
@@ -134,7 +89,6 @@ function parseICS(text) {
       if (key === 'SUMMARY') event.summary = val;
       if (key === 'LOCATION') event.location = (val || '').replace(/\\n/g, ', ').replace(/\\,/g, ',');
       if (key === 'DTSTART') event.dtstart = val;
-      if (key === 'DTEND') event.dtend = val;
     }
     if (event.summary && event.dtstart) {
       const start = parseICSDate(event.dtstart);
