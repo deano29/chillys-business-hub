@@ -1086,6 +1086,8 @@ async function initClerk(){
     // User is signed in — get token and show app
     authToken=await clerk.session?.getToken();
     document.getElementById('auth-overlay').style.display='none';
+    // Now load data (auth token is ready)
+    loadFromNotion();
     // Refresh token periodically (tokens expire after ~60s)
     setInterval(async()=>{
       if(clerkInstance?.session) authToken=await clerkInstance.session.getToken();
@@ -1099,6 +1101,7 @@ async function initClerk(){
   }catch(e){
     console.warn('Clerk init failed, running without auth:',e.message);
     document.getElementById('auth-overlay').style.display='none';
+    loadFromNotion();// Load without auth as fallback
   }
 }
 initClerk();
@@ -1263,7 +1266,9 @@ async function loadFromNotion(){
     console.warn('Notion sync failed, using cached data:',e.message);
   }
 }
-loadFromNotion();
+// Data load is triggered after Clerk auth completes (see initClerk)
+// Fallback: if Clerk fails, load anyway after 3 seconds
+setTimeout(()=>{if(!dataLoaded) loadFromNotion();},3000);
 
 // ── UTILS ──
 function today(){return new Date().toISOString().slice(0,10)}
@@ -3057,7 +3062,7 @@ async function renderRpDashboard(){
     return;
   }
 
-  cardsEl.innerHTML=shifts.map(({shift,metrics,walkCount})=>{
+  cardsEl.innerHTML=shifts.map(({shift,metrics,walkCount,slots,groupSlots,soloSlots,maxGroupSize,actualServiceMins})=>{
     const band=getScoreBand(metrics.score);
     const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[metrics.health];
     const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[metrics.health];
