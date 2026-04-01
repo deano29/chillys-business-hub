@@ -822,10 +822,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     <!-- ── COVERAGE MAP ── -->
     <div class="view" id="view-coverage">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="display:flex;gap:6px" id="cov-filters">
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="cov-filters">
           <div class="filter-pill active" onclick="setCovFilter('all')">All</div>
-          <div class="filter-pill" onclick="setCovFilter('client')">🐕 Clients</div>
-          <div class="filter-pill" onclick="setCovFilter('lead')">📥 Leads</div>
+          <div class="filter-pill" onclick="setCovFilter('active')">🐕 Active Clients</div>
+          <div class="filter-pill" onclick="setCovFilter('inactive')">💤 Inactive Clients</div>
+          <div class="filter-pill" onclick="setCovFilter('lead')">📥 Enquiries</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="cov-assign-select" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;outline:none;background:var(--cream);min-width:220px;color:var(--ink)">
@@ -854,10 +855,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           </div>
           <div class="cluster-card">
             <h4>🏷️ Legend</h4>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Active Client</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div> Lead / Enquiry</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div> Win-back Client</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Converted (from lead)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Active Client (TTP)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#9ca3af"></div> Inactive Client</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div> Enquiry (New/Contacted)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div> Enquiry (Qualified)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Enquiry (Closed Won)</div>
           </div>
           <div class="cluster-card">
             <h4>➕ Manual Address</h4>
@@ -2436,37 +2438,66 @@ let covMarkers=null;
 let covFilter='all'; // 'all','client','lead'
 
 // Seed default pins from dummy data (only if no saved data)
+let covDataLoaded=false;
+
+async function loadCoverageData(){
+  if(covDataLoaded) return;
+  try{
+    // Load client locations from TTP
+    const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
+    if(locRes&&locRes.length>0){
+      locRes.forEach(p=>{ assignedPins[p.refId]=p; });
+    }
+    // Add enquiries with suburbs as leads (geocode suburb names)
+    const activeEnq=enquiries.filter(e=>e.suburb&&!['closed-won','archived'].includes(e.stage));
+    for(const e of activeEnq.slice(0,30)){// Limit to avoid rate limits
+      const refId='enq_'+e.id;
+      if(assignedPins[refId]) continue;
+      // Use suburb centroid — geocode the suburb name
+      const cached=load('cw_geocache',{});
+      let coords=cached[e.suburb];
+      if(!coords){
+        try{
+          const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(e.suburb+', VIC, Australia')}&countrycodes=au&limit=1`,{headers:{'Accept':'application/json'}});
+          const data=await res.json();
+          if(data.length){
+            coords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
+            cached[e.suburb]=coords;
+            save('cw_geocache',cached);
+          }
+        }catch{}
+        await new Promise(r=>setTimeout(r,300));// Rate limit
+      }
+      if(coords){
+        // Add small random offset so pins in same suburb don't stack
+        const jitter=()=>(Math.random()-0.5)*0.003;
+        assignedPins[refId]={
+          refId,refType:'lead',name:e.name,dog:e.dogName||'',
+          stage:e.stage,suburb:e.suburb,
+          addr:e.suburb+', VIC',
+          lat:coords.lat+jitter(),lng:coords.lng+jitter(),
+        };
+      }
+    }
+    save('cw_map_pins',assignedPins);
+    covDataLoaded=true;
+  }catch(e){console.warn('Coverage data load failed:',e);}
+}
+
 function seedDefaultPins(){
-  if(Object.keys(assignedPins).length>0)return;
-  const defaults=[
-    {refId:'c1',refType:'client',name:'Amy Foster',dog:'Biscuit',health:'active',suburb:'Fitzroy',addr:'48 Napier St, Fitzroy VIC',lat:-37.7963,lng:144.9778},
-    {refId:'c2',refType:'client',name:'Jessica Lee',dog:'Pepper',health:'active',suburb:'Richmond',addr:'112 Church St, Richmond VIC',lat:-37.8199,lng:144.9977},
-    {refId:'c3',refType:'client',name:'Connor Hayes',dog:'Banjo',health:'active',suburb:'Collingwood',addr:'76 Smith St, Collingwood VIC',lat:-37.7991,lng:144.9869},
-    {refId:'c4',refType:'client',name:'Olivia Martin',dog:'Noodle',health:'at-risk',suburb:'South Yarra',addr:'20 Toorak Rd, South Yarra VIC',lat:-37.8392,lng:144.9908},
-    {refId:'c5',refType:'client',name:'Ryan Chang',dog:'Scout',health:'active',suburb:'Northcote',addr:'195 High St, Northcote VIC',lat:-37.7710,lng:144.9989},
-    {refId:'c6',refType:'client',name:'Hannah Brown',dog:'Maple',health:'active',suburb:'Brunswick',addr:'330 Sydney Rd, Brunswick VIC',lat:-37.7660,lng:144.9612},
-    {refId:'c7',refType:'client',name:'Daniel Nguyen',dog:'Bear',health:'at-risk',suburb:'Carlton',addr:'155 Lygon St, Carlton VIC',lat:-37.7996,lng:144.9660},
-    {refId:'c8',refType:'client',name:'Sophie Turner',dog:'Lola',health:'win-back',suburb:'St Kilda',addr:'62 Acland St, St Kilda VIC',lat:-37.8612,lng:144.9785},
-    {refId:'e1',refType:'lead',name:'Sarah Mitchell',dog:'Buddy',stage:'new',suburb:'Fitzroy',addr:'22 Brunswick St, Fitzroy VIC',lat:-37.7984,lng:144.9780},
-    {refId:'e2',refType:'lead',name:'James Thompson',dog:'Bella',stage:'new',suburb:'Richmond',addr:'88 Bridge Rd, Richmond VIC',lat:-37.8180,lng:144.9952},
-    {refId:'e3',refType:'lead',name:'Emma Chen',dog:'Max',stage:'new',suburb:'Collingwood',addr:'40 Johnston St, Collingwood VIC',lat:-37.7974,lng:144.9882},
-    {refId:'e4',refType:'lead',name:'Michael Torres',dog:'Luna',stage:'new',suburb:'South Yarra',addr:'5 Chapel St, South Yarra VIC',lat:-37.8395,lng:144.9940},
-    {refId:'e5',refType:'lead',name:'Priya Sharma',dog:'Coco',stage:'contacted',suburb:'Northcote',addr:'280 High St, Northcote VIC',lat:-37.7695,lng:144.9985},
-    {refId:'e6',refType:'lead',name:'Tom Wilson',dog:'Archie',stage:'contacted',suburb:'Brunswick',addr:'400 Sydney Rd, Brunswick VIC',lat:-37.7645,lng:144.9605},
-    {refId:'e7',refType:'lead',name:'Rachel Green',dog:'Daisy',stage:'qualified',suburb:'Carlton',addr:'210 Lygon St, Carlton VIC',lat:-37.8005,lng:144.9665},
-    {refId:'e8',refType:'lead',name:'David Kim',dog:'Milo',stage:'qualified',suburb:'Fitzroy North',addr:'12 Scotchmer St, Fitzroy North VIC',lat:-37.7880,lng:144.9780},
-    {refId:'e9',refType:'lead',name:'Lisa Park',dog:'Charlie',stage:'closed-won',suburb:'St Kilda',addr:'15 Fitzroy St, St Kilda VIC',lat:-37.8580,lng:144.9735},
-    {refId:'e10',refType:'lead',name:'Nick Patel',dog:'Rosie',stage:'closed-won',suburb:'Prahran',addr:'166 Commercial Rd, Prahran VIC',lat:-37.8500,lng:144.9920},
-  ];
-  defaults.forEach(p=>assignedPins[p.refId]=p);
-  save('cw_map_pins',assignedPins);
+  // Load cached pins — real data loaded async via loadCoverageData()
+  const cached=load('cw_map_pins',{});
+  if(Object.keys(cached).length>0){
+    Object.assign(assignedPins,cached);
+  }
 }
 
 function setCovFilter(f){
   covFilter=f;
-  document.querySelectorAll('#cov-filters .filter-pill').forEach((el,i)=>{
-    const map=['all','client','lead'];
-    el.classList.toggle('active',map[i]===f);
+  document.querySelectorAll('#cov-filters .filter-pill').forEach(el=>{
+    const map={'All':'all','Active Clients':'active','Inactive Clients':'inactive','Enquiries':'lead'};
+    const label=el.textContent.replace(/[🐕💤📥]/g,'').trim();
+    el.classList.toggle('active',map[label]===f);
   });
   renderCoverage();
 }
@@ -2539,8 +2570,16 @@ function openAssignAddress(){
 function renderCoverage(){
   seedDefaultPins();
 
+  // Trigger async data load if not done
+  if(!covDataLoaded){
+    loadCoverageData().then(()=>renderCoverage());
+  }
+
   const pins=Object.values(assignedPins);
-  const filteredPins=covFilter==='all'?pins:pins.filter(p=>p.refType===covFilter);
+  let filteredPins=pins;
+  if(covFilter==='active') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='active');
+  else if(covFilter==='inactive') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='inactive');
+  else if(covFilter==='lead') filteredPins=pins.filter(p=>p.refType==='lead');
 
   // Suburb stats from filtered pins
   const allSuburbs={};
@@ -2620,12 +2659,14 @@ function renderMapPins(pins){
   });
 
   pins.forEach(p=>{
-    let color='#F26B21';
-    if(p.refType==='lead')color='#3b82f6';
-    if(p.health==='win-back')color='#dc2626';
-    if(p.stage==='closed-won')color='#22c55e';
-    if(p.stage==='qualified')color='#06b6d4';
-    if(p.health==='at-risk')color='#d97706';
+    let color='#F26B21';// Default: active client
+    if(p.refType==='client'&&p.status==='inactive')color='#9ca3af';
+    if(p.refType==='lead'){
+      color='#3b82f6';// Default lead
+      if(p.stage==='qualified')color='#06b6d4';
+      if(p.stage==='closed-won')color='#22c55e';
+      if(p.stage==='closed-lost'||p.stage==='not-suitable')color='#6b7280';
+    }
 
     const icon=L.divIcon({
       html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
@@ -2634,15 +2675,14 @@ function renderMapPins(pins){
 
     const marker=L.marker([p.lat,p.lng],{icon});
     const badge=p.refType==='client'
-      ?`🏠 Client <span style="font-size:10px;font-weight:700;color:${p.health==='active'?'#16a34a':p.health==='at-risk'?'#d97706':'#dc2626'}">${p.health||''}</span>`
-      :`📥 Lead <span style="font-size:10px;font-weight:700;color:#3b82f6">${p.stage||''}</span>`;
+      ?`🏠 Client <span style="font-size:10px;font-weight:700;color:${p.status==='active'?'#16a34a':'#9ca3af'}">${p.status||''}${p.futureWalks?' · '+p.futureWalks+' upcoming walks':''}</span>`
+      :`📥 Enquiry <span style="font-size:10px;font-weight:700;color:${color}">${STAGES.find(s=>s.id===p.stage)?.label||p.stage||''}</span>`;
     marker.bindPopup(`
       <div style="font-family:Inter,sans-serif;min-width:180px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:4px">${p.name}</div>
-        <div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">🐶 ${p.dog} · ${p.suburb}</div>
-        <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${p.addr}</div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">${esc(p.name)}</div>
+        ${p.service?`<div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">${esc(p.service)}</div>`:''}
+        <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${esc(p.suburb||p.addr||'')}</div>
         <div>${badge}</div>
-        <div style="margin-top:6px"><button onclick="removePin('${p.refId}')" style="background:none;border:1px solid #fca5a5;color:#dc2626;padding:2px 8px;border-radius:12px;font-size:10px;cursor:pointer;font-weight:600">Remove from map</button></div>
       </div>`);
     covMarkers.addLayer(marker);
   });
