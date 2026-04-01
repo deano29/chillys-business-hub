@@ -823,6 +823,28 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
         </div>
         <div class="settings-card">
+          <h3>🛣️ Route Planner Settings</h3>
+          <p>Cost and threshold defaults for route profitability analysis.</p>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="form-group"><label>Cost Per KM ($)</label><input id="s-cost-km" type="number" step="0.01" value="0.78"></div>
+            <div class="form-group"><label>Super Rate (%)</label><input id="s-super-rate" type="number" step="0.5" value="11.5"></div>
+            <div class="form-group"><label>Casual Loading (%)</label><input id="s-casual-load" type="number" step="0.5" value="25"></div>
+            <div class="form-group"><label>Target Profit/Hr ($)</label><input id="s-target-profit" type="number" value="30"></div>
+            <div class="form-group"><label>Green Margin Threshold (%)</label><input id="s-margin-green" type="number" value="40"></div>
+            <div class="form-group"><label>Yellow Margin Threshold (%)</label><input id="s-margin-yellow" type="number" value="20"></div>
+            <div class="form-group"><label>Travel Load Warn (%)</label><input id="s-travel-warn" type="number" value="30"></div>
+            <div class="form-group"><label>Travel Load Danger (%)</label><input id="s-travel-danger" type="number" value="45"></div>
+            <div class="form-group"><label>Founder Notional Hourly ($)</label><input id="s-founder-rate" type="number" value="0"></div>
+            <div class="form-group"><label>Founder Target Hourly ($)</label><input id="s-founder-target" type="number" value="80"></div>
+            <div class="form-group"><label>Default Buffer (mins)</label><input id="s-buffer-mins" type="number" value="15"></div>
+            <div class="form-group"><label>Max Dogs Per Shift</label><input id="s-max-dogs" type="number" value="6"></div>
+            <div class="form-group"><label>Founder Hourly Rate ($)</label><input id="s-rate-founder" type="number" value="0"></div>
+            <div class="form-group"><label>Employee Hourly Rate ($)</label><input id="s-rate-employee" type="number" value="30"></div>
+            <div class="form-group"><label>Contractor Hourly Rate ($)</label><input id="s-rate-contractor" type="number" value="40"></div>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('routes')">Save Route Settings</button></div>
+        </div>
+        <div class="settings-card">
           <h3>📋 Automation Log</h3>
           <p>In-app events logged automatically — enquiry changes, stage moves, templates used.</p>
           <div class="auto-log" id="auto-log"></div>
@@ -2198,7 +2220,8 @@ function renderBySuburb(){
 const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
-  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks']
+  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
+  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-rate','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-founder','s-rate-employee','s-rate-contractor']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
@@ -2824,6 +2847,179 @@ document.querySelectorAll('.filter-pill').forEach(p=>{
     this.classList.add('active');
   });
 });
+
+// ── ROUTE PLANNER — CALCULATION ENGINE ──
+
+function getRouteSettings(){
+  return {
+    costPerKm: parseFloat(getSetting('s-cost-km',0.78))||0.78,
+    superRate: (parseFloat(getSetting('s-super-rate',11.5))||11.5)/100,
+    casualLoading: (parseFloat(getSetting('s-casual-load',25))||25)/100,
+    marginThresholdGreen: parseFloat(getSetting('s-margin-green',40))||40,
+    marginThresholdYellow: parseFloat(getSetting('s-margin-yellow',20))||20,
+    travelLoadThresholdWarn: parseFloat(getSetting('s-travel-warn',30))||30,
+    travelLoadThresholdDanger: parseFloat(getSetting('s-travel-danger',45))||45,
+    targetProfitPerHr: parseFloat(getSetting('s-target-profit',30))||30,
+    founderHourlyRate: parseFloat(getSetting('s-founder-rate',0))||0,
+    founderTargetHourly: parseFloat(getSetting('s-founder-target',80))||80,
+    defaultBufferMins: parseFloat(getSetting('s-buffer-mins',15))||15,
+    maxDogsPerShift: parseFloat(getSetting('s-max-dogs',6))||6,
+    defaultRates:{
+      founder: parseFloat(getSetting('s-rate-founder',0))||0,
+      employee: parseFloat(getSetting('s-rate-employee',30))||30,
+      contractor: parseFloat(getSetting('s-rate-contractor',40))||40,
+    }
+  };
+}
+
+function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading){
+  const hours=shiftMins/60;
+  if(walkerType==='founder') return hours*hourlyRate;// Notional or 0
+  if(walkerType==='contractor') return hours*hourlyRate;// Raw rate, no loadings
+  // Employee/casual: base + super + casual loading
+  const loaded=hourlyRate*(1+superRate+(walkerType==='casual'?casualLoading:0));
+  return hours*loaded;
+}
+
+function calcTravelCost(distanceKm, costPerKm){
+  return Math.max(0,distanceKm*costPerKm);
+}
+
+function calcProfitability(revenue, labourCost, travelCost, variableCost){
+  const totalDirectCost=labourCost+travelCost+variableCost;
+  const grossProfit=revenue-totalDirectCost;
+  const grossMargin=revenue>0?(grossProfit/revenue)*100:0;
+  return {totalDirectCost, grossProfit, grossMargin};
+}
+
+function calcUtilisation(serviceMins, travelMins, bufferMins, shiftMins){
+  if(shiftMins<=0) return 0;
+  return ((serviceMins+travelMins+bufferMins)/shiftMins)*100;
+}
+
+function calcRouteHealth(margin, travelLoad, utilisation, settings){
+  const s=settings||getRouteSettings();
+  // Not Viable
+  if(margin<s.marginThresholdYellow||utilisation>100||travelLoad>s.travelLoadThresholdDanger) return 'not-viable';
+  // Borderline
+  if(margin<s.marginThresholdGreen||travelLoad>s.travelLoadThresholdWarn) return 'borderline';
+  // Profitable
+  if(utilisation>=70&&utilisation<=95) return 'profitable';
+  return 'borderline';// Outside optimal utilisation band
+}
+
+function calcRouteScore(margin, travelLoad, utilisation, dogCount, maxDogs){
+  let score=0;
+  // Profitability (35%)
+  if(margin>=60) score+=35; else if(margin>=40) score+=28; else if(margin>=20) score+=18; else if(margin>=0) score+=8;
+  // Travel efficiency (20%)
+  if(travelLoad<=15) score+=20; else if(travelLoad<=30) score+=16; else if(travelLoad<=45) score+=8; else score+=2;
+  // Utilisation (25%) — optimal around 80%
+  const utilDiff=Math.abs(utilisation-80);
+  if(utilDiff<=10) score+=25; else if(utilDiff<=20) score+=18; else if(utilDiff<=35) score+=10; else score+=3;
+  // Capacity fill (20%)
+  const fill=maxDogs>0?(dogCount/maxDogs):0;
+  if(fill>=0.8) score+=20; else if(fill>=0.6) score+=15; else if(fill>=0.4) score+=8; else score+=3;
+  return Math.min(100,Math.max(0,Math.round(score)));
+}
+
+function getScoreBand(score){
+  if(score>=80) return {label:'Excellent',cls:'rp-score-excellent'};
+  if(score>=60) return {label:'Workable',cls:'rp-score-workable'};
+  if(score>=40) return {label:'Weak',cls:'rp-score-weak'};
+  return {label:'Poor',cls:'rp-score-poor'};
+}
+
+function getRecommendations(m, settings){
+  const s=settings||getRouteSettings();
+  const recs=[];
+  if(m.grossProfit<=0) recs.push({p:1,icon:'🔴',text:'Route is currently unprofitable. Reduce travel or add more bookings.'});
+  if(m.grossMargin>0&&m.grossMargin<s.marginThresholdYellow) recs.push({p:2,icon:'⚠️',text:`Margin is below ${s.marginThresholdYellow}% target. Consider adding another dog or raising prices.`});
+  if(m.travelLoad>s.travelLoadThresholdDanger) recs.push({p:2,icon:'🚗',text:'Travel time is too high relative to route value. Cluster bookings closer together.'});
+  if(m.travelLoad>s.travelLoadThresholdWarn&&m.travelLoad<=s.travelLoadThresholdDanger) recs.push({p:3,icon:'📍',text:'Travel load is elevated. Consider tighter geographic grouping.'});
+  if(m.utilisation>100) recs.push({p:1,icon:'❌',text:'Route is not feasible within current shift length. Reduce bookings or extend shift.'});
+  if(m.utilisation<60) recs.push({p:3,icon:'📉',text:'Shift appears underfilled. There\'s capacity for more bookings.'});
+  if(m.dogCount<m.maxDogs&&m.grossMargin<s.marginThresholdGreen) recs.push({p:3,icon:'🐕',text:`Capacity for ${m.maxDogs-m.dogCount} more dogs. Adding one could significantly improve margin.`});
+  if(m.profitPerHr<s.targetProfitPerHr&&m.grossProfit>0) recs.push({p:3,icon:'💰',text:`Profit/hr ($${m.profitPerHr.toFixed(0)}) is below target ($${s.targetProfitPerHr}). Optimise route density.`});
+  if(m.walkerType==='founder'&&m.grossMargin>0&&m.grossMargin<50) recs.push({p:2,icon:'👤',text:'This route may be better assigned to a staff walker to free up founder time.'});
+  if(m.grossMargin>=60&&m.utilisation>=70) recs.push({p:4,icon:'✅',text:'Route is performing well. Good profitability and utilisation.'});
+  return recs.sort((a,b)=>a.p-b.p).slice(0,5);
+}
+
+function calcFounderComparison(metrics, settings){
+  const s=settings||getRouteSettings();
+  const shiftHrs=metrics.shiftMins/60;
+  // Founder view
+  const founderLabour=shiftHrs*s.founderHourlyRate;
+  const founderProfit=metrics.totalRevenue-(founderLabour+metrics.travelCost+metrics.variableCost);
+  const founderMargin=metrics.totalRevenue>0?(founderProfit/metrics.totalRevenue)*100:0;
+  const founderOpportunityCost=shiftHrs*s.founderTargetHourly;
+  const founderNetValue=founderProfit-founderOpportunityCost;
+  // Staff view
+  const staffRate=s.defaultRates.employee;
+  const staffLabour=calcLabourCost('employee',staffRate,metrics.shiftMins,s.superRate,s.casualLoading);
+  const staffProfit=metrics.totalRevenue-(staffLabour+metrics.travelCost+metrics.variableCost);
+  const staffMargin=metrics.totalRevenue>0?(staffProfit/metrics.totalRevenue)*100:0;
+  const staffProfitPerHr=shiftHrs>0?staffProfit/shiftHrs:0;
+  // Comparison
+  const profitDiff=staffProfit-founderProfit;
+  let recommendation='';
+  if(founderNetValue<0&&staffProfit>0) recommendation='This route should be assigned to staff. Founder time is more valuable elsewhere.';
+  else if(founderMargin>=60) recommendation='Founder should keep this route — strong margin justifies the time.';
+  else if(staffProfit>founderProfit) recommendation=`Staff route is $${Math.abs(profitDiff).toFixed(0)} more profitable due to lower notional cost.`;
+  else recommendation='Route economics are similar. Consider strategic priorities.';
+  return {
+    founder:{labour:founderLabour,profit:founderProfit,margin:founderMargin,opportunityCost:founderOpportunityCost,netValue:founderNetValue},
+    staff:{labour:staffLabour,profit:staffProfit,margin:staffMargin,profitPerHr:staffProfitPerHr},
+    profitDiff,recommendation
+  };
+}
+
+function calcShiftMetrics(shift, settings){
+  const s=settings||getRouteSettings();
+  const startMins=timeToMins(shift.startTime);
+  const endMins=timeToMins(shift.endTime);
+  const shiftMins=endMins-startMins;
+  const breakMins=shift.breakMins||0;
+  const availableMins=shiftMins-breakMins;
+  const bookings=shift.bookings||[];
+  const totalRevenue=bookings.reduce((sum,b)=>sum+(parseFloat(b.price)||0),0);
+  const totalServiceMins=bookings.reduce((sum,b)=>sum+(parseFloat(b.durationMins)||0),0);
+  const dogCount=bookings.length;
+  const maxDogs=shift.maxDogs||s.maxDogsPerShift;
+  const travelMins=parseFloat(shift.travelMins)||0;
+  const travelKm=parseFloat(shift.travelDistanceKm)||0;
+  const bufferMins=parseFloat(shift.bufferMins)||s.defaultBufferMins;
+  const hourlyRate=parseFloat(shift.hourlyRate)||(s.defaultRates[shift.walkerType]||0);
+  const variableCost=(parseFloat(shift.variableCost)||0)+(parseFloat(shift.paymentFee)||0)+(parseFloat(shift.adminAlloc)||0);
+  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading);
+  const travelCost=calcTravelCost(travelKm,s.costPerKm);
+  const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(totalRevenue,labourCost,travelCost,variableCost);
+  const shiftHrs=shiftMins/60;
+  const revenuePerHr=shiftHrs>0?totalRevenue/shiftHrs:0;
+  const profitPerHr=shiftHrs>0?grossProfit/shiftHrs:0;
+  const dogsPerHr=shiftHrs>0?dogCount/shiftHrs:0;
+  const travelLoad=shiftMins>0?(travelMins/shiftMins)*100:0;
+  const utilisation=calcUtilisation(totalServiceMins,travelMins,bufferMins,shiftMins);
+  const avgRevenuePerDog=dogCount>0?totalRevenue/dogCount:0;
+  const breakEvenRevenue=totalDirectCost;
+  const breakEvenDogs=avgRevenuePerDog>0?Math.ceil(totalDirectCost/avgRevenuePerDog):0;
+  const health=calcRouteHealth(grossMargin,travelLoad,utilisation,s);
+  const score=calcRouteScore(grossMargin,travelLoad,utilisation,dogCount,maxDogs);
+  return {
+    shiftMins,availableMins,breakMins,totalRevenue,totalServiceMins,dogCount,maxDogs,
+    travelMins,travelKm,labourCost,travelCost,variableCost,totalDirectCost,
+    grossProfit,grossMargin,revenuePerHr,profitPerHr,dogsPerHr,
+    travelLoad,utilisation,breakEvenRevenue,breakEvenDogs,
+    health,score,walkerType:shift.walkerType||'employee',hourlyRate
+  };
+}
+
+function timeToMins(t){
+  if(!t) return 0;
+  const [h,m]=(t+'').split(':').map(Number);
+  return (h||0)*60+(m||0);
+}
 
 // ── INIT ──
 renderDashboard();
