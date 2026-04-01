@@ -3285,12 +3285,12 @@ function getRouteSettings(){
     travelLoadThresholdWarn: parseFloat(getSetting('s-travel-warn',30))||30,
     travelLoadThresholdDanger: parseFloat(getSetting('s-travel-danger',45))||45,
     targetProfitPerHr: parseFloat(getSetting('s-target-profit',30))||30,
-    founderHourlyRate: parseFloat(getSetting('s-founder-rate',0))||0,
+    founderHourlyRate: parseFloat(getSetting('s-founder-rate',30))||30,
     founderTargetHourly: parseFloat(getSetting('s-founder-target',80))||80,
     defaultBufferMins: parseFloat(getSetting('s-buffer-mins',15))||15,
     maxDogsPerShift: parseFloat(getSetting('s-max-dogs',6))||6,
     defaultRates:{
-      founder: parseFloat(getSetting('s-rate-founder',0))||0,
+      founder: parseFloat(getSetting('s-rate-founder',30))||30,
       employee: parseFloat(getSetting('s-rate-employee',30))||30,
       contractor: parseFloat(getSetting('s-rate-contractor',40))||40,
     }
