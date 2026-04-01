@@ -201,6 +201,18 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .show-closed-toggle:hover{border-color:var(--orange);color:var(--orange)}
 .k-show-more{width:100%;padding:8px;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--ink-light);font-size:12px;cursor:pointer;transition:all .15s}
 .k-show-more:hover{border-color:var(--orange);color:var(--orange);background:var(--orange-light)}
+.walks-stat{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;flex:1;text-align:center}
+.walks-stat-val{font-size:22px;font-weight:800;color:var(--ink)}
+.walks-stat-lbl{font-size:11px;color:var(--ink-light);margin-top:2px}
+.walk-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;transition:all .1s}
+.walk-row:hover{border-color:var(--orange-light);box-shadow:var(--shadow)}
+.walk-time{font-size:12px;font-weight:700;color:var(--ink-light);min-width:110px}
+.walk-client{font-weight:600;font-size:13px}
+.walk-detail{font-size:11px;color:var(--ink-light)}
+.walk-status{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
+.walk-day-header{font-size:13px;font-weight:700;color:var(--ink);padding:12px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.booking-row{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px}
+.booking-status{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -486,7 +498,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     </div>
     <div class="nav-section">
       <div class="nav-label">Clients</div>
-      <div class="nav-item" data-view="clients"><span class="ni">🐕</span><span class="nl">Clients & Walks</span></div>
+      <div class="nav-item" data-view="clients"><span class="ni">🐕</span><span class="nl">Clients</span></div>
+      <div class="nav-item" data-view="walks"><span class="ni">🦮</span><span class="nl">Walks</span></div>
       <div class="nav-item" data-view="inbox"><span class="ni">✉️</span><span class="nl">Inbox</span><span class="nav-badge" id="badge-inbox">2</span></div>
     </div>
     <div class="nav-section">
@@ -620,11 +633,27 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <div class="clients-grid" id="clients-grid"></div>
       <div style="margin-top:24px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <h3 style="margin:0;font-size:15px;font-weight:700">Today's Walks</h3>
-          <span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:3px 9px;border-radius:20px;font-weight:600">Via Google Calendar</span>
+          <h3 style="margin:0;font-size:15px;font-weight:700">Booking Status</h3>
+          <span style="font-size:11px;background:var(--info-bg);color:var(--info);padding:3px 9px;border-radius:20px;font-weight:600">Active clients vs upcoming walks</span>
         </div>
-        <div id="client-walks-list"></div>
+        <div id="client-bookings"></div>
       </div>
+    </div>
+
+    <!-- ── WALKS ── -->
+    <div class="view" id="view-walks">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="pipeline-filters" id="walks-range-filters">
+          <div class="filter-pill active" onclick="setWalksRange('today')">Today</div>
+          <div class="filter-pill" onclick="setWalksRange('week')">This Week</div>
+          <div class="filter-pill" onclick="setWalksRange('month')">This Month</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:3px 9px;border-radius:20px;font-weight:600">Live from Time to Pet</span>
+        </div>
+      </div>
+      <div id="walks-summary" style="display:flex;gap:12px;margin-bottom:16px"></div>
+      <div id="walks-content"></div>
     </div>
 
     <!-- ── INBOX ── -->
@@ -1133,7 +1162,7 @@ function getObNextAction(e){
 // ── NAV ──
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
-  clients:'Clients & Walks',inbox:'Inbox',coverage:'Coverage Map',templates:'Message Templates',
+  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',coverage:'Coverage Map',templates:'Message Templates',
   reports:'Reports & KPIs',settings:'Settings',
 };
 
@@ -1153,6 +1182,7 @@ function navigate(v){
   if(v==='dashboard')renderDashboard();
   if(v==='enquiries')renderPipeline();
   if(v==='clients')renderClients();
+  if(v==='walks')renderWalks();
   if(v==='inbox')renderInbox();
   if(v==='coverage')renderCoverage();
   if(v==='templates')renderTemplates();
@@ -1273,38 +1303,40 @@ async function fetchXeroData(){
 
 // ── FETCH TODAY'S WALKS (Google Calendar via Make.com) ──
 async function fetchTodaysWalks(){
-  const url=getWebhookUrl('wh-fetch-walks');
-  // Try cache first
-  const cache=load('cw_walks_cache',null);
-  if(cache&&cache.date===today()){
-    TODAY_WALKS=cache.walks;
-    renderWalksList();
-    if(!url) return;
-  }
-  if(!url) return;
   try{
-    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today()})});
-    const data=await res.json();
-    const walks=Array.isArray(data)?data:(data.walks||[]);
+    const res=await fetch('/api/walks/today?range=today');
+    if(!res.ok) return;
+    const walks=await res.json();
     if(walks.length>0){
       TODAY_WALKS=walks;
-      save('cw_walks_cache',{date:today(),walks});
       renderWalksList();
       const wb=document.querySelector('#dash-walks')?.closest('.card')?.querySelector('.badge');
-        if(wb) wb.textContent=walks.length+' walks';
+      if(wb) wb.textContent=walks.length+' walks';
     }
   }catch(e){/* silent fail — keep showing current data */}
 }
 function renderWalksList(){
   const el=document.getElementById('dash-walks');
   if(!el) return;
-  el.innerHTML=TODAY_WALKS.map(w=>`
-    <div class="walk-item">
-      <div class="walk-time">${w.time}</div>
-      <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs}</div><div class="walk-type">${w.type}</div></div>
-      <div class="walk-walker">${w.walker}</div>
-      <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
-    </div>`).join('');
+  if(TODAY_WALKS.length&&TODAY_WALKS[0].client){
+    // Real walk data from API
+    el.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${esc(w.client)}</div><div class="walk-type">${esc(w.service)}</div></div>
+        <div class="walk-walker">${esc(w.walker||'')}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }else{
+    // Fallback dummy data format
+    el.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs||''}</div><div class="walk-type">${w.type||''}</div></div>
+        <div class="walk-walker">${w.walker||''}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }
 }
 
 // ── FETCH NEW LEADS (FB/Instagram) ──
@@ -1645,16 +1677,156 @@ function renderClients(){
     </div>`;
   }).join(''):'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No clients found</div>';
 
-  // Render today's walks section
-  const walksEl=document.getElementById('client-walks-list');
-  if(walksEl){
-    walksEl.innerHTML=TODAY_WALKS.map(w=>`
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px">
-        <div style="font-size:12px;font-weight:700;color:var(--ink-light);min-width:60px">${w.time}</div>
-        <div style="flex:1"><strong>${esc(w.dogs)}</strong><div style="font-size:11px;color:var(--ink-light)">${esc(w.type)} · ${esc(w.walker)}</div></div>
-        <span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;background:${w.status==='completed'?'var(--success-bg)':w.status==='inprogress'?'var(--warning-bg)':'var(--cream-dark)'};color:${w.status==='completed'?'var(--success)':w.status==='inprogress'?'var(--warning)':'var(--ink-light)'}">${w.status==='completed'?'✓ Done':w.status==='inprogress'?'● In Progress':'○ Upcoming'}</span>
-      </div>`).join('');
+  // Render booking visibility
+  renderClientBookings();
+}
+
+// ── WALKS ──
+let walksRange='today';
+let walksData=[];
+let walksLoading=false;
+
+function setWalksRange(r){
+  walksRange=r;
+  document.querySelectorAll('#walks-range-filters .filter-pill').forEach(p=>p.classList.remove('active'));
+  event?.target?.classList.add('active');
+  renderWalks();
+}
+
+async function fetchWalks(range){
+  try{
+    const res=await fetch('/api/walks/today?range='+range);
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){return [];}
+}
+
+async function renderWalks(){
+  const content=document.getElementById('walks-content');
+  const summary=document.getElementById('walks-summary');
+  if(!content) return;
+
+  // Update filter pills
+  document.querySelectorAll('#walks-range-filters .filter-pill').forEach(p=>{
+    p.classList.toggle('active',p.textContent.trim().toLowerCase().includes(walksRange==='today'?'today':walksRange==='week'?'week':'month'));
+  });
+
+  content.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading walks...</div>';
+  walksData=await fetchWalks(walksRange);
+
+  // Summary stats
+  const completed=walksData.filter(w=>w.status==='completed').length;
+  const inProgress=walksData.filter(w=>w.status==='inprogress').length;
+  const upcoming=walksData.filter(w=>w.status==='upcoming').length;
+  const uniqueClients=[...new Set(walksData.map(w=>w.client))].length;
+  const totalHrs=walksData.reduce((sum,w)=>{
+    if(!w.start||!w.end) return sum;
+    return sum+(new Date(w.end)-new Date(w.start))/3600000;
+  },0);
+
+  summary.innerHTML=`
+    <div class="walks-stat"><div class="walks-stat-val">${walksData.length}</div><div class="walks-stat-lbl">Total Walks</div></div>
+    <div class="walks-stat"><div class="walks-stat-val">${uniqueClients}</div><div class="walks-stat-lbl">Clients</div></div>
+    <div class="walks-stat"><div class="walks-stat-val">${totalHrs.toFixed(1)}h</div><div class="walks-stat-lbl">Walk Hours</div></div>
+    <div class="walks-stat"><div class="walks-stat-val" style="color:var(--success)">${completed}</div><div class="walks-stat-lbl">Completed</div></div>
+    ${inProgress?`<div class="walks-stat"><div class="walks-stat-val" style="color:var(--warning)">${inProgress}</div><div class="walks-stat-lbl">In Progress</div></div>`:''}
+    <div class="walks-stat"><div class="walks-stat-val" style="color:var(--info)">${upcoming}</div><div class="walks-stat-lbl">Upcoming</div></div>
+  `;
+
+  if(!walksData.length){
+    content.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this period</div>';
+    return;
   }
+
+  if(walksRange==='today'){
+    content.innerHTML=walksData.map(renderWalkRow).join('');
+  }else{
+    // Group by date
+    const groups={};
+    walksData.forEach(w=>{
+      if(!groups[w.date]) groups[w.date]=[];
+      groups[w.date].push(w);
+    });
+    const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    content.innerHTML=Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,walks])=>{
+      const d=new Date(date+'T00:00:00');
+      const dayName=dayNames[d.getDay()];
+      const dateLabel=`${dayName} ${d.getDate()}/${d.getMonth()+1}`;
+      const hrs=walks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
+      return `<div class="walk-day-header"><span>${dateLabel}</span><span style="font-weight:500;font-size:11px;color:var(--ink-light)">${walks.length} walks · ${hrs.toFixed(1)}h</span></div>`+
+        walks.map(renderWalkRow).join('');
+    }).join('');
+  }
+}
+
+function renderWalkRow(w){
+  const statusStyle=w.status==='completed'?'background:var(--success-bg);color:var(--success)':w.status==='inprogress'?'background:var(--warning-bg);color:var(--warning)':'background:var(--cream-dark);color:var(--ink-light)';
+  const statusLabel=w.status==='completed'?'Done':w.status==='inprogress'?'In Progress':'Upcoming';
+  return `<div class="walk-row">
+    <div class="walk-time">${w.time} — ${w.endTime}</div>
+    <div style="flex:1">
+      <div class="walk-client">${esc(w.client)}</div>
+      <div class="walk-detail">${esc(w.service)}${w.walker?' · Walker: '+esc(w.walker):''}</div>
+      ${w.location?`<div class="walk-detail">📍 ${esc(w.location.split(',').slice(0,2).join(','))}</div>`:''}
+    </div>
+    <span class="walk-status" style="${statusStyle}">${statusLabel}</span>
+  </div>`;
+}
+
+// ── CLIENT BOOKING VISIBILITY ──
+async function renderClientBookings(){
+  const el=document.getElementById('client-bookings');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight)">Loading booking data...</div>';
+
+  // Fetch all walks to check bookings per client
+  const allWalks=await fetchWalks('all');
+  const now=new Date();
+  const futureWalks=allWalks.filter(w=>new Date(w.start)>now);
+
+  // Build booking map per client
+  const bookingMap={};
+  futureWalks.forEach(w=>{
+    if(!bookingMap[w.client]) bookingMap[w.client]={count:0,nextDate:'',lastDate:''};
+    bookingMap[w.client].count++;
+    if(!bookingMap[w.client].nextDate||w.date<bookingMap[w.client].nextDate) bookingMap[w.client].nextDate=w.date;
+    if(!bookingMap[w.client].lastDate||w.date>bookingMap[w.client].lastDate) bookingMap[w.client].lastDate=w.date;
+  });
+
+  // Match with active Notion clients
+  const activeClients=clients.filter(c=>c.health==='active');
+  const rows=activeClients.map(c=>{
+    const booking=bookingMap[c.owner]||null;
+    const matched=booking?true:false;
+    // Try fuzzy match if exact doesn't work
+    let b=booking;
+    if(!b){
+      const key=Object.keys(bookingMap).find(k=>k.toLowerCase().includes((c.owner||'').toLowerCase().split(' ')[0].toLowerCase()));
+      if(key) b=bookingMap[key];
+    }
+    return {client:c,booking:b};
+  }).sort((a,b)=>(a.booking?0:1)-(b.booking?0:1));
+
+  if(!rows.length){
+    el.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight)">No active clients</div>';
+    return;
+  }
+
+  el.innerHTML=rows.map(({client:c,booking:b})=>{
+    let statusHtml,statusColor;
+    if(b&&b.count>0){
+      const daysAhead=Math.ceil((new Date(b.lastDate)-now)/(864e5));
+      statusHtml=`${b.count} walks booked · Until ${fmtDate(b.lastDate)} (${daysAhead}d ahead)`;
+      statusColor=daysAhead>=14?'var(--success)':daysAhead>=7?'var(--warning)':'var(--danger)';
+    }else{
+      statusHtml='No upcoming walks booked';
+      statusColor='var(--danger)';
+    }
+    return `<div class="booking-row">
+      <div style="flex:1"><strong>${esc(c.owner)}</strong><span style="margin-left:8px;font-size:11px;color:var(--ink-light)">${esc(c.primaryService||'')} · ${esc(c.suburb||'')}</span></div>
+      <span class="booking-status" style="background:${statusColor}20;color:${statusColor}">${statusHtml}</span>
+    </div>`;
+  }).join('');
 }
 
 // ── INBOX ──
