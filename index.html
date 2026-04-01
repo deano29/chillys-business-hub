@@ -872,6 +872,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
             <div class="form-group"><label>Founder Hourly Rate ($)</label><input id="s-rate-founder" type="number" value="0"></div>
             <div class="form-group"><label>Employee Hourly Rate ($)</label><input id="s-rate-employee" type="number" value="30"></div>
             <div class="form-group"><label>Contractor Hourly Rate ($)</label><input id="s-rate-contractor" type="number" value="40"></div>
+            <div class="form-group"><label>Avg Price — 2hr Adventure ($)</label><input id="s-price-adventure" type="number" value="75"></div>
+            <div class="form-group"><label>Avg Price — Solo/Group Walk ($)</label><input id="s-price-solo" type="number" value="55"></div>
           </div>
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('routes')">Save Route Settings</button></div>
         </div>
@@ -2310,7 +2312,7 @@ const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
-  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-rate','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-founder','s-rate-employee','s-rate-contractor']
+  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-rate','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-founder','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
@@ -3018,9 +3020,14 @@ async function renderRpDashboard(){
     const bookings=g.walks.map(w=>{
       const slot=slots.find(sl=>sl.dogs.includes(w));
       const isGroup=slot&&slot.dogs.length>1;
+      const svc=(w.service||'').toLowerCase();
+      // Auto-price based on service type
+      let price=0;
+      if(svc.includes('adventure')||svc.includes('2 hour')) price=parseFloat(getSetting('s-price-adventure',75))||75;
+      else price=parseFloat(getSetting('s-price-solo',55))||55;
       return {
         dogName:w.client,client:w.client,suburb:'',
-        serviceType:w.service,price:0,
+        serviceType:w.service,price,
         durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
         groupSuitable:isGroup,
         _slotDogs:slot?slot.dogs.length:1
@@ -3049,12 +3056,17 @@ async function renderRpDashboard(){
   const weekShiftCount=new Set(weekWalks.map(w=>w.walker+'_'+w.date)).size;
   const weekTotalHrs=weekWalks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
 
+  const todayRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const todayProfit=shifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+  const todayMargin=todayRevenue>0?(todayProfit/todayRevenue)*100:0;
+
   summaryEl.innerHTML=`
     <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekWalks.length}</div><div class="rp-weekly-lbl">Walks This Week</div></div>
     <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekShiftCount}</div><div class="rp-weekly-lbl">Walker-Days</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekTotalHrs.toFixed(1)}h</div><div class="rp-weekly-lbl">Total Walk Hours</div></div>
     <div class="rp-weekly-stat"><div class="rp-weekly-val">${todayWalks.length}</div><div class="rp-weekly-lbl">Walks Today</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">${shifts.length}</div><div class="rp-weekly-lbl">Shifts Today</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">$${todayRevenue.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Revenue Today</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${todayProfit>=0?'var(--success)':'var(--danger)'}">$${todayProfit.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Profit Today</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${todayMargin>=40?'var(--success)':todayMargin>=20?'var(--warning)':'var(--danger)'}">${todayMargin.toFixed(0)}%</div><div class="rp-weekly-lbl">Avg Margin</div></div>
   `;
 
   if(!shifts.length){
@@ -3088,17 +3100,17 @@ async function renderRpDashboard(){
       <div class="rp-shift-stats">
         <div>🐕 <strong>${walkCount}</strong> dogs</div>
         <div>🔗 <strong>${slots}</strong> service slots</div>
+        <div>💰 <strong>$${metrics.totalRevenue.toFixed(0)}</strong> revenue</div>
+        <div style="color:${metrics.grossProfit>=0?'var(--success)':'var(--danger)'}">📈 <strong>$${metrics.grossProfit.toFixed(0)}</strong> profit</div>
+        <div>📊 <strong>${metrics.grossMargin.toFixed(0)}%</strong> margin</div>
         <div>⏱ <strong>${(metrics.shiftMins/60).toFixed(1)}h</strong> shift</div>
-        <div>⏳ <strong>${(actualServiceMins/60).toFixed(1)}h</strong> actual service</div>
+        <div>⏳ <strong>${(actualServiceMins/60).toFixed(1)}h</strong> service time</div>
         <div>📊 <strong>${metrics.utilisation.toFixed(0)}%</strong> utilised</div>
-        <div>🚗 <strong>${metrics.travelLoad.toFixed(0)}%</strong> travel load</div>
+        <div>💵 <strong>$${metrics.profitPerHr.toFixed(0)}/hr</strong> profit rate</div>
       </div>
       <div style="margin-top:8px;font-size:12px">
         <span style="color:var(--info);font-weight:600">${groupInfo}</span>
         ${soloSlots>0?` · <span style="color:var(--ink-light)">${soloSlots} solo walk${soloSlots>1?'s':''}</span>`:''}
-      </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--ink-xlight)">
-        <em>Add prices via Shift Builder for full profitability. Group walks = higher revenue density per hour.</em>
       </div>
     </div>`;
   }).join('');
