@@ -1,3 +1,15 @@
+const https = require('https');
+
+function fetchURL(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (resp) => {
+      let data = '';
+      resp.on('data', chunk => data += chunk);
+      resp.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -5,8 +17,7 @@ module.exports = async function handler(req, res) {
   if (!calUrl) return res.status(500).json({ error: 'TTP_CALENDAR_URL not configured' });
 
   try {
-    const response = await fetch(calUrl);
-    const icsText = await response.text();
+    const icsText = await fetchURL(calUrl);
     const events = parseICS(icsText);
 
     // Filter and return based on query params
