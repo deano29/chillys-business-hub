@@ -1666,12 +1666,12 @@ function renderClients(){
     filtersEl.innerHTML=[
       {id:'all',label:'All Clients',count:statusCounts.all},
       {id:'active',label:'Active',count:statusCounts.active,color:'#22c55e'},
-      {id:'needs-attention',label:'< 7 Days Ahead',count:statusCounts['needs-attention'],color:'#f59e0b'},
-      {id:'well-booked',label:'14+ Days Ahead',count:statusCounts['well-booked'],color:'#06b6d4'},
+      {id:'needs-attention',label:'Booked < 7 Days Ahead',count:statusCounts['needs-attention'],color:'#f59e0b'},
+      {id:'well-booked',label:'Booked 14+ Days Ahead',count:statusCounts['well-booked'],color:'#06b6d4'},
       {id:'no-upcoming',label:'No Upcoming',count:statusCounts['no-upcoming'],color:'#ef4444'},
     ].filter(f=>f.count>0).map(f=>
       `<div class="filter-pill${clientFilter===f.id?' active':''}" style="cursor:pointer" onclick="clientFilter='${f.id}';renderClients()">
-        ${f.color?`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.color};margin-right:4px"></span>`:''}${f.label} <strong>${f.count}</strong>
+        ${f.color?`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.color};margin-right:4px"></span>`:''}${f.label} <strong>(${f.count})</strong>
       </div>`
     ).join('');
   }
