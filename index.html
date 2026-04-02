@@ -533,6 +533,122 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--cream-dark);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:var(--border)}
+/* ── MOBILE RESPONSIVE ── */
+.hamburger{display:none;background:none;border:none;font-size:22px;cursor:pointer;padding:4px 8px;color:var(--ink)}
+.sidebar-overlay{display:none}
+
+@media(max-width:768px){
+  /* Sidebar: off-canvas drawer */
+  .sidebar{position:fixed;left:-260px;top:0;bottom:0;z-index:1000;width:260px;min-width:260px;transition:left .25s ease}
+  body.sidebar-open .sidebar{left:0}
+  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999}
+  body.sidebar-open .sidebar-overlay{display:block}
+  .hamburger{display:block}
+
+  /* Main layout */
+  .main{width:100%}
+  .topbar{padding:0 14px;height:52px;gap:8px}
+  .topbar h2{font-size:16px}
+  .topbar-subtitle{display:none}
+  .topbar-right{font-size:11px}
+  .topbar-right .btn{font-size:10px;padding:4px 8px}
+  .content{padding:12px}
+
+  /* Stat cards */
+  .stat-grid{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .stat-card{padding:14px}
+  .stat-value{font-size:22px}
+  .stat-icon{font-size:18px}
+
+  /* Dashboard grids */
+  .dash-grid{grid-template-columns:1fr;gap:12px;margin-bottom:12px}
+
+  /* Cards */
+  .card{border-radius:var(--radius-sm)}
+  .card-header{padding:14px 16px}
+  .card-body{padding:12px 16px}
+
+  /* Pipeline & Kanban */
+  .kanban-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kanban{min-width:max-content}
+  .k-col{width:200px;min-width:200px}
+  .pipeline-header{flex-direction:column;gap:10px;align-items:stretch}
+  .pipeline-filters{flex-wrap:wrap;gap:6px}
+  .filter-pill{font-size:11px;padding:4px 10px}
+
+  /* Search */
+  .enq-search-wrap input{width:100%}
+  .view-toggle{display:none}
+
+  /* Forms */
+  .form-grid{grid-template-columns:1fr}
+  .form-group.full{grid-column:1}
+
+  /* Modals */
+  .modal{max-width:100%;margin:0;border-radius:0;max-height:100vh;height:100vh}
+  .modal-overlay{padding:0}
+  #modal-shift .modal{max-width:100%}
+  #modal-shift .modal>div:nth-child(2)>div{grid-template-columns:1fr!important}
+
+  /* Tables */
+  .enq-list-table{font-size:12px}
+  .enq-list-table th,.enq-list-table td{padding:6px 8px}
+
+  /* Route Planner */
+  #rp-tabs{flex-wrap:wrap}
+  #rp-range-pills{flex-wrap:wrap}
+  .rp-metric-grid{grid-template-columns:1fr 1fr}
+  .rp-shift-card{padding:12px}
+  .rp-shift-header{flex-direction:column;gap:8px;align-items:flex-start}
+  .rp-shift-stats{flex-wrap:wrap;gap:8px}
+  .rp-score-ring{width:40px;height:40px;font-size:14px;border-width:2px}
+  .walks-cal-grid{grid-template-columns:repeat(7,1fr);gap:2px}
+  .walks-cal-cell{padding:4px;min-height:50px}
+  .cal-day-num{font-size:10px}
+  .cal-day-count{font-size:8px}
+
+  /* Growth Simulator */
+  #gs-scenarios>div{grid-template-columns:1fr!important}
+
+  /* Clients */
+  .clients-grid{grid-template-columns:1fr}
+  .client-card{padding:14px}
+  .client-stats{gap:10px}
+
+  /* Coverage Map */
+  .cov-layout{grid-template-columns:1fr!important}
+  .cov-sidebar{max-height:300px;overflow-y:auto}
+  .cov-map-wrap{min-height:350px}
+  .cov-stat-row{flex-wrap:wrap;gap:8px}
+
+  /* Walk rows */
+  .walk-row{flex-wrap:wrap;gap:6px}
+  .walk-time{min-width:auto}
+
+  /* Inbox */
+  .inbox-channel-card{min-width:140px;padding:16px}
+
+  /* Settings */
+  .settings-grid{grid-template-columns:1fr!important}
+
+  /* Booking rows in shift builder */
+  .sh-booking .form-grid,.sh-booking>div{grid-template-columns:1fr!important}
+
+  /* Auth overlay */
+  #auth-overlay{padding:20px}
+  #clerk-auth{width:100%;max-width:400px}
+
+  /* Close sidebar on nav click */
+}
+
+@media(max-width:480px){
+  .stat-grid{grid-template-columns:1fr}
+  .rp-metric-grid{grid-template-columns:1fr}
+  .walks-cal-cell{min-height:40px;padding:2px}
+  .walks-cal-header{font-size:9px}
+  .cal-day-hrs{display:none}
+}
+
 @media print{
   .sidebar,.topbar,.modal-overlay,.toast{display:none!important}
   .main{margin:0!important;padding:20px!important;overflow:visible!important}
@@ -596,10 +712,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
     </div>
   </div>
 </aside>
+<div class="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
 
 <!-- ── MAIN ── -->
 <main class="main">
   <div class="topbar">
+    <button class="hamburger" onclick="document.body.classList.toggle('sidebar-open')">☰</button>
     <div class="topbar-left">
       <h2 id="topbar-title">Dashboard</h2>
       <span class="topbar-subtitle" id="topbar-sub">Monday, 30 March 2026</span>
@@ -1468,6 +1586,7 @@ const VIEW_TITLES={
 };
 
 function navigate(v){
+  document.body.classList.remove('sidebar-open');// Close mobile sidebar
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v)?.classList.add('active');
