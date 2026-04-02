@@ -840,7 +840,10 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
                 <h4 style="font-size:14px;font-weight:700">Client Pricing</h4>
                 <p style="font-size:12px;color:var(--ink-light)">Set per-walk rates for each client. Used across all revenue calculations.</p>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="saveClientPricing()">💾 Save All</button>
+              <div style="display:flex;gap:8px;align-items:center">
+                <div class="enq-search-wrap"><input type="text" id="pricing-search" placeholder="Search clients..." oninput="renderPricingTable()"></div>
+                <button class="btn btn-primary btn-sm" onclick="saveClientPricing()">Save All</button>
+              </div>
             </div>
             <div id="pricing-table"></div>
           </div>
@@ -3495,11 +3498,13 @@ function renderPricingTable(){
   const alertEl=document.getElementById('pricing-alert');
   if(!el) return;
 
+  const search=(document.getElementById('pricing-search')?.value||'').toLowerCase().trim();
   const ttpClients=clients.filter(c=>c.name).map(c=>c.name.replace(/\\+$/g,'').trim()).filter(Boolean);
   const allClientNames=[...new Set(ttpClients)].sort();
   const unpriced=allClientNames.filter(n=>!isClientPriced(n));
+  const filtered=search?allClientNames.filter(n=>n.toLowerCase().includes(search)):allClientNames;
   // Sort: active first, then unpriced first
-  const sorted=allClientNames.sort((a,b)=>{
+  const sorted=filtered.sort((a,b)=>{
     const ca=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===a);
     const cb=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===b);
     const aa=ca?.status==='active'?0:1;
