@@ -615,6 +615,16 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
   .client-card{padding:14px}
   .client-stats{gap:10px}
 
+  /* Page headers — stack vertically */
+  #view-clients>div:first-child,
+  #view-routes>div:first-child{flex-direction:column;align-items:stretch;gap:10px}
+  #view-routes>div:first-child>div:last-child{flex-wrap:wrap}
+  #rp-range-pills{order:2}
+
+  /* Weekly summary */
+  #rp-weekly-summary{flex-wrap:wrap;gap:8px}
+  .rp-weekly-stat{min-width:80px;flex:1}
+
   /* Coverage Map */
   .cov-layout{grid-template-columns:1fr!important}
   .cov-sidebar{max-height:300px;overflow-y:auto}
