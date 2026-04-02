@@ -904,12 +904,18 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <div id="rp-tab-dashboard">
         <div id="rp-weekly-summary" style="display:flex;gap:12px;margin-bottom:16px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:11px;align-items:center">
-          <strong style="color:var(--ink-light);margin-right:4px">Route Health:</strong>
+          <strong style="color:var(--ink-light);margin-right:4px">Health:</strong>
           <span class="rp-health rp-health-strong" style="font-size:10px;padding:2px 8px">🟢 Strong (60%+ margin)</span>
           <span class="rp-health rp-health-viable" style="font-size:10px;padding:2px 8px">✅ Viable (40%+ margin)</span>
           <span class="rp-health rp-health-needs-work" style="font-size:10px;padding:2px 8px">🟡 Needs Work (20-39%)</span>
           <span class="rp-health rp-health-not-viable" style="font-size:10px;padding:2px 8px">🔴 Not Viable (&lt;20%)</span>
           <span class="rp-health rp-health-loss" style="font-size:10px;padding:2px 8px">⛔ Loss Making</span>
+          <span style="color:var(--border);margin:0 4px">|</span>
+          <strong style="color:var(--ink-light);margin-right:4px">Score /100:</strong>
+          <span style="color:var(--success)">80+ Excellent</span> ·
+          <span style="color:var(--info)">60-79 Workable</span> ·
+          <span style="color:var(--warning)">40-59 Weak</span> ·
+          <span style="color:var(--danger)">&lt;40 Poor</span>
         </div>
         <div id="rp-shift-cards"></div>
       </div>
@@ -3110,7 +3116,7 @@ async function renderRpDashboard(){
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>
-          <div class="rp-score-ring ${band.cls}">${metrics.score}</div>
+          <div style="text-align:center"><div class="rp-score-ring ${band.cls}">${metrics.score}</div><div style="font-size:9px;color:var(--ink-xlight);margin-top:2px">${band.label}</div></div>
         </div>
       </div>
       <div class="rp-shift-stats">
