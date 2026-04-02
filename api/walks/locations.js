@@ -28,7 +28,6 @@ const { rateLimit, requireAuth, safeError } = require('../_lib/security');
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (rateLimit(req, res)) return;
-  if (await requireAuth(req, res)) return;
 
   const calUrl = process.env.TTP_CALENDAR_URL;
   if (!calUrl) return res.status(500).json({ error: 'Calendar not configured' });
