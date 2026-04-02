@@ -908,7 +908,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <div class="filter-pill" onclick="rpTab('compare')">Founder vs Staff</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="date" id="rp-date" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif" onchange="renderRpDashboard()">
+          <div class="pipeline-filters" id="rp-range-pills">
+            <div class="filter-pill active" onclick="setRpRange('day')">Today</div>
+            <div class="filter-pill" onclick="setRpRange('week')">Week Ahead</div>
+            <div class="filter-pill" onclick="setRpRange('month')">Month Ahead</div>
+          </div>
+          <input type="date" id="rp-date" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif" onchange="rpDashRange='day';renderRpDashboard()">
         </div>
       </div>
       <!-- Dashboard Tab -->
@@ -3110,18 +3115,40 @@ function rpTab(tab){
 }
 
 // ── ROUTE DASHBOARD (auto from TTP) ──
+let rpDashRange='day';
+
+function setRpRange(range){
+  rpDashRange=range;
+  document.querySelectorAll('#rp-range-pills .filter-pill').forEach(p=>{
+    const map={Today:'day','Week Ahead':'week','Month Ahead':'month'};
+    p.classList.toggle('active',map[p.textContent.trim()]===range);
+  });
+  renderRpDashboard();
+}
+
 async function renderRpDashboard(){
   const dateInput=document.getElementById('rp-date');
-  const date=dateInput?.value||new Date().toISOString().split('T')[0];
+  const startDate=dateInput?.value||new Date().toISOString().split('T')[0];
   const cardsEl=document.getElementById('rp-shift-cards');
   const summaryEl=document.getElementById('rp-weekly-summary');
   if(!cardsEl) return;
 
   cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data...</div>';
 
-  // Fetch walks for the selected date
-  const walks=await authFetch('/api/walks/today?range=week').then(r=>r.ok?r.json():[]).catch(()=>[]);
-  const todayWalks=walks.filter(w=>w.date===date);
+  // Fetch all walks
+  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+
+  // Calculate date range
+  let endDate=startDate;
+  if(rpDashRange==='week'){
+    const d=new Date(startDate);d.setDate(d.getDate()+6);
+    endDate=d.toISOString().split('T')[0];
+  }else if(rpDashRange==='month'){
+    const d=new Date(startDate);d.setDate(d.getDate()+29);
+    endDate=d.toISOString().split('T')[0];
+  }
+  const rangeWalks=walks.filter(w=>w.date>=startDate&&w.date<=endDate);
+  const todayWalks=rpDashRange==='day'?rangeWalks:rangeWalks;// For day mode, same thing
   const settings=getRouteSettings();
 
   // Group walks by walker into shifts
@@ -3206,30 +3233,36 @@ async function renderRpDashboard(){
     return {shift,metrics,walkCount:g.walks.length,slots:slots.length,groupSlots:groupSlots.length,soloSlots:soloSlots.length,maxGroupSize,actualServiceMins};
   });
 
-  // Weekly summary
-  const weekWalks=walks;
-  const weekShiftCount=new Set(weekWalks.map(w=>w.walker+'_'+w.date)).size;
-  const weekTotalHrs=weekWalks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
-
-  const todayRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
-  const todayProfit=shifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
-  const todayMargin=todayRevenue>0?(todayProfit/todayRevenue)*100:0;
+  // Period summary
+  const periodRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const periodProfit=shifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+  const periodMargin=periodRevenue>0?(periodProfit/periodRevenue)*100:0;
+  const periodLabel=rpDashRange==='day'?'Today':rpDashRange==='week'?'This Week':'This Month';
+  const uniqueDays=[...new Set(rangeWalks.map(w=>w.date))].length;
 
   summaryEl.innerHTML=`
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekWalks.length}</div><div class="rp-weekly-lbl">Walks This Week</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">${weekShiftCount}</div><div class="rp-weekly-lbl">Walker-Days</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">${todayWalks.length}</div><div class="rp-weekly-lbl">Walks Today</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val">$${todayRevenue.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Revenue Today</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${todayProfit>=0?'var(--success)':'var(--danger)'}">$${todayProfit.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Profit Today</div></div>
-    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${todayMargin>=40?'var(--success)':todayMargin>=20?'var(--warning)':'var(--danger)'}">${todayMargin.toFixed(0)}%</div><div class="rp-weekly-lbl">Avg Margin</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${rangeWalks.length}</div><div class="rp-weekly-lbl">Walks ${periodLabel}</div></div>
+    ${rpDashRange!=='day'?`<div class="rp-weekly-stat"><div class="rp-weekly-val">${uniqueDays}</div><div class="rp-weekly-lbl">Active Days</div></div>`:''}
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${shifts.length}</div><div class="rp-weekly-lbl">Routes</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">$${periodRevenue.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Revenue</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${periodProfit>=0?'var(--success)':'var(--danger)'}">$${periodProfit.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Profit</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${periodMargin>=40?'var(--success)':periodMargin>=20?'var(--warning)':'var(--danger)'}">${periodMargin.toFixed(0)}%</div><div class="rp-weekly-lbl">Avg Margin</div></div>
   `;
 
   if(!shifts.length){
-    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this date</div>';
+    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this period</div>';
     return;
   }
 
-  cardsEl.innerHTML=shifts.map(({shift,metrics,walkCount,slots,groupSlots,soloSlots,maxGroupSize,actualServiceMins})=>{
+  // Group shifts by date for week/month view
+  const shiftsByDate={};
+  shifts.forEach(s=>{
+    if(!shiftsByDate[s.shift.date]) shiftsByDate[s.shift.date]=[];
+    shiftsByDate[s.shift.date].push(s);
+  });
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const renderShiftCard=({shift,metrics,walkCount,slots,groupSlots,soloSlots,maxGroupSize,actualServiceMins})=>{
     const band=getScoreBand(metrics.score);
     const hi=getHealthInfo(metrics.health);
     const flags=[];
@@ -3267,7 +3300,35 @@ async function renderRpDashboard(){
         ${soloSlots>0?` · <span style="color:var(--ink-light)">${soloSlots} solo walk${soloSlots>1?'s':''}</span>`:''}
       </div>
     </div>`;
-  }).join('');
+  };
+
+  if(rpDashRange==='day'){
+    cardsEl.innerHTML=shifts.map(renderShiftCard).join('');
+  }else{
+    // Day-by-day view
+    cardsEl.innerHTML=Object.entries(shiftsByDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,dayShifts])=>{
+      const d=new Date(date+'T00:00:00');
+      const dayLabel=`${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
+      const dayRev=dayShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+      const dayProfit=dayShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+      const dayDogs=dayShifts.reduce((s,sh)=>s+sh.walkCount,0);
+      const dayMargin=dayRev>0?(dayProfit/dayRev)*100:0;
+      return `<div class="walk-day-collapse" onclick="this.classList.toggle('expanded')">
+        <div class="walk-day-summary">
+          <div style="display:flex;align-items:center;gap:10px">
+            <strong style="min-width:80px">${dayLabel}</strong>
+            <span class="walk-day-pill">${dayDogs} dogs</span>
+            <span class="walk-day-pill">${dayShifts.length} route${dayShifts.length>1?'s':''}</span>
+            <span class="walk-day-pill">$${dayRev.toFixed(0)} rev</span>
+            <span class="walk-day-pill" style="background:${dayProfit>=0?'var(--success-bg)':'#fee2e2'};color:${dayProfit>=0?'var(--success)':'var(--danger)'}">$${dayProfit.toFixed(0)} profit</span>
+            <span class="walk-day-pill" style="background:${dayMargin>=40?'var(--success-bg)':dayMargin>=20?'#fef3c7':'#fee2e2'};color:${dayMargin>=40?'var(--success)':dayMargin>=20?'var(--warning)':'var(--danger)'}">${dayMargin.toFixed(0)}%</span>
+          </div>
+          <span style="font-size:10px;color:var(--ink-xlight)">▼</span>
+        </div>
+        <div class="walk-day-detail">${dayShifts.map(renderShiftCard).join('')}</div>
+      </div>`;
+    }).join('');
+  }
 }
 
 function parseAmPmTo24(t){
@@ -3357,13 +3418,11 @@ async function renderRpCompare(){
   if(!el) return;
   el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data for the next month...</div>';
 
-  // Fetch all walks and build routes for the next 30 days
+  // Fetch all walks and build routes
   const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
-  const now=new Date();
-  const futureWalks=walks.filter(w=>{
-    const d=new Date(w.start);
-    return d>=now;
-  });
+  const todayStr=new Date().toISOString().split('T')[0];
+  // Filter to today and future using the Melbourne date string (not UTC timestamp)
+  const futureWalks=walks.filter(w=>w.date>=todayStr);
   const settings=getRouteSettings();
 
   // Group by date + walker
