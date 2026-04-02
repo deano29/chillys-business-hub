@@ -3735,27 +3735,59 @@ function recalcQuickAssess(){
   `;
 }
 
-// ── REVENUE FORECAST ──
+// ── REVENUE & TARGETS ──
+
 async function renderRevenueForecast(){
   const el=document.getElementById('revenue-forecast-content');
   if(!el) return;
-  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Calculating revenue forecast...</div>';
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading revenue data...</div>';
 
   const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const lastMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const lastMonth=`${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,'0')}`;
-  const nextMonthDate=new Date(now.getFullYear(),now.getMonth()+1,1);
-  const nextMonth=`${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth()+1).padStart(2,'0')}`;
-  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const dayOfMonth=now.getDate();
-  const daysLeft=daysInMonth-dayOfMonth;
+
+  // Load targets
+  const targets=load('cw_rev_targets',{});
+  const annualGoal=parseFloat(targets.annualGoal)||100000;
+  const momGrowthTarget=parseFloat(targets.momGrowth)||10;
 
   function walkRevenue(w){return getClientPrice(w.client,w.service);}
+  function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
+  function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
 
-  // This month
+  // Build monthly data for last 6 months + current + next 6 months (13 months)
+  const monthlyData=[];
+  for(let i=-6;i<=6;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
+    const ms=monthStr(d.getFullYear(),d.getMonth());
+    const mWalks=walks.filter(w=>w.date.startsWith(ms));
+    const rev=mWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const daysInM=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    const isPast=i<0;
+    const isCurrent=i===0;
+    const isFuture=i>0;
+    const dayOfM=isCurrent?now.getDate():isPast?daysInM:0;
+    const completedWalks=isCurrent?mWalks.filter(w=>w.date<=nowStr):mWalks;
+    const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const bookedRev=isCurrent?rev-completedRev:0;
+
+    // Target: use custom target if set, otherwise calculate from annual goal or growth
+    let target=targets[ms]||0;
+    if(!target){
+      if(i===0) target=annualGoal/12;// Default: equal monthly share
+      else if(i>0){
+        // Future: apply MoM growth from current month
+        const prevMonth=monthlyData[monthlyData.length-1];
+        target=prevMonth?prevMonth.target*(1+momGrowthTarget/100):annualGoal/12;
+      }else{
+        target=annualGoal/12;
+      }
+    }
+
+    monthlyData.push({ms,rev,target,walks:mWalks.length,isPast,isCurrent,isFuture,completedRev,bookedRev,daysInM,dayOfM});
+  }
+
+  const currentMonth=monthlyData.find(m=>m.isCurrent);
   const thisMonthWalks=walks.filter(w=>w.date.startsWith(thisMonth));
   const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
   const bookedWalks=thisMonthWalks.filter(w=>w.date>nowStr);
@@ -3810,72 +3842,125 @@ async function renderRevenueForecast(){
     weeklyData.push({label:`Wk ${wk+1}`,rev:wkRev,walks:wkWalks.length,status:isPast?'actual':wkStartStr<=nowStr?'current':'booked'});
   }
 
+  // Current month calculations
+  const cm=currentMonth;
+  const progressPct=cm.target>0?Math.min(100,(cm.rev/cm.target)*100):0;
+  const gapToTarget=Math.max(0,cm.target-cm.rev);
+  const avgRevPerWalk=cm.walks>0?cm.rev/cm.walks:55;
+  const walksNeeded=avgRevPerWalk>0?Math.ceil(gapToTarget/avgRevPerWalk):0;
+  const daysLeft=cm.daysInM-cm.dayOfM;
+
+  // Past months for trend
+  const pastMonths=monthlyData.filter(m=>m.isPast&&m.walks>0);
+  const lastMonth=pastMonths[pastMonths.length-1];
+  const momActual=lastMonth&&lastMonth.rev>0?((cm.rev-lastMonth.rev)/lastMonth.rev)*100:0;
+
+  // Year-to-date
+  const ytdMonths=monthlyData.filter(m=>(m.isPast||m.isCurrent)&&m.ms.startsWith(String(now.getFullYear())));
+  const ytdRev=ytdMonths.reduce((s,m)=>s+m.rev,0);
+  const ytdTarget=ytdMonths.reduce((s,m)=>s+m.target,0);
+  const annualPace=ytdRev/(now.getMonth()+1)*12;
+
+  // Weekly run rate
+  const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  const fwStr=`${fourWeeksAgo.getFullYear()}-${String(fourWeeksAgo.getMonth()+1).padStart(2,'0')}-${String(fourWeeksAgo.getDate()).padStart(2,'0')}`;
+  const recentWalks=walks.filter(w=>w.date>=fwStr&&w.date<=nowStr);
+  const weeklyRunRate=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
+
   el.innerHTML=`
-    <!-- Monthly Target Tracker -->
-    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--orange)">
-      <div class="card-body">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 style="font-size:16px;font-weight:800">📈 ${thisMonth.split('-')[1]==='01'?'January':thisMonth.split('-')[1]==='02'?'February':thisMonth.split('-')[1]==='03'?'March':thisMonth.split('-')[1]==='04'?'April':thisMonth.split('-')[1]==='05'?'May':thisMonth.split('-')[1]==='06'?'June':thisMonth.split('-')[1]==='07'?'July':thisMonth.split('-')[1]==='08'?'August':thisMonth.split('-')[1]==='09'?'September':thisMonth.split('-')[1]==='10'?'October':thisMonth.split('-')[1]==='11'?'November':'December'} Revenue Tracker</h3>
-          <div style="font-size:12px;color:var(--ink-light)">${daysLeft} days left</div>
+    <!-- HERO: Annual Goal + Settings -->
+    <div style="display:flex;gap:16px;margin-bottom:20px;align-items:stretch">
+      <div class="card" style="flex:2;border-top:4px solid var(--orange)">
+        <div class="card-body" style="text-align:center;padding:24px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Annual Revenue Goal</div>
+          <div style="font-size:42px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--ink)">$${(annualGoal/1000).toFixed(0)}k</div>
+          <div style="font-size:13px;color:var(--ink-light);margin-top:4px">= $${(annualGoal/12).toFixed(0)}/month avg</div>
+          <div style="margin-top:12px;font-size:12px">
+            YTD: <strong style="color:${ytdRev>=ytdTarget?'var(--success)':'var(--warning)'}">$${(ytdRev/1000).toFixed(1)}k</strong> of $${(ytdTarget/1000).toFixed(1)}k target
+            · Annual pace: <strong style="color:${annualPace>=annualGoal?'var(--success)':'var(--warning)'}">$${(annualPace/1000).toFixed(0)}k</strong>
+          </div>
         </div>
-        <!-- Progress bar -->
-        <div style="background:var(--cream);border-radius:20px;height:28px;overflow:hidden;margin-bottom:12px;position:relative">
-          <div style="background:var(--success);height:100%;width:${Math.min(100,(completedRev/monthTarget)*100)}%;border-radius:20px;transition:width .3s"></div>
-          <div style="background:var(--orange);height:100%;width:${Math.min(100-Math.min(100,(completedRev/monthTarget)*100),(bookedRev/monthTarget)*100)}%;position:absolute;top:0;left:${(completedRev/monthTarget)*100}%;border-radius:0 20px 20px 0;opacity:0.5"></div>
-          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:700;color:var(--ink)">${progressPct.toFixed(0)}% of $${(monthTarget/1000).toFixed(1)}k target</div>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Growth Settings</h4>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+            <div class="form-group"><label>Annual Goal ($)</label><input type="number" value="${annualGoal}" onchange="saveRevTargets('annualGoal',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
+            <div class="form-group"><label>MoM Growth Target (%)</label><input type="number" value="${momGrowthTarget}" step="1" onchange="saveRevTargets('momGrowth',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
+          </div>
         </div>
-        <div style="display:flex;gap:16px;font-size:12px;margin-bottom:8px">
-          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:4px"></span>Delivered: <strong>$${completedRev.toFixed(0)}</strong></div>
-          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--orange);opacity:.5;margin-right:4px"></span>Booked: <strong>$${bookedRev.toFixed(0)}</strong></div>
-          <div>Total projected: <strong>$${totalProjected.toFixed(0)}</strong></div>
-        </div>
-        ${gapToTarget>0?`<div style="padding:8px 12px;background:var(--warning-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">Gap to target: <strong>$${gapToTarget.toFixed(0)}</strong> — that's ~${dogsNeeded} more walks needed</div>`
-        :`<div style="padding:8px 12px;background:var(--success-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--success)"><strong>On track!</strong> Projected to ${totalProjected>=monthTarget?'hit':'exceed'} target by $${Math.abs(totalProjected-monthTarget).toFixed(0)}</div>`}
       </div>
     </div>
 
-    <!-- KPI Row -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    <!-- CURRENT MONTH HERO -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid ${cm.rev>=cm.target?'var(--success)':'var(--orange)'}">
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="font-size:18px;font-weight:800">${monthName(cm.ms)}</h3>
+          <div style="font-size:12px;color:var(--ink-light)">${daysLeft} days left · ${cm.walks} walks booked</div>
+        </div>
+        <div style="background:var(--cream);border-radius:20px;height:32px;overflow:hidden;margin-bottom:12px;position:relative">
+          <div style="background:var(--success);height:100%;width:${Math.min(100,(cm.completedRev/cm.target)*100)}%;border-radius:20px;transition:width .3s"></div>
+          <div style="background:var(--orange);height:100%;width:${Math.min(100-(cm.completedRev/cm.target)*100,(cm.bookedRev/cm.target)*100)}%;position:absolute;top:0;left:${(cm.completedRev/cm.target)*100}%;border-radius:0 20px 20px 0;opacity:0.5"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;color:var(--ink)">${progressPct.toFixed(0)}% — $${cm.rev.toFixed(0)} of $${cm.target.toFixed(0)}</div>
+        </div>
+        <div style="display:flex;gap:20px;font-size:12px">
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:4px"></span>Delivered: <strong>$${cm.completedRev.toFixed(0)}</strong></div>
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--orange);opacity:.5;margin-right:4px"></span>Booked: <strong>$${cm.bookedRev.toFixed(0)}</strong></div>
+          <div>Run rate: <strong>$${weeklyRunRate.toFixed(0)}/wk</strong></div>
+          ${lastMonth?`<div>vs ${monthName(lastMonth.ms)}: <strong style="color:${momActual>=0?'var(--success)':'var(--danger)'}"> ${momActual>=0?'+':''}${momActual.toFixed(0)}%</strong></div>`:''}
+        </div>
+        ${gapToTarget>0?`<div style="margin-top:10px;padding:8px 12px;background:var(--warning-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)"><strong>$${gapToTarget.toFixed(0)} to go</strong> — need ~${walksNeeded} more walks in ${daysLeft} days</div>`
+        :`<div style="margin-top:10px;padding:8px 12px;background:var(--success-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--success)"><strong>On track!</strong> Exceeding target by $${(cm.rev-cm.target).toFixed(0)}</div>`}
+      </div>
+    </div>
+
+    <!-- MONTHLY ROADMAP: Past + Current + Future -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body">
+        <h4 style="font-size:14px;font-weight:700;margin-bottom:14px">📅 Monthly Roadmap</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>Month</th><th>Target</th><th>Actual / Booked</th><th>vs Target</th><th>MoM Growth</th><th>Status</th></tr></thead>
+            <tbody>${monthlyData.map((m,i)=>{
+              const prev=i>0?monthlyData[i-1]:null;
+              const mom=prev&&prev.rev>0?((m.rev-prev.rev)/prev.rev)*100:0;
+              const vsTarget=m.target>0?((m.rev-m.target)/m.target)*100:0;
+              const status=m.isCurrent?'current':m.isPast?(m.rev>=m.target?'hit':'missed'):(m.rev>0?'booked':'planned');
+              const statusLabel={current:'In Progress',hit:'✅ Hit',missed:'❌ Missed',booked:'Booked',planned:'Planned'}[status];
+              const statusColor={current:'var(--orange)',hit:'var(--success)',missed:'var(--danger)',booked:'var(--info)',planned:'var(--ink-xlight)'}[status];
+              return `<tr style="${m.isCurrent?'background:var(--orange-xlight);font-weight:600':''}">
+                <td><strong>${monthName(m.ms)}</strong></td>
+                <td>$${m.target.toFixed(0)}</td>
+                <td>$${m.rev.toFixed(0)}${m.isCurrent?` <span style="font-size:10px;color:var(--ink-light)">(${m.walks} walks)</span>`:m.walks>0?` <span style="font-size:10px;color:var(--ink-xlight)">(${m.walks})</span>`:''}</td>
+                <td style="color:${vsTarget>=0?'var(--success)':'var(--danger)'}; font-weight:700">${m.rev>0||m.isPast?(vsTarget>=0?'+':'')+vsTarget.toFixed(0)+'%':'—'}</td>
+                <td style="color:${mom>=0?'var(--success)':'var(--danger)'">${prev&&(m.rev>0||m.isPast)?(mom>=0?'+':'')+mom.toFixed(0)+'%':'—'}</td>
+                <td><span style="color:${statusColor};font-size:11px;font-weight:600">${statusLabel}</span></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Future targets auto-calculated at ${momGrowthTarget}% MoM growth. Override any month by setting a custom target in settings.</div>
+      </div>
+    </div>
+
+    <!-- KPI Summary -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
       <div class="rp-metric"><div class="rp-metric-label">Weekly Run Rate</div><div class="rp-metric-value">$${weeklyRunRate.toFixed(0)}</div></div>
       <div class="rp-metric"><div class="rp-metric-label">Monthly Run Rate</div><div class="rp-metric-value">$${(weeklyRunRate*4.3).toFixed(0)}</div></div>
-      <div class="rp-metric ${momGrowth>=0?'good':'bad'}"><div class="rp-metric-label">vs Last Month</div><div class="rp-metric-value">${momGrowth>=0?'+':''}${momGrowth.toFixed(0)}%</div></div>
-      <div class="rp-metric"><div class="rp-metric-label">Last Month Total</div><div class="rp-metric-value">$${lastMonthRev.toFixed(0)}</div></div>
-      <div class="rp-metric"><div class="rp-metric-label">Next Month Booked</div><div class="rp-metric-value">$${nextMonthRev.toFixed(0)}</div></div>
-      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Walk</div><div class="rp-metric-value">$${avgRevPerDog.toFixed(0)}</div></div>
-    </div>
-
-    <!-- Breakdown -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
-      <!-- By Service -->
-      <div class="card"><div class="card-body">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Service</h4>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-          <div style="display:flex;justify-content:space-between"><span>🐕 Adventures (${advWalks.length})</span><strong>$${advRev.toFixed(0)}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span>🦮 Solo/Group (${soloWalks.length})</span><strong>$${soloRev.toFixed(0)}</strong></div>
-          <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between"><span>Adventure share</span><strong>${totalProjected>0?(advRev/totalProjected*100).toFixed(0):0}%</strong></div>
-        </div>
-      </div></div>
-      <!-- By Walker -->
-      <div class="card"><div class="card-body">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Walker</h4>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-          ${Object.entries(walkerRevMap).sort((a,b)=>b[1]-a[1]).map(([name,rev])=>`<div style="display:flex;justify-content:space-between"><span>${esc(name)}</span><strong>$${rev.toFixed(0)}</strong></div>`).join('')}
-        </div>
-      </div></div>
-      <!-- By Week -->
-      <div class="card"><div class="card-body">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Week</h4>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-          ${weeklyData.map(w=>`<div style="display:flex;justify-content:space-between"><span>${w.label} <span style="font-size:10px;color:${w.status==='actual'?'var(--success)':w.status==='current'?'var(--orange)':'var(--ink-xlight)'}">${w.status}</span></span><strong>$${w.rev.toFixed(0)}</strong></div>`).join('')}
-        </div>
-      </div></div>
-    </div>
-
-    <!-- Set Target -->
-    <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-light)">
-      Monthly target: <input id="s-rev-target" type="number" value="${monthTarget}" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px" onchange="save('cw_settings',{...load('cw_settings',{}),'s-rev-target':this.value});renderRevenueForecast()">
+      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Walk</div><div class="rp-metric-value">$${avgRevPerWalk.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">YTD Revenue</div><div class="rp-metric-value">$${(ytdRev/1000).toFixed(1)}k</div></div>
+      <div class="rp-metric ${annualPace>=annualGoal?'good':'warn'}"><div class="rp-metric-label">Annual Pace</div><div class="rp-metric-value">$${(annualPace/1000).toFixed(0)}k</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">MoM Target</div><div class="rp-metric-value">${momGrowthTarget}%</div></div>
     </div>
   `;
+}
+
+function saveRevTargets(key,value){
+  const t=load('cw_rev_targets',{});
+  t[key]=parseFloat(value)||0;
+  save('cw_rev_targets',t);
+  renderRevenueForecast();
 }
 
 // ── CLIENT LIFETIME VALUE ──
