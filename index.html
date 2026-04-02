@@ -3154,17 +3154,18 @@ async function renderRpDashboard(){
   });
   if(!walks.length&&cardsEl.innerHTML.includes('Failed')) return;
 
-  // Calculate date range
-  let endDate=startDate;
-  if(rpDashRange==='week'){
-    const d=new Date(startDate);d.setDate(d.getDate()+6);
-    endDate=d.toISOString().split('T')[0];
-  }else if(rpDashRange==='month'){
-    const d=new Date(startDate);d.setDate(d.getDate()+29);
-    endDate=d.toISOString().split('T')[0];
+  // Calculate date range using string math (avoids timezone issues)
+  function addDays(dateStr,days){
+    const [y,m,d]=dateStr.split('-').map(Number);
+    const dt=new Date(y,m-1,d+days);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   }
+  let endDate=startDate;
+  if(rpDashRange==='week') endDate=addDays(startDate,6);
+  else if(rpDashRange==='month') endDate=addDays(startDate,29);
+
   const rangeWalks=walks.filter(w=>w.date>=startDate&&w.date<=endDate);
-  const todayWalks=rpDashRange==='day'?rangeWalks:rangeWalks;// For day mode, same thing
+  const todayWalks=rangeWalks;
   const settings=getRouteSettings();
 
   // Group walks by walker + date into routes
