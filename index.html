@@ -3348,7 +3348,7 @@ function renderPricingTable(){
         return `<tr style="${!isPriced?'background:var(--warning-bg)':''}">
           <td><strong>${esc(name)}</strong></td>
           <td><span style="color:${isActive?'var(--success)':'var(--ink-xlight)'};font-size:11px">${isActive?'● Active':'○ Inactive'}</span></td>
-          <td><input type="number" data-client="${esc(name)}" data-field="dogs" value="${dogs}" min="1" max="5" style="width:45px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center"></td>
+          <td><input type="number" data-client="${esc(name)}" data-field="dogs" value="${dogs}" min="1" max="5" style="width:45px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center" onchange="saveClientPricing();renderPricingTable()"></td>
           <td><input type="number" data-client="${esc(name)}" data-field="soloPrice" value="${soloPrice||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:70px;padding:4px 6px;border:1px solid ${soloPrice?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></td>
           <td><input type="number" data-client="${esc(name)}" data-field="adventurePrice" value="${advPrice||''}" placeholder="${parseFloat(getSetting('s-price-adventure',75))||75}" style="width:70px;padding:4px 6px;border:1px solid ${advPrice?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></td>
           <td>${dogs>1?`<input type="number" data-client="${esc(name)}" data-field="multiDogDiscount" value="${discount}" min="0" max="100" style="width:55px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px">`:
@@ -3378,7 +3378,7 @@ function saveClientPricing(){
     const dogs=parseInt(dogsInput?.value)||1;
     const discInput=row.querySelector('input[data-field="multiDogDiscount"]');
     const discount=discInput?parseInt(discInput.value):20;
-    if(soloPrice>0||advPrice>0){
+    if(soloPrice>0||advPrice>0||dogs>1){
       clientPricing[name]={soloPrice,adventurePrice:advPrice,dogs,multiDogDiscount:discount};
     }
   });
