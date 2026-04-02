@@ -3976,10 +3976,18 @@ function getRouteSettings(){
   };
 }
 
-function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading, settings){
+function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading, settings, shiftDate){
   const s=settings||getRouteSettings();
   const hours=shiftMins/60;
-  if(walkerType==='founder') return s.founderDailyCost;// Fixed daily cost
+  if(walkerType==='founder'){
+    // Weekends = $0 labour (already covered by weekly salary)
+    if(shiftDate){
+      const [y,m,d]=(shiftDate+'').split('-').map(Number);
+      const dow=new Date(y,m-1,d).getDay();// 0=Sun, 6=Sat
+      if(dow===0||dow===6) return 0;
+    }
+    return s.founderDailyCost;// Weekday fixed daily cost
+  }
   if(walkerType==='contractor') return hours*hourlyRate;// Raw rate, no loadings
   // Employee/casual: base + super + casual loading
   const loaded=hourlyRate*(1+superRate+(walkerType==='casual'?casualLoading:0));
@@ -4110,7 +4118,7 @@ function calcShiftMetrics(shift, settings){
   const bufferMins=parseFloat(shift.bufferMins)||s.defaultBufferMins;
   const hourlyRate=parseFloat(shift.hourlyRate)||(s.defaultRates[shift.walkerType]||0);
   const variableCost=(parseFloat(shift.variableCost)||0)+(parseFloat(shift.paymentFee)||0)+(parseFloat(shift.adminAlloc)||0);
-  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading,s);
+  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading,s,shift.date);
   const travelCost=calcTravelCost(travelKm,s.costPerKm);
   const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(totalRevenue,labourCost,travelCost,variableCost);
   const shiftHrs=shiftMins/60;
