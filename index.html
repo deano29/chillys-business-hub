@@ -273,6 +273,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .rp-weekly-stat{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;flex:1;text-align:center}
 .rp-weekly-val{font-size:20px;font-weight:800;color:var(--ink);font-family:'Readex Pro',sans-serif}
 .rp-weekly-lbl{font-size:10px;color:var(--ink-light);margin-top:2px}
+.sh-booking{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:6px}
+.sh-booking .form-grid{grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;align-items:end}
+.sh-booking input,.sh-booking select{padding:5px 8px;font-size:11px}
+.sh-booking label{font-size:10px}
+.sh-booking .sh-remove{background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:4px}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);cursor:pointer;transition:all .15s}
 .enq-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
@@ -1065,6 +1070,74 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-ai-draft')">Cancel</button>
       <button class="btn btn-ghost btn-sm" onclick="sendAiDraftEmail()">✉️ Send via Outlook</button>
       <button class="btn btn-primary btn-sm" onclick="copyAiDraft()">📋 Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SHIFT BUILDER MODAL ── -->
+<div class="modal-overlay" id="modal-shift">
+  <div class="modal" style="max-width:1100px;height:92vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <h3 id="modal-shift-title">🛣️ New Shift</h3>
+      <button class="modal-close" onclick="closeModal('modal-shift')">×</button>
+    </div>
+    <div class="modal-body" style="padding:0;flex:1;overflow-y:auto">
+      <div style="display:grid;grid-template-columns:1fr 360px;min-height:100%">
+        <!-- LEFT: Inputs -->
+        <div style="padding:20px 24px;border-right:1px solid var(--border)">
+          <!-- Shift Details -->
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Shift Details</h4>
+          <div class="form-grid">
+            <div class="form-group"><label>Date</label><input id="sh-date" type="date" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Walker Name</label><input id="sh-walker" type="text" placeholder="e.g. Jessica" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Walker Type</label><select id="sh-type" onchange="updateShiftRate();recalcShiftLive()"><option value="founder">Founder</option><option value="employee">Employee</option><option value="contractor">Contractor</option></select></div>
+            <div class="form-group"><label>Hourly Rate ($)</label><input id="sh-rate" type="number" value="30" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Shift Start</label><input id="sh-start" type="time" value="08:00" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Shift End</label><input id="sh-end" type="time" value="12:00" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Break (mins)</label><input id="sh-break" type="number" value="0" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Max Dogs</label><input id="sh-maxdogs" type="number" value="6" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Est. Travel KM</label><input id="sh-km" type="number" value="15" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Est. Travel Mins</label><input id="sh-travel-mins" type="number" value="30" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Variable Cost ($)</label><input id="sh-variable" type="number" value="0" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Payment Fee ($)</label><input id="sh-fee" type="number" value="0" oninput="recalcShiftLive()"></div>
+          </div>
+
+          <!-- Import from TTP -->
+          <div style="margin-top:20px;padding:12px;background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border-light)">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;font-weight:600">Import from today's walks</span>
+              <button class="btn btn-ghost btn-sm" onclick="importTTPBookings()">📥 Import</button>
+            </div>
+          </div>
+
+          <!-- Bookings -->
+          <div style="margin-top:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <h4 style="font-size:13px;font-weight:700">Bookings</h4>
+              <button class="btn btn-ghost btn-sm" onclick="addBookingRow()">+ Add Dog</button>
+            </div>
+            <div id="sh-bookings"></div>
+            <div id="sh-bookings-empty" style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:12px">No bookings yet. Click "+ Add Dog" or import from TTP.</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Live Summary -->
+        <div style="padding:20px;background:var(--cream);position:sticky;top:0;align-self:start;max-height:92vh;overflow-y:auto">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <h4 style="font-size:13px;font-weight:700">Live Summary</h4>
+            <span id="sh-health-badge"></span>
+          </div>
+          <div id="sh-score-display" style="text-align:center;margin-bottom:14px"></div>
+          <div class="rp-metric-grid" id="sh-metrics" style="grid-template-columns:1fr 1fr"></div>
+          <div id="sh-recs" style="margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-sm" id="sh-btn-delete" style="display:none" onclick="deleteShift()">Delete</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-shift')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveShift()">💾 Save Shift</button>
     </div>
   </div>
 </div>
@@ -3280,8 +3353,247 @@ function renderCompareShift(){
   `;
 }
 
-// Placeholder for shift builder (Stage 4)
-function openShiftBuilder(id){showToast('Shift Builder coming in next stage','🛣️');}
+// ── SHIFT BUILDER ──
+let editingShiftId=null;
+let shiftBookings=[];
+
+function openShiftBuilder(id){
+  editingShiftId=null;
+  shiftBookings=[];
+  const settings=getRouteSettings();
+
+  if(id){
+    // Edit existing shift
+    const shift=rpShifts.find(s=>s.id===id);
+    if(!shift){showToast('Shift not found','⚠️');return;}
+    editingShiftId=id;
+    shiftBookings=[...(shift.bookings||[])];
+    document.getElementById('modal-shift-title').textContent='🛣️ Edit Shift — '+shift.walker;
+    document.getElementById('sh-date').value=shift.date||'';
+    document.getElementById('sh-walker').value=shift.walker||'';
+    document.getElementById('sh-type').value=shift.walkerType||'employee';
+    document.getElementById('sh-rate').value=shift.hourlyRate||30;
+    document.getElementById('sh-start').value=shift.startTime||'08:00';
+    document.getElementById('sh-end').value=shift.endTime||'12:00';
+    document.getElementById('sh-break').value=shift.breakMins||0;
+    document.getElementById('sh-maxdogs').value=shift.maxDogs||6;
+    document.getElementById('sh-km').value=shift.travelDistanceKm||15;
+    document.getElementById('sh-travel-mins').value=shift.travelMins||30;
+    document.getElementById('sh-variable').value=shift.variableCost||0;
+    document.getElementById('sh-fee').value=shift.paymentFee||0;
+    document.getElementById('sh-btn-delete').style.display='inline-flex';
+  }else{
+    // New shift
+    document.getElementById('modal-shift-title').textContent='🛣️ New Shift';
+    document.getElementById('sh-date').value=new Date().toISOString().split('T')[0];
+    document.getElementById('sh-walker').value='';
+    document.getElementById('sh-type').value='founder';
+    document.getElementById('sh-rate').value=settings.defaultRates.founder;
+    document.getElementById('sh-start').value='08:00';
+    document.getElementById('sh-end').value='12:00';
+    document.getElementById('sh-break').value=0;
+    document.getElementById('sh-maxdogs').value=settings.maxDogsPerShift;
+    document.getElementById('sh-km').value=15;
+    document.getElementById('sh-travel-mins').value=30;
+    document.getElementById('sh-variable').value=0;
+    document.getElementById('sh-fee').value=0;
+    document.getElementById('sh-btn-delete').style.display='none';
+  }
+  renderBookingRows();
+  recalcShiftLive();
+  openModal('modal-shift');
+}
+
+function updateShiftRate(){
+  const type=document.getElementById('sh-type').value;
+  const settings=getRouteSettings();
+  document.getElementById('sh-rate').value=settings.defaultRates[type]||30;
+}
+
+function addBookingRow(data){
+  shiftBookings.push(data||{id:'bk_'+Date.now(),dogName:'',client:'',suburb:'',serviceType:'group',price:55,durationMins:45,groupSuitable:true,notes:''});
+  renderBookingRows();
+  recalcShiftLive();
+}
+
+function removeBooking(idx){
+  shiftBookings.splice(idx,1);
+  renderBookingRows();
+  recalcShiftLive();
+}
+
+function renderBookingRows(){
+  const el=document.getElementById('sh-bookings');
+  const empty=document.getElementById('sh-bookings-empty');
+  if(!shiftBookings.length){
+    el.innerHTML='';
+    empty.style.display='block';
+    return;
+  }
+  empty.style.display='none';
+  el.innerHTML=shiftBookings.map((b,i)=>`
+    <div class="sh-booking">
+      <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr auto;gap:6px;align-items:end">
+        <div class="form-group"><label>Client / Dog</label><input value="${esc(b.client||b.dogName||'')}" oninput="shiftBookings[${i}].client=this.value;shiftBookings[${i}].dogName=this.value;recalcShiftLive()" placeholder="Name"></div>
+        <div class="form-group"><label>Service</label><select onchange="shiftBookings[${i}].serviceType=this.value;autoPrice(${i});recalcShiftLive()">
+          <option value="group" ${b.serviceType==='group'?'selected':''}>Solo/Group Walk</option>
+          <option value="adventure" ${b.serviceType==='adventure'?'selected':''}>2hr Adventure</option>
+          <option value="puppy" ${b.serviceType==='puppy'?'selected':''}>Puppy Visit</option>
+          <option value="other" ${b.serviceType==='other'?'selected':''}>Other</option>
+        </select></div>
+        <div class="form-group"><label>Price ($)</label><input type="number" value="${b.price||0}" oninput="shiftBookings[${i}].price=parseFloat(this.value)||0;recalcShiftLive()"></div>
+        <div class="form-group"><label>Mins</label><input type="number" value="${b.durationMins||45}" oninput="shiftBookings[${i}].durationMins=parseInt(this.value)||0;recalcShiftLive()"></div>
+        <button class="sh-remove" onclick="removeBooking(${i})" title="Remove">×</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function autoPrice(idx){
+  const b=shiftBookings[idx];
+  const svc=b.serviceType;
+  if(svc==='adventure') b.price=parseFloat(getSetting('s-price-adventure',75))||75;
+  else b.price=parseFloat(getSetting('s-price-solo',55))||55;
+  renderBookingRows();
+}
+
+async function importTTPBookings(){
+  const date=document.getElementById('sh-date').value;
+  const walker=document.getElementById('sh-walker').value.trim();
+  if(!date){showToast('Set a date first','⚠️');return;}
+
+  showToast('Importing walks from TTP...','📥');
+  const walks=await authFetch('/api/walks/today?range=week').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const dayWalks=walks.filter(w=>w.date===date);
+
+  // Filter by walker name if provided
+  let filtered=dayWalks;
+  if(walker) filtered=dayWalks.filter(w=>(w.walker||'').toLowerCase().includes(walker.toLowerCase()));
+  if(!filtered.length&&walker) filtered=dayWalks;// Fallback to all if no match
+
+  if(!filtered.length){showToast('No walks found for this date','⚠️');return;}
+
+  // Set walker from first walk if empty
+  if(!walker&&filtered[0]?.walker){
+    document.getElementById('sh-walker').value=filtered[0].walker.replace(/\\+$/g,'');
+  }
+
+  // Set shift times from walks
+  const sorted=filtered.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  document.getElementById('sh-start').value=parseAmPmTo24(sorted[0]?.time||'08:00');
+  document.getElementById('sh-end').value=parseAmPmTo24(sorted[sorted.length-1]?.endTime||'12:00');
+
+  // Add bookings
+  filtered.forEach(w=>{
+    const svc=(w.service||'').toLowerCase();
+    const isAdventure=svc.includes('adventure')||svc.includes('2 hour');
+    const price=isAdventure?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55);
+    const dur=w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45;
+    shiftBookings.push({
+      id:'bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      dogName:w.client?.replace(/\\+$/g,'')||'',
+      client:w.client?.replace(/\\+$/g,'')||'',
+      suburb:'',serviceType:isAdventure?'adventure':'group',
+      price,durationMins:dur,groupSuitable:true,notes:w.service||''
+    });
+  });
+
+  renderBookingRows();
+  recalcShiftLive();
+  showToast(`Imported ${filtered.length} walks`,'✅');
+}
+
+function recalcShiftLive(){
+  const shift=buildShiftFromForm();
+  const settings=getRouteSettings();
+  const metrics=calcShiftMetrics(shift,settings);
+  renderLiveSummary(metrics,settings);
+}
+
+function buildShiftFromForm(){
+  return {
+    id:editingShiftId||('sh_'+Date.now()),
+    date:document.getElementById('sh-date')?.value||'',
+    walker:document.getElementById('sh-walker')?.value||'',
+    walkerType:document.getElementById('sh-type')?.value||'employee',
+    startTime:document.getElementById('sh-start')?.value||'08:00',
+    endTime:document.getElementById('sh-end')?.value||'12:00',
+    breakMins:parseInt(document.getElementById('sh-break')?.value)||0,
+    maxDogs:parseInt(document.getElementById('sh-maxdogs')?.value)||6,
+    hourlyRate:parseFloat(document.getElementById('sh-rate')?.value)||30,
+    travelDistanceKm:parseFloat(document.getElementById('sh-km')?.value)||0,
+    travelMins:parseFloat(document.getElementById('sh-travel-mins')?.value)||0,
+    variableCost:parseFloat(document.getElementById('sh-variable')?.value)||0,
+    paymentFee:parseFloat(document.getElementById('sh-fee')?.value)||0,
+    adminAlloc:0,
+    bookings:shiftBookings,
+    createdAt:new Date().toISOString(),
+    source:'manual',
+  };
+}
+
+function renderLiveSummary(m,settings){
+  const hi=getHealthInfo(m.health);
+  const band=getScoreBand(m.score);
+
+  document.getElementById('sh-health-badge').innerHTML=`<span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>`;
+
+  document.getElementById('sh-score-display').innerHTML=`
+    <div class="rp-score-ring ${band.cls}" style="margin:0 auto">${m.score}</div>
+    <div style="font-size:10px;color:var(--ink-xlight);margin-top:4px">Route Score</div>
+  `;
+
+  const mClass=(val,good,bad)=>val>=good?'good':val<=bad?'bad':'warn';
+  document.getElementById('sh-metrics').innerHTML=`
+    <div class="rp-metric"><div class="rp-metric-label">Revenue</div><div class="rp-metric-value">$${m.totalRevenue.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Labour Cost</div><div class="rp-metric-value">$${m.labourCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Travel Cost</div><div class="rp-metric-value">$${m.travelCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Variable Cost</div><div class="rp-metric-value">$${m.variableCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${m.totalDirectCost.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.grossProfit,1,-1)}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${m.grossProfit.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.grossMargin,40,20)}"><div class="rp-metric-label">Gross Margin</div><div class="rp-metric-value">${m.grossMargin.toFixed(1)}%</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Revenue/Hr</div><div class="rp-metric-value">$${m.revenuePerHr.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.profitPerHr,settings.targetProfitPerHr,10)}"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${m.profitPerHr.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Dogs/Hr</div><div class="rp-metric-value">${m.dogsPerHr.toFixed(1)}</div></div>
+    <div class="rp-metric ${mClass(100-m.travelLoad,70,50)}"><div class="rp-metric-label">Travel Load</div><div class="rp-metric-value">${m.travelLoad.toFixed(0)}%</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Utilisation</div><div class="rp-metric-value">${m.utilisation.toFixed(0)}%</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Break-Even Rev</div><div class="rp-metric-value">$${m.breakEvenRevenue.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Break-Even Dogs</div><div class="rp-metric-value">${m.breakEvenDogs}</div></div>
+  `;
+
+  // Recommendations
+  const recs=getRecommendations(m,settings);
+  document.getElementById('sh-recs').innerHTML=recs.length?
+    '<h4 style="font-size:12px;font-weight:700;margin-bottom:8px">Recommendations</h4>'+
+    recs.map(r=>`<div class="rp-rec-item">${r.icon} ${r.text}</div>`).join(''):'';
+}
+
+function saveShift(){
+  const shift=buildShiftFromForm();
+  // Validation
+  if(!shift.walker){showToast('Enter a walker name','⚠️');return;}
+  if(timeToMins(shift.endTime)<=timeToMins(shift.startTime)){showToast('Shift end must be after start','⚠️');return;}
+
+  if(editingShiftId){
+    rpShifts=rpShifts.map(s=>s.id===editingShiftId?shift:s);
+    showToast('Shift updated','✅');
+  }else{
+    rpShifts.push(shift);
+    showToast('Shift saved','✅');
+  }
+  save('cw_shifts',rpShifts);
+  closeModal('modal-shift');
+  renderSavedShifts();
+}
+
+function deleteShift(){
+  if(!editingShiftId||!confirm('Delete this shift scenario?')) return;
+  rpShifts=rpShifts.filter(s=>s.id!==editingShiftId);
+  save('cw_shifts',rpShifts);
+  closeModal('modal-shift');
+  renderSavedShifts();
+  showToast('Shift deleted','🗑️');
+}
 
 // ── ROUTE PLANNER — CALCULATION ENGINE ──
 
