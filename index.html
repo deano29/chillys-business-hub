@@ -3135,8 +3135,16 @@ async function renderRpDashboard(){
 
   cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data...</div>';
 
-  // Fetch all walks
-  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Fetch walks — 'upcoming' returns today + 30 days
+  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>{
+    if(!r.ok) throw new Error('API error '+r.status);
+    return r.json();
+  }).catch(e=>{
+    console.warn('Route data fetch failed:',e);
+    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Failed to load route data. Try refreshing.</div>';
+    return [];
+  });
+  if(!walks.length&&cardsEl.innerHTML.includes('Failed')) return;
 
   // Calculate date range
   let endDate=startDate;
@@ -3418,11 +3426,9 @@ async function renderRpCompare(){
   if(!el) return;
   el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data for the next month...</div>';
 
-  // Fetch all walks and build routes
-  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
-  const todayStr=new Date().toISOString().split('T')[0];
-  // Filter to today and future using the Melbourne date string (not UTC timestamp)
-  const futureWalks=walks.filter(w=>w.date>=todayStr);
+  // Fetch upcoming walks (today + 30 days)
+  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const futureWalks=walks;// Already filtered by API
   const settings=getRouteSettings();
 
   // Group by date + walker
@@ -3734,8 +3740,8 @@ async function importTTPBookings(){
   if(!date){showToast('Set a date first','⚠️');return;}
 
   showToast('Importing walks from TTP...','📥');
-  // Fetch all walks to cover any date
-  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Fetch upcoming walks
+  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
   const dayWalks=walks.filter(w=>w.date===date);
 
   // Filter by walker name if provided

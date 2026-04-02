@@ -187,6 +187,13 @@ function filterByRange(events, now, range) {
     const monthPrefix = `${melb.year}-${String(melb.month).padStart(2, '0')}`;
     return events.filter(e => e.date.startsWith(monthPrefix));
   }
+  if (range === 'upcoming') {
+    // Today + next 30 days
+    const d = new Date(melb.year, melb.month - 1, melb.day);
+    const end = new Date(d); end.setDate(d.getDate() + 30);
+    const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    return events.filter(e => e.date >= todayStr && e.date <= endStr);
+  }
   if (range === 'all') {
     return events;
   }
