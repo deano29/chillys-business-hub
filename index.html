@@ -911,11 +911,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <span class="rp-health rp-health-not-viable" style="font-size:10px;padding:2px 8px">🔴 Not Viable (&lt;20%)</span>
           <span class="rp-health rp-health-loss" style="font-size:10px;padding:2px 8px">⛔ Loss Making</span>
           <span style="color:var(--border);margin:0 4px">|</span>
-          <strong style="color:var(--ink-light);margin-right:4px">Score /100:</strong>
-          <span style="color:var(--success)">80+ Excellent</span> ·
-          <span style="color:var(--info)">60-79 Workable</span> ·
-          <span style="color:var(--warning)">40-59 Weak</span> ·
-          <span style="color:var(--danger)">&lt;40 Poor</span>
+          <strong style="color:var(--ink-light);margin-right:4px">Route Score /100</strong>
+          <span style="color:var(--ink-xlight)">(profit 35% + utilisation 25% + travel efficiency 20% + capacity fill 20%)</span>
         </div>
         <div id="rp-shift-cards"></div>
       </div>
@@ -3116,7 +3113,7 @@ async function renderRpDashboard(){
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>
-          <div style="text-align:center"><div class="rp-score-ring ${band.cls}">${metrics.score}</div><div style="font-size:9px;color:var(--ink-xlight);margin-top:2px">${band.label}</div></div>
+          <div style="text-align:center" title="Route Score: Profit ${metrics.grossMargin.toFixed(0)}% margin (35%) + ${metrics.utilisation.toFixed(0)}% utilised (25%) + ${(100-metrics.travelLoad).toFixed(0)}% travel efficiency (20%) + ${metrics.dogCount}/${metrics.maxDogs} capacity (20%)"><div class="rp-score-ring ${band.cls}">${metrics.score}</div><div style="font-size:9px;color:var(--ink-xlight);margin-top:2px">Route Score</div></div>
         </div>
       </div>
       <div class="rp-shift-stats">
