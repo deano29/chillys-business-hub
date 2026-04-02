@@ -3273,21 +3273,38 @@ function saveWalkerConfig(){
 }
 
 // ── CLIENT PRICING ──
+// Structure: { "Client Name": { soloPrice: 55, adventurePrice: 75, dogs: 1, multiDogDiscount: 20 } }
 let clientPricing=load('cw_client_prices',{});
 
 function getClientPrice(clientName,service){
   const clean=(clientName||'').replace(/\\+$/g,'').trim();
   const entry=clientPricing[clean];
-  if(entry&&entry.price) return entry.price;
-  // Fallback to defaults
   const svc=(service||'').toLowerCase();
-  if(svc.includes('adventure')||svc.includes('2 hour')) return parseFloat(getSetting('s-price-adventure',75))||75;
+  const isAdventure=svc.includes('adventure')||svc.includes('2 hour');
+  if(entry){
+    if(isAdventure&&entry.adventurePrice) return entry.adventurePrice;
+    if(!isAdventure&&entry.soloPrice) return entry.soloPrice;
+    if(entry.price) return entry.price;// Legacy single price
+  }
+  // Fallback to defaults
+  if(isAdventure) return parseFloat(getSetting('s-price-adventure',75))||75;
   return parseFloat(getSetting('s-price-solo',55))||55;
+}
+
+function getMultiDogTotal(clientName,service,dogCount){
+  const basePrice=getClientPrice(clientName,service);
+  if(dogCount<=1) return basePrice;
+  const clean=(clientName||'').replace(/\\+$/g,'').trim();
+  const entry=clientPricing[clean];
+  const discount=(entry?.multiDogDiscount||20)/100;// Default 20% off additional dogs
+  // First dog full price, additional dogs discounted
+  return basePrice+(dogCount-1)*basePrice*(1-discount);
 }
 
 function isClientPriced(clientName){
   const clean=(clientName||'').replace(/\\+$/g,'').trim();
-  return clientPricing[clean]&&clientPricing[clean].price>0;
+  const entry=clientPricing[clean];
+  return entry&&(entry.soloPrice>0||entry.adventurePrice>0||entry.price>0);
 }
 
 function switchClientTab(tab){
@@ -3305,65 +3322,64 @@ function renderPricingTable(){
   const alertEl=document.getElementById('pricing-alert');
   if(!el) return;
 
-  // Get all unique clients from TTP walks data (use cached clients array)
   const ttpClients=clients.filter(c=>c.name).map(c=>c.name.replace(/\\+$/g,'').trim()).filter(Boolean);
-  // Also check walk data for any clients not in the clients array
   const allClientNames=[...new Set(ttpClients)].sort();
-
   const unpriced=allClientNames.filter(n=>!isClientPriced(n));
 
-  // Alert for unpriced clients
   if(alertEl){
-    if(unpriced.length>0){
-      alertEl.innerHTML=`<div style="padding:10px 14px;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">
-        ⚠️ <strong>${unpriced.length} client${unpriced.length>1?'s':''} without custom pricing</strong> — using default rates. Set their actual rates below.
-      </div>`;
-    }else{
-      alertEl.innerHTML=`<div style="padding:10px 14px;background:var(--success-bg);border:1px solid var(--success);border-radius:var(--radius-sm);font-size:12px;color:var(--success)">
-        ✅ All clients have custom pricing set.
-      </div>`;
-    }
+    alertEl.innerHTML=unpriced.length>0
+      ?`<div style="padding:10px 14px;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">⚠️ <strong>${unpriced.length} client${unpriced.length>1?'s':''} without pricing</strong> — using default rates ($${parseFloat(getSetting('s-price-solo',55))||55} walk / $${parseFloat(getSetting('s-price-adventure',75))||75} adventure). Set actual rates below.</div>`
+      :`<div style="padding:10px 14px;background:var(--success-bg);border:1px solid var(--success);border-radius:var(--radius-sm);font-size:12px;color:var(--success)">✅ All clients have custom pricing set.</div>`;
   }
 
   el.innerHTML=`
+    <div style="overflow-x:auto">
     <table class="enq-list-table">
-      <thead><tr><th>Client</th><th>Status</th><th>Service</th><th>Price Per Walk ($)</th><th>Using</th></tr></thead>
+      <thead><tr><th>Client</th><th>Status</th><th>Dogs</th><th>Solo/Group Walk ($)</th><th>Adventure ($)</th><th>2nd Dog Discount (%)</th><th>Status</th></tr></thead>
       <tbody>${allClientNames.map(name=>{
         const entry=clientPricing[name]||{};
         const client=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===name);
         const isActive=client?.status==='active';
-        const defaultService=client?.primaryService||'';
-        const svc=entry.service||defaultService||'';
-        const currentPrice=entry.price||0;
-        const isPriced=currentPrice>0;
+        const dogs=entry.dogs||1;
+        const soloPrice=entry.soloPrice||0;
+        const advPrice=entry.adventurePrice||0;
+        const discount=entry.multiDogDiscount??20;
+        const isPriced=soloPrice>0||advPrice>0;
         return `<tr style="${!isPriced?'background:var(--warning-bg)':''}">
           <td><strong>${esc(name)}</strong></td>
-          <td><span style="color:${isActive?'var(--success)':'var(--ink-xlight)'}; font-size:11px">${isActive?'● Active':'○ Inactive'}</span></td>
-          <td><select data-client="${esc(name)}" data-field="service" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
-            <option value="group" ${svc.toLowerCase().includes('group')||svc.toLowerCase().includes('walk')?'selected':''}>Solo/Group Walk</option>
-            <option value="adventure" ${svc.toLowerCase().includes('adventure')?'selected':''}>2hr Adventure</option>
-            <option value="puppy" ${svc.toLowerCase().includes('puppy')?'selected':''}>Puppy Visit</option>
-            <option value="other" ${!svc||svc==='other'?'selected':''}>Other</option>
-          </select></td>
-          <td><input type="number" data-client="${esc(name)}" data-field="price" value="${currentPrice||''}" placeholder="${getClientPrice(name,svc)}" style="width:80px;padding:4px 6px;border:1px solid ${isPriced?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></td>
-          <td style="font-size:11px;color:var(--ink-xlight)">${isPriced?'Custom':'Default'}</td>
+          <td><span style="color:${isActive?'var(--success)':'var(--ink-xlight)'};font-size:11px">${isActive?'● Active':'○ Inactive'}</span></td>
+          <td><input type="number" data-client="${esc(name)}" data-field="dogs" value="${dogs}" min="1" max="5" style="width:45px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center"></td>
+          <td><input type="number" data-client="${esc(name)}" data-field="soloPrice" value="${soloPrice||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:70px;padding:4px 6px;border:1px solid ${soloPrice?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></td>
+          <td><input type="number" data-client="${esc(name)}" data-field="adventurePrice" value="${advPrice||''}" placeholder="${parseFloat(getSetting('s-price-adventure',75))||75}" style="width:70px;padding:4px 6px;border:1px solid ${advPrice?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></td>
+          <td>${dogs>1?`<input type="number" data-client="${esc(name)}" data-field="multiDogDiscount" value="${discount}" min="0" max="100" style="width:55px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px">`:
+            `<span style="font-size:11px;color:var(--ink-xlight)">—</span>`}</td>
+          <td style="font-size:11px;color:var(--ink-xlight)">${isPriced?'✅ Set':'⚠️ Default'}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>
+    </div>
+    <div style="margin-top:10px;padding:8px 12px;background:var(--cream);border-radius:var(--radius-sm);font-size:11px;color:var(--ink-light)">
+      <strong>Multi-dog pricing:</strong> First dog pays full price, additional dogs get the discount. E.g. $75 adventure with 2 dogs at 20% off = $75 + $60 = $135 total.
+    </div>
   `;
 }
 
 function saveClientPricing(){
-  const rows=document.querySelectorAll('#pricing-table tr[style], #pricing-table tbody tr');
-  rows.forEach(row=>{
-    const priceInput=row.querySelector('input[data-field="price"]');
-    const serviceSelect=row.querySelector('select[data-field="service"]');
-    if(!priceInput) return;
-    const name=priceInput.dataset.client;
-    const price=parseFloat(priceInput.value)||0;
-    const service=serviceSelect?.value||'group';
-    if(price>0){
-      clientPricing[name]={price,service};
+  const tbody=document.querySelector('#pricing-table tbody');
+  if(!tbody) return;
+  tbody.querySelectorAll('tr').forEach(row=>{
+    const soloInput=row.querySelector('input[data-field="soloPrice"]');
+    if(!soloInput) return;
+    const name=soloInput.dataset.client;
+    const soloPrice=parseFloat(soloInput.value)||0;
+    const advInput=row.querySelector('input[data-field="adventurePrice"]');
+    const advPrice=parseFloat(advInput?.value)||0;
+    const dogsInput=row.querySelector('input[data-field="dogs"]');
+    const dogs=parseInt(dogsInput?.value)||1;
+    const discInput=row.querySelector('input[data-field="multiDogDiscount"]');
+    const discount=discInput?parseInt(discInput.value):20;
+    if(soloPrice>0||advPrice>0){
+      clientPricing[name]={soloPrice,adventurePrice:advPrice,dogs,multiDogDiscount:discount};
     }
   });
   save('cw_client_prices',clientPricing);
