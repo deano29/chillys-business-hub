@@ -861,6 +861,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
         </div>
         <div class="settings-card">
+          <h3>🐕 Walker Team</h3>
+          <p>Configure your walkers — names are matched to Time to Pet calendar automatically.</p>
+          <div id="walker-config-list" style="margin-top:12px"></div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addWalkerConfig()">+ Add Walker</button>
+        </div>
+        <div class="settings-card">
           <h3>🛣️ Route Planner Settings</h3>
           <p>Cost and threshold defaults for route profitability analysis.</p>
           <div class="form-grid" style="margin-top:12px">
@@ -1089,12 +1095,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Route Details</h4>
           <div class="form-grid">
             <div class="form-group"><label>Date</label><input id="sh-date" type="date" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Walker</label><select id="sh-walker-preset" onchange="applyWalkerPreset();recalcShiftLive()">
-              <option value="">Select walker...</option>
-              <option value="Jessica Lauritz|founder">Jessica Lauritz (Founder)</option>
-              <option value="Alex|contractor|27">Alex (Contractor - $27/hr)</option>
-              <option value="_custom">+ Custom walker</option>
-            </select></div>
+            <div class="form-group"><label>Walker</label><select id="sh-walker-preset" onchange="applyWalkerPreset();recalcShiftLive()"></select></div>
             <div class="form-group" id="sh-walker-custom-group" style="display:none"><label>Walker Name</label><input id="sh-walker" type="text" placeholder="e.g. New walker" oninput="recalcShiftLive()"></div>
             <div class="form-group" id="sh-type-group"><label>Walker Type</label><select id="sh-type" onchange="updateShiftRate();recalcShiftLive()"><option value="founder">Founder</option><option value="employee">Employee</option><option value="contractor">Contractor</option></select></div>
             <div class="form-group" style="display:none"><label>Hourly Rate ($)</label><input id="sh-rate" type="number" value="0" oninput="recalcShiftLive()"></div>
@@ -2478,6 +2479,7 @@ function renderSettings(){
       <div class="al-time">${al.time}</div>
     </div>`).join('');
   loadSettings();
+  renderWalkerConfig();
 }
 
 // ── AI DRAFT ──
@@ -3038,6 +3040,48 @@ document.querySelectorAll('.filter-pill').forEach(p=>{
   });
 });
 
+// ── WALKER CONFIG ──
+const DEFAULT_WALKERS=[
+  {name:'Jessica Lauritz',type:'founder',rate:0},
+  {name:'Alex',type:'contractor',rate:27},
+];
+let walkerConfig=load('cw_walkers',DEFAULT_WALKERS);
+
+function getWalkerConfig(walkerName){
+  if(!walkerName) return null;
+  const clean=walkerName.replace(/\\+$/g,'').trim().toLowerCase();
+  return walkerConfig.find(w=>clean.includes(w.name.toLowerCase())||w.name.toLowerCase().includes(clean.split(' ')[0]));
+}
+
+function renderWalkerConfig(){
+  const el=document.getElementById('walker-config-list');
+  if(!el) return;
+  el.innerHTML=walkerConfig.map((w,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px">
+      <div class="form-group"><label>${i===0?'Name':''}</label><input value="${esc(w.name)}" oninput="walkerConfig[${i}].name=this.value" placeholder="Walker name"></div>
+      <div class="form-group"><label>${i===0?'Type':''}</label><select onchange="walkerConfig[${i}].type=this.value;walkerConfig[${i}].rate=this.value==='founder'?0:walkerConfig[${i}].rate;renderWalkerConfig()">
+        <option value="founder" ${w.type==='founder'?'selected':''}>Founder</option>
+        <option value="employee" ${w.type==='employee'?'selected':''}>Employee</option>
+        <option value="contractor" ${w.type==='contractor'?'selected':''}>Contractor</option>
+      </select></div>
+      <div class="form-group">${w.type==='founder'?`<label>${i===0?'Cost':''}</label><input value="Fixed weekly" disabled style="color:var(--ink-light)">`:`<label>${i===0?'$/hr':''}</label><input type="number" value="${w.rate}" oninput="walkerConfig[${i}].rate=parseFloat(this.value)||0">`}</div>
+      <button style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:6px" onclick="walkerConfig.splice(${i},1);saveWalkerConfig();renderWalkerConfig()">×</button>
+    </div>
+  `).join('')+`<div style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveWalkerConfig()">Save Walkers</button></div>`;
+}
+
+function addWalkerConfig(){
+  walkerConfig.push({name:'',type:'employee',rate:30});
+  renderWalkerConfig();
+}
+
+function saveWalkerConfig(){
+  walkerConfig=walkerConfig.filter(w=>w.name.trim());
+  save('cw_walkers',walkerConfig);
+  showToast('Walker team saved','✅');
+  renderWalkerConfig();
+}
+
 // ── ROUTE PLANNER — UI ──
 let rpShifts=load('cw_shifts',[]);
 let rpActiveTab='dashboard';
@@ -3139,13 +3183,18 @@ async function renderRpDashboard(){
     // Estimate travel km based on number of stops
     const estimatedKm=slots.length*5;// ~5km between each stop
 
+    // Auto-detect walker config
+    const wConfig=getWalkerConfig(g.walker);
+    const wType=wConfig?.type||'founder';
+    const wRate=wConfig?.rate||0;
+
     const shift={
       id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+date,
-      date,walker:g.walker,walkerType:'founder',
+      date,walker:g.walker,walkerType:wType,
       startTime:parseAmPmTo24(firstStart),
       endTime:parseAmPmTo24(lastEnd),
       breakMins:0,maxDogs:settings.maxDogsPerShift,
-      hourlyRate:settings.defaultRates.founder,
+      hourlyRate:wRate,
       travelDistanceKm:estimatedKm,travelMins:estimatedTravelBetweenSlots,
       variableCost:0,paymentFee:0,adminAlloc:0,
       bookings,source:'ttp-auto',
@@ -3303,18 +3352,49 @@ function renderSavedShifts(){
 }
 
 // ── FOUNDER VS STAFF COMPARISON ──
-function renderRpCompare(){
+async function renderRpCompare(){
   const el=document.getElementById('rp-compare-content');
   if(!el) return;
-  if(!rpShifts.length){
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Save a shift in the Shift Builder first to compare founder vs staff profitability.</div>';
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data for the next month...</div>';
+
+  // Fetch all walks and build routes for the next 30 days
+  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const futureWalks=walks.filter(w=>{
+    const d=new Date(w.start);
+    return d>=now;
+  });
+  const settings=getRouteSettings();
+
+  // Group by date + walker
+  const routeMap={};
+  futureWalks.forEach(w=>{
+    const key=w.date+'|'+(w.walker||'Unknown');
+    if(!routeMap[key]) routeMap[key]={date:w.date,walker:w.walker||'Unknown',walks:[]};
+    routeMap[key].walks.push(w);
+  });
+
+  const routes=Object.values(routeMap).sort((a,b)=>a.date.localeCompare(b.date));
+
+  if(!routes.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No upcoming walks found in Time to Pet.</div>';
     return;
   }
-  const settings=getRouteSettings();
-  const selectHtml=`<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;margin-right:8px">Select shift:</label><select id="rp-compare-select" onchange="renderCompareShift()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif">`+
-    rpShifts.map(s=>`<option value="${s.id}">${esc(s.walker||'Unnamed')} — ${s.date} ${s.startTime}</option>`).join('')+
+
+  // Build selector from actual routes
+  const selectHtml=`<div style="margin-bottom:16px;display:flex;gap:12px;align-items:center">
+    <label style="font-size:12px;font-weight:600">Select route:</label>
+    <select id="rp-compare-select" onchange="renderCompareShift()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;min-width:300px">`+
+    routes.map((r,i)=>{
+      const wConfig=getWalkerConfig(r.walker);
+      const typeLabel=wConfig?` (${wConfig.type})`:'';
+      return `<option value="${i}">${r.date} — ${esc(r.walker.replace(/\\+$/g,''))}${typeLabel} — ${r.walks.length} walks</option>`;
+    }).join('')+
     `</select></div><div id="rp-compare-result"></div>`;
   el.innerHTML=selectHtml;
+
+  // Store routes for the compare function to use
+  window._compareRoutes=routes;
   renderCompareShift();
 }
 
@@ -3322,9 +3402,51 @@ function renderCompareShift(){
   const sel=document.getElementById('rp-compare-select');
   const resultEl=document.getElementById('rp-compare-result');
   if(!sel||!resultEl) return;
-  const shift=rpShifts.find(s=>s.id===sel.value);
-  if(!shift){resultEl.innerHTML='';return;}
+
+  const routes=window._compareRoutes||[];
+  const routeData=routes[parseInt(sel.value)];
+  if(!routeData){resultEl.innerHTML='';return;}
+
   const settings=getRouteSettings();
+  const wConfig=getWalkerConfig(routeData.walker);
+
+  // Build a shift object from this route's walks
+  const sorted=routeData.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  const slots=[];
+  sorted.forEach(w=>{
+    if(!w.start||!w.end) return;
+    const ws=new Date(w.start).getTime(),we=new Date(w.end).getTime();
+    const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+    if(existing){existing.start=Math.min(existing.start,ws);existing.end=Math.max(existing.end,we);}
+    else slots.push({start:ws,end:we});
+  });
+  const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+  const travelMins=Math.max(0,(slots.length-1)*10);
+  const totalMins=actualServiceMins+travelMins;
+
+  const bookings=routeData.walks.map(w=>{
+    const svc=(w.service||'').toLowerCase();
+    const isAdventure=svc.includes('adventure')||svc.includes('2 hour');
+    return {
+      dogName:w.client,client:w.client,
+      serviceType:isAdventure?'adventure':'group',
+      price:isAdventure?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55),
+      durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+    };
+  });
+
+  const shift={
+    walker:routeData.walker.replace(/\\+$/g,''),
+    walkerType:wConfig?.type||'founder',
+    hourlyRate:wConfig?.rate||0,
+    startTime:'08:00',endTime:'12:00',
+    breakMins:0,maxDogs:settings.maxDogsPerShift,
+    travelDistanceKm:slots.length*5,travelMins,
+    variableCost:0,bookings,
+    _actualServiceMins:actualServiceMins,
+    _overrideShiftMins:totalMins,
+  };
+
   const metrics=calcShiftMetrics(shift,settings);
   const comp=calcFounderComparison(metrics,settings);
   const f=comp.founder,st=comp.staff;
@@ -3405,6 +3527,14 @@ function openShiftBuilder(id){
   editingShiftId=null;
   shiftBookings=[];
   const settings=getRouteSettings();
+
+  // Populate walker preset dropdown from config
+  const presetEl=document.getElementById('sh-walker-preset');
+  if(presetEl){
+    presetEl.innerHTML='<option value="">Select walker...</option>'+
+      walkerConfig.map(w=>`<option value="${esc(w.name)}|${w.type}${w.type!=='founder'?'|'+w.rate:''}">${esc(w.name)} (${w.type}${w.type!=='founder'?' - $'+w.rate+'/hr':''})</option>`).join('')+
+      '<option value="_custom">+ Custom walker</option>';
+  }
 
   if(id){
     // Edit existing shift
