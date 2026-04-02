@@ -250,9 +250,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .rp-metric.warn .rp-metric-value{color:var(--warning)}
 .rp-metric.bad .rp-metric-value{color:var(--danger)}
 .rp-health{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px}
-.rp-health-profitable{background:#dcfce7;color:var(--success)}
-.rp-health-borderline{background:#fef3c7;color:var(--warning)}
+.rp-health-strong{background:#dcfce7;color:#15803d}
+.rp-health-viable{background:#d1fae5;color:#059669}
+.rp-health-needs-work{background:#fef3c7;color:var(--warning)}
 .rp-health-not-viable{background:#fee2e2;color:var(--danger)}
+.rp-health-loss{background:#fca5a5;color:#991b1b}
 .rp-shift-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:10px;transition:all .15s}
 .rp-shift-card:hover{border-color:var(--orange-light);box-shadow:var(--shadow)}
 .rp-shift-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -901,6 +903,14 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <!-- Dashboard Tab -->
       <div id="rp-tab-dashboard">
         <div id="rp-weekly-summary" style="display:flex;gap:12px;margin-bottom:16px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:11px;align-items:center">
+          <strong style="color:var(--ink-light);margin-right:4px">Route Health:</strong>
+          <span class="rp-health rp-health-strong" style="font-size:10px;padding:2px 8px">🟢 Strong (60%+ margin)</span>
+          <span class="rp-health rp-health-viable" style="font-size:10px;padding:2px 8px">✅ Viable (40%+ margin)</span>
+          <span class="rp-health rp-health-needs-work" style="font-size:10px;padding:2px 8px">🟡 Needs Work (20-39%)</span>
+          <span class="rp-health rp-health-not-viable" style="font-size:10px;padding:2px 8px">🔴 Not Viable (&lt;20%)</span>
+          <span class="rp-health rp-health-loss" style="font-size:10px;padding:2px 8px">⛔ Loss Making</span>
+        </div>
         <div id="rp-shift-cards"></div>
       </div>
       <!-- Quick Assess Tab -->
@@ -3083,8 +3093,7 @@ async function renderRpDashboard(){
 
   cardsEl.innerHTML=shifts.map(({shift,metrics,walkCount,slots,groupSlots,soloSlots,maxGroupSize,actualServiceMins})=>{
     const band=getScoreBand(metrics.score);
-    const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[metrics.health];
-    const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[metrics.health];
+    const hi=getHealthInfo(metrics.health);
     const flags=[];
     if(metrics.grossMargin<getRouteSettings().marginThresholdYellow) flags.push('<span class="rp-flag rp-flag-low-margin">Low Margin</span>');
     if(metrics.dogCount<metrics.maxDogs*0.5) flags.push('<span class="rp-flag rp-flag-underfilled">Underfilled</span>');
@@ -3100,7 +3109,7 @@ async function renderRpDashboard(){
           ${flags.join('')}
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <span class="rp-health ${healthCls}">${healthLabel}</span>
+          <span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>
           <div class="rp-score-ring ${band.cls}">${metrics.score}</div>
         </div>
       </div>
@@ -3149,13 +3158,12 @@ function recalcQuickAssess(){
   const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(revenue,labour,travel,0);
   const profitPerHr=hours>0?grossProfit/hours:0;
   const health=calcRouteHealth(grossMargin,20,80,settings);
-  const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[health];
-  const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[health];
+  const hi=getHealthInfo(health);
   const el=document.getElementById('qa-results');
   if(!el) return;
   el.innerHTML=`
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <span class="rp-health ${healthCls}" style="font-size:13px;padding:6px 14px">${healthLabel}</span>
+      <span class="rp-health ${hi.cls}" style="font-size:13px;padding:6px 14px">${hi.icon} ${hi.label}</span>
       <span style="font-size:13px;color:var(--ink-light)">Gross Margin: <strong style="color:${grossMargin>=40?'var(--success)':grossMargin>=20?'var(--warning)':'var(--danger)'}">${grossMargin.toFixed(1)}%</strong></span>
     </div>
     <div class="rp-metric-grid">
@@ -3181,8 +3189,7 @@ function renderSavedShifts(){
   el.innerHTML=rpShifts.map(shift=>{
     const m=calcShiftMetrics(shift,settings);
     const band=getScoreBand(m.score);
-    const healthCls={'profitable':'rp-health-profitable','borderline':'rp-health-borderline','not-viable':'rp-health-not-viable'}[m.health];
-    const healthLabel={'profitable':'Profitable','borderline':'Borderline','not-viable':'Not Viable'}[m.health];
+    const hi=getHealthInfo(m.health);
     return `<div class="rp-shift-card" onclick="openShiftBuilder('${shift.id}')">
       <div class="rp-shift-header">
         <div>
@@ -3190,7 +3197,7 @@ function renderSavedShifts(){
           <span style="font-size:12px;color:var(--ink-light);margin-left:8px">${shift.date} · ${shift.startTime}—${shift.endTime} · ${shift.walkerType}</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <span class="rp-health ${healthCls}">${healthLabel}</span>
+          <span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>
           <div class="rp-score-ring ${band.cls}" style="width:40px;height:40px;font-size:14px;border-width:2px">${m.score}</div>
         </div>
       </div>
@@ -3324,13 +3331,16 @@ function calcUtilisation(serviceMins, travelMins, bufferMins, shiftMins){
 
 function calcRouteHealth(margin, travelLoad, utilisation, settings){
   const s=settings||getRouteSettings();
-  // Not Viable
-  if(margin<s.marginThresholdYellow||utilisation>100||travelLoad>s.travelLoadThresholdDanger) return 'not-viable';
-  // Borderline
-  if(margin<s.marginThresholdGreen||travelLoad>s.travelLoadThresholdWarn) return 'borderline';
-  // Profitable
-  if(utilisation>=70&&utilisation<=95) return 'profitable';
-  return 'borderline';// Outside optimal utilisation band
+  // Loss-making
+  if(margin<=0) return 'loss';
+  // Not Viable: very low margin or impossible to deliver
+  if(margin<s.marginThresholdYellow||utilisation>120||travelLoad>s.travelLoadThresholdDanger) return 'not-viable';
+  // Needs Work: below target but not terrible
+  if(margin<s.marginThresholdGreen||travelLoad>s.travelLoadThresholdWarn) return 'needs-work';
+  // Strong: great margin and healthy metrics
+  if(margin>=60) return 'strong';
+  // Viable: meets thresholds
+  return 'viable';
 }
 
 function calcRouteScore(margin, travelLoad, utilisation, dogCount, maxDogs){
@@ -3347,6 +3357,15 @@ function calcRouteScore(margin, travelLoad, utilisation, dogCount, maxDogs){
   if(fill>=0.8) score+=20; else if(fill>=0.6) score+=15; else if(fill>=0.4) score+=8; else score+=3;
   return Math.min(100,Math.max(0,Math.round(score)));
 }
+
+const HEALTH_MAP={
+  'strong':{cls:'rp-health-strong',label:'Strong',icon:'🟢'},
+  'viable':{cls:'rp-health-viable',label:'Viable',icon:'✅'},
+  'needs-work':{cls:'rp-health-needs-work',label:'Needs Work',icon:'🟡'},
+  'not-viable':{cls:'rp-health-not-viable',label:'Not Viable',icon:'🔴'},
+  'loss':{cls:'rp-health-loss',label:'Loss Making',icon:'⛔'},
+};
+function getHealthInfo(h){return HEALTH_MAP[h]||HEALTH_MAP['needs-work'];}
 
 function getScoreBand(score){
   if(score>=80) return {label:'Excellent',cls:'rp-score-excellent'};
