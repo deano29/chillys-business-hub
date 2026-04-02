@@ -898,7 +898,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
         <div class="pipeline-filters" id="rp-tabs">
           <div class="filter-pill active" onclick="rpTab('dashboard')">Dashboard</div>
           <div class="filter-pill" onclick="rpTab('quick')">Quick Assess</div>
-          <div class="filter-pill" onclick="rpTab('builder')">Shift Builder</div>
+          <div class="filter-pill" onclick="rpTab('builder')">Route Builder</div>
           <div class="filter-pill" onclick="rpTab('compare')">Founder vs Staff</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -944,8 +944,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <!-- Builder Tab -->
       <div id="rp-tab-builder" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <p style="font-size:13px;color:var(--ink-light)">Create and manage route scenarios</p>
-          <button class="btn btn-primary btn-sm" onclick="openShiftBuilder()">+ New Shift</button>
+          <p style="font-size:13px;color:var(--ink-light)">Create and manage route profitability scenarios</p>
+          <button class="btn btn-primary btn-sm" onclick="openShiftBuilder()">+ New Route</button>
         </div>
         <div id="rp-saved-shifts"></div>
       </div>
@@ -1085,46 +1085,53 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <div style="display:grid;grid-template-columns:1fr 360px;min-height:100%">
         <!-- LEFT: Inputs -->
         <div style="padding:20px 24px;border-right:1px solid var(--border)">
-          <!-- Shift Details -->
-          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Shift Details</h4>
+          <!-- Route Details -->
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Route Details</h4>
           <div class="form-grid">
             <div class="form-group"><label>Date</label><input id="sh-date" type="date" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Walker Name</label><input id="sh-walker" type="text" placeholder="e.g. Jessica" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Walker Type</label><select id="sh-type" onchange="updateShiftRate();recalcShiftLive()"><option value="founder">Founder</option><option value="employee">Employee</option><option value="contractor">Contractor</option></select></div>
             <div class="form-group"><label>Hourly Rate ($)</label><input id="sh-rate" type="number" value="30" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Shift Start</label><input id="sh-start" type="time" value="08:00" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Shift End</label><input id="sh-end" type="time" value="12:00" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Break (mins)</label><input id="sh-break" type="number" value="0" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Max Dogs</label><input id="sh-maxdogs" type="number" value="6" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Est. Travel KM</label><input id="sh-km" type="number" value="15" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Est. Travel Mins</label><input id="sh-travel-mins" type="number" value="30" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Max Dogs Per Walk</label><input id="sh-maxdogs" type="number" value="6" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Est. Travel KM (total)</label><input id="sh-km" type="number" value="15" oninput="recalcShiftLive()"></div>
+            <div class="form-group"><label>Est. Travel Mins (total)</label><input id="sh-travel-mins" type="number" value="30" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Variable Cost ($)</label><input id="sh-variable" type="number" value="0" oninput="recalcShiftLive()"></div>
-            <div class="form-group"><label>Payment Fee ($)</label><input id="sh-fee" type="number" value="0" oninput="recalcShiftLive()"></div>
           </div>
+          <!-- Hidden fields for compatibility -->
+          <input type="hidden" id="sh-start" value="08:00">
+          <input type="hidden" id="sh-end" value="12:00">
+          <input type="hidden" id="sh-break" value="0">
+          <input type="hidden" id="sh-fee" value="0">
 
           <!-- Import from TTP -->
           <div style="margin-top:20px;padding:12px;background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border-light)">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:12px;font-weight:600">Import from today's walks</span>
-              <button class="btn btn-ghost btn-sm" onclick="importTTPBookings()">📥 Import</button>
+              <div>
+                <div style="font-size:12px;font-weight:600">Import from walk calendar</div>
+                <div style="font-size:11px;color:var(--ink-light)">Pulls walks for this date + walker from Time to Pet</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="importTTPBookings()">📥 Import Walks</button>
             </div>
           </div>
+
+          <!-- Walk Schedule (auto-calculated from bookings) -->
+          <div id="sh-schedule-summary" style="margin-top:16px"></div>
 
           <!-- Bookings -->
           <div style="margin-top:20px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <h4 style="font-size:13px;font-weight:700">Bookings</h4>
-              <button class="btn btn-ghost btn-sm" onclick="addBookingRow()">+ Add Dog</button>
+              <h4 style="font-size:13px;font-weight:700">Walks</h4>
+              <button class="btn btn-ghost btn-sm" onclick="addBookingRow()">+ Add Walk</button>
             </div>
             <div id="sh-bookings"></div>
-            <div id="sh-bookings-empty" style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:12px">No bookings yet. Click "+ Add Dog" or import from TTP.</div>
+            <div id="sh-bookings-empty" style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:12px">No walks yet. Click "+ Add Walk" or import from TTP.</div>
           </div>
         </div>
 
         <!-- RIGHT: Live Summary -->
         <div style="padding:20px;background:var(--cream);position:sticky;top:0;align-self:start;max-height:92vh;overflow-y:auto">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-            <h4 style="font-size:13px;font-weight:700">Live Summary</h4>
+            <h4 style="font-size:13px;font-weight:700">Route Profitability</h4>
             <span id="sh-health-badge"></span>
           </div>
           <div id="sh-score-display" style="text-align:center;margin-bottom:14px"></div>
@@ -1137,7 +1144,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <button class="btn btn-danger btn-sm" id="sh-btn-delete" style="display:none" onclick="deleteShift()">Delete</button>
       <div style="flex:1"></div>
       <button class="btn btn-secondary" onclick="closeModal('modal-shift')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveShift()">💾 Save Shift</button>
+      <button class="btn btn-primary" onclick="saveShift()">💾 Save Route</button>
     </div>
   </div>
 </div>
@@ -3043,7 +3050,7 @@ function rpTab(tab){
     if(el) el.style.display=t===tab?'block':'none';
   });
   document.querySelectorAll('#rp-tabs .filter-pill').forEach(p=>{
-    const labels={Dashboard:'dashboard','Quick Assess':'quick','Shift Builder':'builder','Founder vs Staff':'compare'};
+    const labels={Dashboard:'dashboard','Quick Assess':'quick','Route Builder':'builder','Founder vs Staff':'compare'};
     p.classList.toggle('active',labels[p.textContent.trim()]===tab);
   });
   if(tab==='dashboard') renderRpDashboard();
@@ -3258,7 +3265,7 @@ function renderSavedShifts(){
   const el=document.getElementById('rp-saved-shifts');
   if(!el) return;
   if(!rpShifts.length){
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)"><div style="font-size:32px;margin-bottom:8px">🛣️</div><h4>No saved shifts yet</h4><p style="font-size:12px">Click "+ New Shift" to create your first route scenario.</p></div>';
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)"><div style="font-size:32px;margin-bottom:8px">🛣️</div><h4>No saved routes yet</h4><p style="font-size:12px">Click "+ New Route" to create your first route analysis.</p></div>';
     return;
   }
   const settings=getRouteSettings();
@@ -3536,28 +3543,59 @@ function recalcShiftLive(){
   const settings=getRouteSettings();
   const metrics=calcShiftMetrics(shift,settings);
   renderLiveSummary(metrics,settings);
+  renderScheduleSummary(metrics);
 }
 
 function buildShiftFromForm(){
+  const travelMins=parseFloat(document.getElementById('sh-travel-mins')?.value)||0;
+  // Calculate total walk time from bookings (detect group walks — overlapping durations count once)
+  const totalWalkMins=shiftBookings.reduce((s,b)=>s+(parseFloat(b.durationMins)||0),0);
+  // For grouped walks, use a simple heuristic: if multiple bookings share the same duration, they're likely grouped
+  // Actual service time = unique walk blocks. For now use total as approximation, dashboard handles grouping from TTP
+  const billableMins=totalWalkMins+travelMins;
+  // Set hidden fields for calcShiftMetrics compatibility
+  const startEl=document.getElementById('sh-start');
+  const endEl=document.getElementById('sh-end');
+  if(startEl) startEl.value='08:00';
+  if(endEl){
+    const endMins=480+Math.round(billableMins);
+    endEl.value=`${String(Math.floor(endMins/60)).padStart(2,'0')}:${String(endMins%60).padStart(2,'0')}`;
+  }
+
   return {
     id:editingShiftId||('sh_'+Date.now()),
     date:document.getElementById('sh-date')?.value||'',
     walker:document.getElementById('sh-walker')?.value||'',
     walkerType:document.getElementById('sh-type')?.value||'employee',
-    startTime:document.getElementById('sh-start')?.value||'08:00',
-    endTime:document.getElementById('sh-end')?.value||'12:00',
-    breakMins:parseInt(document.getElementById('sh-break')?.value)||0,
+    startTime:startEl?.value||'08:00',
+    endTime:endEl?.value||'12:00',
+    breakMins:0,
     maxDogs:parseInt(document.getElementById('sh-maxdogs')?.value)||6,
     hourlyRate:parseFloat(document.getElementById('sh-rate')?.value)||30,
     travelDistanceKm:parseFloat(document.getElementById('sh-km')?.value)||0,
-    travelMins:parseFloat(document.getElementById('sh-travel-mins')?.value)||0,
+    travelMins,
     variableCost:parseFloat(document.getElementById('sh-variable')?.value)||0,
-    paymentFee:parseFloat(document.getElementById('sh-fee')?.value)||0,
-    adminAlloc:0,
+    paymentFee:0,adminAlloc:0,
     bookings:shiftBookings,
     createdAt:new Date().toISOString(),
     source:'manual',
   };
+}
+
+function renderScheduleSummary(m){
+  const el=document.getElementById('sh-schedule-summary');
+  if(!el||!shiftBookings.length) {if(el)el.innerHTML='';return;}
+  const walkHrs=(m.totalServiceMins/60).toFixed(1);
+  const travelHrs=(m.travelMins/60).toFixed(1);
+  const billableHrs=(m.shiftMins/60).toFixed(1);
+  el.innerHTML=`
+    <div style="display:flex;gap:12px;padding:10px 14px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px">
+      <div>🐕 <strong>${m.dogCount}</strong> dogs</div>
+      <div>⏱ <strong>${walkHrs}h</strong> walking</div>
+      <div>🚗 <strong>${travelHrs}h</strong> travel</div>
+      <div>📊 <strong>${billableHrs}h</strong> billable time</div>
+      <div>💰 Labour: <strong>$${m.labourCost.toFixed(0)}</strong> (${billableHrs}h × $${m.hourlyRate}/hr)</div>
+    </div>`;
 }
 
 function renderLiveSummary(m,settings){
@@ -3580,11 +3618,11 @@ function renderLiveSummary(m,settings){
     <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${m.totalDirectCost.toFixed(0)}</div></div>
     <div class="rp-metric ${mClass(m.grossProfit,1,-1)}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${m.grossProfit.toFixed(0)}</div></div>
     <div class="rp-metric ${mClass(m.grossMargin,40,20)}"><div class="rp-metric-label">Gross Margin</div><div class="rp-metric-value">${m.grossMargin.toFixed(1)}%</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Billable Hours</div><div class="rp-metric-value">${(m.shiftMins/60).toFixed(1)}h</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Walk Hours</div><div class="rp-metric-value">${(m.totalServiceMins/60).toFixed(1)}h</div></div>
     <div class="rp-metric"><div class="rp-metric-label">Revenue/Hr</div><div class="rp-metric-value">$${m.revenuePerHr.toFixed(0)}</div></div>
     <div class="rp-metric ${mClass(m.profitPerHr,settings.targetProfitPerHr,10)}"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${m.profitPerHr.toFixed(0)}</div></div>
     <div class="rp-metric"><div class="rp-metric-label">Dogs/Hr</div><div class="rp-metric-value">${m.dogsPerHr.toFixed(1)}</div></div>
-    <div class="rp-metric ${mClass(100-m.travelLoad,70,50)}"><div class="rp-metric-label">Travel Load</div><div class="rp-metric-value">${m.travelLoad.toFixed(0)}%</div></div>
-    <div class="rp-metric"><div class="rp-metric-label">Utilisation</div><div class="rp-metric-value">${m.utilisation.toFixed(0)}%</div></div>
     <div class="rp-metric"><div class="rp-metric-label">Break-Even Rev</div><div class="rp-metric-value">$${m.breakEvenRevenue.toFixed(0)}</div></div>
     <div class="rp-metric"><div class="rp-metric-label">Break-Even Dogs</div><div class="rp-metric-value">${m.breakEvenDogs}</div></div>
   `;
