@@ -1181,17 +1181,16 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 
 <!-- ── AI DRAFT MODAL ── -->
 <div class="modal-overlay" id="modal-ai-draft">
-  <div class="modal" style="max-width:620px">
+  <div class="modal" style="max-width:700px">
     <div class="modal-head">
-      <h3>🤖 AI Draft Reply <span class="ai-badge">Smart Templates</span></h3>
+      <h3>✨ Smart Reply Generator</h3>
       <button class="modal-close" onclick="closeModal('modal-ai-draft')">×</button>
     </div>
     <div class="modal-body" id="ai-draft-body"></div>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" style="margin-right:auto;background:var(--purple-bg);color:var(--purple)" onclick="generateAiDraft()">✨ Generate AI Draft</button>
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-ai-draft')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="generateSmartDraft()">✨ Generate</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyAiDraft()">📋 Copy</button>
       <button class="btn btn-ghost btn-sm" onclick="sendAiDraftEmail()">✉️ Send via Outlook</button>
-      <button class="btn btn-primary btn-sm" onclick="copyAiDraft()">📋 Copy</button>
     </div>
   </div>
 </div>
@@ -2673,58 +2672,256 @@ function renderSettings(){
 }
 
 // ── AI DRAFT ──
-function fillTemplate(body,e){
-  return (body||'')
-    .replace(/\{name\}/g,e?.name||'there')
-    .replace(/\{dog_name\}/g,e?.dogName||'your dog')
-    .replace(/\{walker_name\}/g,getSetting('s-your-name','Chilly'))
-    .replace(/\{business_name\}/g,getSetting('s-biz-name',"Chilly's Dog Adventures"));
+// ── SMART REPLY GENERATOR ──
+const MSG_TYPES=[
+  {id:'welcome',label:'Welcome Reply',icon:'👋',desc:'Warm first response to a new enquiry',stages:['new']},
+  {id:'followup',label:'Follow Up',icon:'📞',desc:'Check in after no reply',stages:['new','contacted']},
+  {id:'info',label:'Service Info',icon:'📋',desc:'Detailed services and pricing',stages:['new','contacted','qualified']},
+  {id:'close',label:'Close the Deal',icon:'🎯',desc:'Nudge a qualified lead to commit',stages:['qualified']},
+  {id:'reengage',label:'Re-engage',icon:'💬',desc:'Win back a quiet or dropping client',stages:['contacted','qualified']},
+  {id:'notsuitable',label:'Not the Right Fit',icon:'🙏',desc:'Polite decline',stages:['not-suitable','closed-lost']},
+];
+
+function getSmartContext(e){
+  if(!e) return {};
+  const name=e.name?.split(' ')[0]||e.name||'there';
+  const fullName=e.name||'';
+  const dog=e.dogName||'your dog';
+  const breed=e.dogBreed||'';
+  const suburb=e.suburb||e.postCode||'';
+  const source=(e.source||e.channel||'').toLowerCase();
+  const stage=e.stage||'new';
+  const notes=e.notes||'';
+  const services=e.services||e.enquiryType||'';
+  const preferredDays=e.preferredDays||'';
+  const walker=getSetting('s-your-name','Jess');
+  const biz=getSetting('s-biz-name',"Chilly's Dog Adventures");
+  const daysSinceEnquiry=e.dateAdded?Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5)):0;
+  const isFromAd=source.includes('meta')||source.includes('facebook')||source.includes('instagram');
+  const isReferral=source.includes('referral');
+  const isFromWeb=source.includes('website')||source.includes('google');
+
+  // Check if they're also a TTP client
+  const ttpClient=clients.find(c=>(c.name||'').toLowerCase().includes(name.toLowerCase()));
+  const isExistingClient=!!ttpClient;
+
+  return {name,fullName,dog,breed,suburb,source,stage,notes,services,preferredDays,walker,biz,daysSinceEnquiry,isFromAd,isReferral,isFromWeb,isExistingClient,ttpClient};
+}
+
+function generateSmartDraft(){
+  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
+  const typeSelect=document.getElementById('smart-msg-type');
+  const msgType=typeSelect?.value||'welcome';
+  const ctx=getSmartContext(e);
+  const preview=document.getElementById('ai-draft-preview');
+
+  let draft='';
+
+  // OPENING — varies by source and context
+  const openers={
+    ad_new:[
+      `Hi ${ctx.name}! 👋 Thanks for filling out our form`,
+      `Hey ${ctx.name}! Great to hear from you`,
+      `Hi ${ctx.name}! Thanks so much for your enquiry`,
+    ],
+    referral_new:[
+      `Hi ${ctx.name}! 👋 Thanks for reaching out — always great to hear from a referral`,
+      `Hey ${ctx.name}! So glad someone pointed you our way`,
+    ],
+    web_new:[
+      `Hi ${ctx.name}! 👋 Thanks for finding us`,
+      `Hey ${ctx.name}! Thanks for getting in touch`,
+    ],
+    generic:[
+      `Hi ${ctx.name}! 👋`,
+      `Hey ${ctx.name}!`,
+    ],
+  };
+
+  const pickRandom=(arr)=>arr[Math.floor(Math.random()*arr.length)];
+  let opener=ctx.isFromAd?pickRandom(openers.ad_new):ctx.isReferral?pickRandom(openers.referral_new):ctx.isFromWeb?pickRandom(openers.web_new):pickRandom(openers.generic);
+
+  // DOG PERSONALISATION
+  let dogLine='';
+  if(ctx.dog&&ctx.dog!=='your dog'){
+    if(ctx.breed) dogLine=` — we'd love to meet ${ctx.dog} the ${ctx.breed}! 🐶`;
+    else dogLine=` — we'd love to meet ${ctx.dog}! 🐶`;
+  }else{
+    dogLine=` — we'd love to help! 🐾`;
+  }
+
+  // SUBURB REFERENCE
+  let suburbLine='';
+  if(ctx.suburb){
+    suburbLine=`\n\nWe regularly walk dogs in the ${ctx.suburb} area, so we're super familiar with the local parks and routes.`;
+  }
+
+  // SERVICES MENTION
+  let serviceLine='';
+  if(ctx.services){
+    const svc=ctx.services.toLowerCase();
+    if(svc.includes('adventure')) serviceLine=`\n\nOur 2-hour dog adventures are really popular — ${ctx.dog!=='your dog'?ctx.dog+'would':'dogs'} get a proper outing with lots of sniffing, socialising, and exercise!`;
+    else if(svc.includes('private')||svc.includes('solo')) serviceLine=`\n\nWe offer private solo walks which are perfect for ${ctx.dog!=='your dog'?ctx.dog:'dogs'} who prefer one-on-one attention.`;
+    else if(svc.includes('group')) serviceLine=`\n\nOur group walks are a great way for ${ctx.dog!=='your dog'?ctx.dog:'your pup'} to socialise while getting exercise.`;
+  }
+
+  // NOTES REFERENCE
+  let notesLine='';
+  if(ctx.notes&&ctx.notes.length>5){
+    notesLine=`\n\nI noticed from your enquiry: "${ctx.notes.substring(0,100)}${ctx.notes.length>100?'...':''}" — happy to chat more about this!`;
+  }
+
+  // PREFERRED DAYS
+  let daysLine='';
+  if(ctx.preferredDays) daysLine=`\n\nYou mentioned ${ctx.preferredDays} works for you — that fits well with our current schedule.`;
+
+  // MESSAGE TYPE SPECIFIC BODY
+  if(msgType==='welcome'){
+    draft=`${opener}${dogLine}${suburbLine}${serviceLine}${daysLine}
+
+Here's a quick overview of what we offer:
+
+🐾 2-Hour Dog Adventures — group exploration walks with lots of enrichment
+🐾 Private Solo Walks (45-60 min) — one-on-one attention
+🐾 Group Walks (45-60 min) — great for social dogs
+
+All our walks include GPS tracking, photos, and a walk report card sent after every session 📱${notesLine}
+
+I'd love to find out more about ${ctx.dog!=='your dog'?ctx.dog:'your pup'}! A few quick questions:
+• What service are you most interested in?
+• How many days per week are you thinking?
+• Any medical or behavioural needs I should know about?
+
+Looking forward to hearing from you!
+
+${ctx.walker} 🐾
+${ctx.biz}`;
+
+  }else if(msgType==='followup'){
+    const timeLine=ctx.daysSinceEnquiry>7?`It's been about ${Math.round(ctx.daysSinceEnquiry/7)} week${ctx.daysSinceEnquiry>14?'s':''} since we last chatted`:`Just following up from the other day`;
+    draft=`Hi ${ctx.name},
+
+${timeLine} — I wanted to check in and see if you're still looking for dog walking for ${ctx.dog!=='your dog'?ctx.dog:'your pup'}? 😊${suburbLine}
+
+No pressure at all! If you have any questions about our services or would like to book a free meet & greet, just let me know.${ctx.isFromAd?'\n\nI know lead forms can be easy to forget about — totally understand if the timing wasn\'t right. We\'re here whenever you\'re ready!':''}
+
+${ctx.walker} 🐾
+${ctx.biz}`;
+
+  }else if(msgType==='info'){
+    draft=`Hi ${ctx.name},
+
+Thanks for your interest in ${ctx.biz}! Here's everything you need to know about our services 🐾
+
+📋 OUR SERVICES
+━━━━━━━━━━━━━━━━━━━━━━━━
+🌿 2-Hour Dog Adventure — Our signature service! Off-lead exploration in Melbourne's best parks. Great for active dogs who love to sniff and socialise.
+
+🦮 Private Solo Walk (45-60 min) — One-on-one attention for ${ctx.dog!=='your dog'?ctx.dog:'your pup'}. Perfect for dogs who prefer their own space, are reactive, or need extra care.
+
+🐕 Group Walk (45-60 min) — Small group of friendly dogs. Great value and socialisation.${ctx.suburb?`\n\nWe service the ${ctx.suburb} area regularly and know all the best walking spots nearby.`:''}
+
+📱 WHAT'S INCLUDED
+━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GPS-tracked walks
+✅ Photo updates after every walk
+✅ Walk report card
+✅ Fully insured walkers
+✅ Managed via Time to Pet app
+
+📋 HOW TO GET STARTED
+━━━━━━━━━━━━━━━━━━━━━━━━
+1️⃣ Free meet & greet — we come to you, meet ${ctx.dog!=='your dog'?ctx.dog:'your pup'}, and chat about their needs
+2️⃣ Quick online intake form (5 mins)
+3️⃣ Digital T&Cs signature
+4️⃣ First walk booked! 🎉${daysLine}
+
+Would you like to book a free meet & greet? I can come to you at a time that suits.
+
+${ctx.walker} 🐾
+${ctx.biz}`;
+
+  }else if(msgType==='close'){
+    draft=`Hi ${ctx.name},
+
+Just checking in — I know you've been thinking about dog walking for ${ctx.dog!=='your dog'?ctx.dog:'your pup'} and wanted to see if you're ready to get started? 🐾${ctx.suburb?`\n\nWe've got availability in the ${ctx.suburb} area and could have ${ctx.dog!=='your dog'?ctx.dog:'your pup'} walking with us as early as next week.`:'\n\nWe could have things set up as early as next week.'}${ctx.preferredDays?`\n\n${ctx.preferredDays} still work for you? We have spots available on those days.`:''}
+
+The next step is just a quick free meet & greet — takes about 20 minutes and there's zero obligation. It's really just so ${ctx.dog!=='your dog'?ctx.dog:'your pup'} can meet us and we can go over everything.
+
+Shall I lock in a time this week?
+
+${ctx.walker} 🐾
+${ctx.biz}`;
+
+  }else if(msgType==='reengage'){
+    draft=`Hi ${ctx.name},
+
+Hope you and ${ctx.dog!=='your dog'?ctx.dog:'the pup'} are doing well! 😊
+
+I noticed we haven't chatted in a little while and just wanted to reach out.${ctx.isExistingClient?`\n\nWe've loved having ${ctx.dog!=='your dog'?ctx.dog:'your pup'} with us and would hate to lose you from the pack!`:''}
+
+If anything's changed or if you have any concerns, I'm always happy to chat. No pressure at all — just wanted you to know we're here.${ctx.suburb?`\n\nWe're still covering the ${ctx.suburb} area regularly.`:''}
+
+${ctx.walker} 🐾
+${ctx.biz}`;
+
+  }else if(msgType==='notsuitable'){
+    draft=`Hi ${ctx.name},
+
+Thank you so much for your enquiry about ${ctx.dog!=='your dog'?ctx.dog:'dog walking'} — it was great chatting with you! 🐾
+
+After careful consideration, unfortunately we're not quite the right fit at this stage.${ctx.notes?` (${ctx.notes.substring(0,80)})`:''}\n\nI'd be happy to recommend another trusted walker in ${ctx.suburb||'your area'} if that would help — just let me know.
+
+Wishing you and ${ctx.dog!=='your dog'?ctx.dog:'your pup'} all the best!
+
+${ctx.walker}
+${ctx.biz}`;
+  }
+
+  aiDraftText=draft;
+  preview.textContent=draft;
+  showToast('Smart reply generated','✨');
+  logEvent('Smart reply generated',`${ctx.fullName} — ${msgType}`,'success','✨');
 }
 
 function openAiDraft(enqId){
   currentAiEnqId=enqId;
   const e=enquiries.find(x=>x.id===enqId);
-  const stageMap={new:'t1',contacted:'t2',qualified:'t3','closed-won':'t4'};
-  const recId=stageMap[e?.stage]||'t1';
-  const recT=TEMPLATES.find(t=>t.id===recId);
-  aiDraftText=fillTemplate(recT?.body,e);
+  const ctx=getSmartContext(e);
+  const stage=e?.stage||'new';
+
+  // Auto-recommend message type based on stage
+  const recommended=MSG_TYPES.find(t=>t.stages.includes(stage))||MSG_TYPES[0];
 
   document.getElementById('ai-draft-body').innerHTML=`
-    ${e?`<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;border:1px solid var(--border-light)">
-      <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:3px">📋 Context: ${esc(e.name)} · ${esc(e.dogName||'')} · ${STAGES.find(s=>s.id===e.stage)?.label}</div>
-      <div style="font-size:11px;color:var(--ink-light)">Channel: ${esc(e.channel)} · Source: ${esc(e.source||'Unknown')} · Suburb: ${esc(e.suburb||'Unknown')}</div>
+    ${e?`<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;border:1px solid var(--border-light)">
+      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">${esc(e.name)}${ctx.dog!=='your dog'?' · 🐶 '+esc(ctx.dog)+(ctx.breed?' ('+esc(ctx.breed)+')':''):''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--ink-light)">
+        <span>${STAGES.find(s=>s.id===stage)?.label||stage}</span>
+        ${ctx.suburb?`<span>· 📍 ${esc(ctx.suburb)}</span>`:''}
+        ${ctx.source?`<span>· via ${esc(ctx.source)}</span>`:''}
+        ${ctx.services?`<span>· ${esc(ctx.services)}</span>`:''}
+        ${ctx.preferredDays?`<span>· ${esc(ctx.preferredDays)}</span>`:''}
+        ${ctx.daysSinceEnquiry>0?`<span>· ${ctx.daysSinceEnquiry}d ago</span>`:''}
+      </div>
+      ${ctx.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light)">📝 ${esc(ctx.notes.substring(0,150))}${ctx.notes.length>150?'...':''}</div>`:''}
+      ${ctx.isExistingClient?`<div style="font-size:11px;color:var(--success);margin-top:4px">✅ Also a TTP client — ${ctx.ttpClient.futureWalks||0} upcoming walks</div>`:''}
     </div>`:''}
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Select template</div>
-    <div id="ai-tmpl-list">
-      ${TEMPLATES.map(t=>`<div class="ai-tmpl-opt ${t.id===recId?'active':''}" onclick="selectAiTemplate('${t.id}',this)">
-        <span class="tmpl-cat ${t.catClass}" style="font-size:9px;white-space:nowrap">${t.catLabel}</span>
-        <span style="font-size:12px">${t.name}</span>
-      </div>`).join('')}
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:var(--ink-light)">Message Type</label>
+      <select id="smart-msg-type" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:Inter,sans-serif">
+        ${MSG_TYPES.map(t=>`<option value="${t.id}" ${t.id===recommended.id?'selected':''}>${t.icon} ${t.label} — ${t.desc}</option>`).join('')}
+      </select>
     </div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin:16px 0 8px">Preview — merge fields filled</div>
-    <div class="ai-preview" id="ai-draft-preview">${esc(aiDraftText)}</div>`;
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Preview — click Generate to create</div>
+    <div class="ai-preview" id="ai-draft-preview" style="white-space:pre-wrap;min-height:120px;color:var(--ink-xlight);font-style:italic">Click "✨ Generate" to create a personalised reply using all available context.</div>`;
   openModal('modal-ai-draft');
 }
 
 function openAiDraftNew(){
-  const newEnq=enquiries.filter(e=>e.stage==='new');
+  const newEnq=enquiries.filter(e=>['new','contacted','qualified'].includes(e.stage));
   if(newEnq.length>0)openAiDraft(newEnq[0].id);
-  else{
-    currentAiEnqId=null;
-    const recT=TEMPLATES[0];
-    aiDraftText=fillTemplate(recT?.body,null);
-    document.getElementById('ai-draft-body').innerHTML=`
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Select template</div>
-      <div id="ai-tmpl-list">
-        ${TEMPLATES.map((t,i)=>`<div class="ai-tmpl-opt ${i===0?'active':''}" onclick="selectAiTemplate('${t.id}',this)">
-          <span class="tmpl-cat ${t.catClass}" style="font-size:9px;white-space:nowrap">${t.catLabel}</span>
-          <span style="font-size:12px">${t.name}</span>
-        </div>`).join('')}
-      </div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin:16px 0 8px">Preview</div>
-      <div class="ai-preview" id="ai-draft-preview">${esc(aiDraftText)}</div>`;
-    openModal('modal-ai-draft');
-  }
+  else{currentAiEnqId=null;openAiDraft(null);}
 }
 
 function openAiDraftFromEmail(emailId){
@@ -2734,63 +2931,31 @@ function openAiDraftFromEmail(emailId){
   else openAiDraftNew();
 }
 
-function selectAiTemplate(tId,el){
-  document.querySelectorAll('.ai-tmpl-opt').forEach(x=>x.classList.remove('active'));
-  el.classList.add('active');
-  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
-  const t=TEMPLATES.find(x=>x.id===tId);
-  aiDraftText=fillTemplate(t?.body,e);
-  document.getElementById('ai-draft-preview').textContent=aiDraftText;
-}
-
-async function generateAiDraft(){
-  const url=getWebhookUrl('wh-ai-draft');
-  if(!url){showToast('Set up AI Draft webhook in Settings first','⚠️');return;}
-  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
-  const preview=document.getElementById('ai-draft-preview');
-  preview.textContent='✨ Generating AI draft...';
-  preview.style.opacity='0.6';
-  const toneIdx=getSetting('s-tone',0);
-  const tones=['warm and friendly','professional','casual'];
-  try{
-    const res=await fetch(url,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        name:e?.name||'',dogName:e?.dogName||'',dogBreed:e?.dogBreed||'',
-        services:e?.services||'',stage:e?.stage||'',channel:e?.channel||'',
-        suburb:e?.suburb||'',notes:e?.notes||'',source:e?.source||'',
-        tone:tones[toneIdx]||'warm and friendly',
-        businessName:getSetting('s-biz-name',"Chilly's Dog Adventures"),
-        walkerName:getSetting('s-your-name','Chilly')
-      })
-    });
-    const data=await res.json();
-    aiDraftText=data.draft||data.text||data.message||'AI generation failed — check Make.com scenario.';
-    preview.textContent=aiDraftText;
-    preview.style.opacity='1';
-    logEvent('AI draft generated',e?.name||'Unknown','success','🤖');
-    showToast('AI draft ready!','🤖');
-  }catch(err){
-    preview.textContent='Failed to reach AI webhook. Check your Make.com URL in Settings.';
-    preview.style.opacity='1';
-    showToast('AI draft failed — check webhook URL','⚠️');
-  }
-}
-
 function copyAiDraft(){
+  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
   navigator.clipboard.writeText(aiDraftText).then(()=>{
-    logEvent('AI Draft copied','Template filled and copied to clipboard','info','🤖');
-    showToast('AI draft copied!','🤖');
+    logEvent('Smart reply copied','Copied to clipboard','info','✨');
+    showToast('Copied!','📋');
     closeModal('modal-ai-draft');
   });
 }
+
 function sendAiDraftEmail(){
+  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
   const e=enquiries.find(x=>x.id===currentAiEnqId);
   const to=e?.email||'';
-  const subject='Re: Dog Walking — '+(e?.dogName||'');
+  const dog=e?.dogName||'';
+  const subject=dog?`Re: Dog Walking — ${dog}`:'Re: Dog Walking Enquiry';
   composeEmail(to,subject,aiDraftText);
   closeModal('modal-ai-draft');
+}
+
+function fillTemplate(body,e){
+  return (body||'')
+    .replace(/\{name\}/g,e?.name?.split(' ')[0]||e?.name||'there')
+    .replace(/\{dog_name\}/g,e?.dogName||'your dog')
+    .replace(/\{walker_name\}/g,getSetting('s-your-name','Jess'))
+    .replace(/\{business_name\}/g,getSetting('s-biz-name',"Chilly's Dog Adventures"));
 }
 
 // ── ENQUIRY CRUD ──
