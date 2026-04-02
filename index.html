@@ -3478,10 +3478,38 @@ async function importTTPBookings(){
     document.getElementById('sh-walker').value=filtered[0].walker.replace(/\\+$/g,'');
   }
 
-  // Set shift times from walks
   const sorted=filtered.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
-  document.getElementById('sh-start').value=parseAmPmTo24(sorted[0]?.time||'08:00');
-  document.getElementById('sh-end').value=parseAmPmTo24(sorted[sorted.length-1]?.endTime||'12:00');
+
+  // Detect service slots (group overlapping walks) to get actual service time
+  const slots=[];
+  sorted.forEach(w=>{
+    if(!w.start||!w.end) return;
+    const ws=new Date(w.start).getTime();
+    const we=new Date(w.end).getTime();
+    const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+    if(existing){existing.start=Math.min(existing.start,ws);existing.end=Math.max(existing.end,we);}
+    else slots.push({start:ws,end:we});
+  });
+
+  // Actual working time = service time + travel between slots
+  const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+  const travelBetween=Math.max(0,(slots.length-1)*10);// ~10 mins between stops
+  const totalWorkingMins=actualServiceMins+travelBetween;
+  const workingHrs=totalWorkingMins/60;
+
+  // Set shift times as actual working duration (not the full day window)
+  // Use first walk start, and calculate end from actual working time
+  const firstStartTime=parseAmPmTo24(sorted[0]?.time||'08:00');
+  const startMins=timeToMins(firstStartTime);
+  const endMins=startMins+Math.round(totalWorkingMins);
+  const endH=Math.floor(endMins/60);
+  const endM=endMins%60;
+  const calcEndTime=`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+
+  document.getElementById('sh-start').value=firstStartTime;
+  document.getElementById('sh-end').value=calcEndTime;
+  document.getElementById('sh-travel-mins').value=travelBetween;
+  document.getElementById('sh-km').value=slots.length*5;// ~5km per stop
 
   // Add bookings
   filtered.forEach(w=>{
@@ -3500,7 +3528,7 @@ async function importTTPBookings(){
 
   renderBookingRows();
   recalcShiftLive();
-  showToast(`Imported ${filtered.length} walks`,'✅');
+  showToast(`Imported ${filtered.length} walks · ${workingHrs.toFixed(1)}h actual working time`,'✅');
 }
 
 function recalcShiftLive(){
