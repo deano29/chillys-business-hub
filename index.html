@@ -872,11 +872,11 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
             <div class="form-group"><label>Yellow Margin Threshold (%)</label><input id="s-margin-yellow" type="number" value="20"></div>
             <div class="form-group"><label>Travel Load Warn (%)</label><input id="s-travel-warn" type="number" value="30"></div>
             <div class="form-group"><label>Travel Load Danger (%)</label><input id="s-travel-danger" type="number" value="45"></div>
-            <div class="form-group"><label>Founder Notional Hourly ($)</label><input id="s-founder-rate" type="number" value="30"></div>
+            <div class="form-group"><label>Founder Weekly Cost ($)</label><input id="s-founder-weekly" type="number" value="850"></div>
+            <div class="form-group"><label>Founder Working Days/Week</label><input id="s-founder-days" type="number" value="5"></div>
             <div class="form-group"><label>Founder Target Hourly ($)</label><input id="s-founder-target" type="number" value="80"></div>
             <div class="form-group"><label>Default Buffer (mins)</label><input id="s-buffer-mins" type="number" value="15"></div>
             <div class="form-group"><label>Max Dogs Per Shift</label><input id="s-max-dogs" type="number" value="6"></div>
-            <div class="form-group"><label>Founder Hourly Rate ($)</label><input id="s-rate-founder" type="number" value="30"></div>
             <div class="form-group"><label>Employee Hourly Rate ($)</label><input id="s-rate-employee" type="number" value="30"></div>
             <div class="form-group"><label>Contractor Hourly Rate ($)</label><input id="s-rate-contractor" type="number" value="40"></div>
             <div class="form-group"><label>Avg Price — 2hr Adventure ($)</label><input id="s-price-adventure" type="number" value="75"></div>
@@ -2405,7 +2405,7 @@ const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
-  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-rate','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-founder','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
+  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
@@ -3391,11 +3391,11 @@ function openShiftBuilder(id){
     document.getElementById('sh-btn-delete').style.display='inline-flex';
   }else{
     // New shift
-    document.getElementById('modal-shift-title').textContent='🛣️ New Shift';
+    document.getElementById('modal-shift-title').textContent='🛣️ New Route';
     document.getElementById('sh-date').value=new Date().toISOString().split('T')[0];
     document.getElementById('sh-walker').value='';
     document.getElementById('sh-type').value='founder';
-    document.getElementById('sh-rate').value=settings.defaultRates.founder;
+    document.getElementById('sh-rate').value=0;// Founder uses fixed daily cost
     document.getElementById('sh-start').value='08:00';
     document.getElementById('sh-end').value='12:00';
     document.getElementById('sh-break').value=0;
@@ -3414,7 +3414,15 @@ function openShiftBuilder(id){
 function updateShiftRate(){
   const type=document.getElementById('sh-type').value;
   const settings=getRouteSettings();
-  document.getElementById('sh-rate').value=settings.defaultRates[type]||30;
+  const rateEl=document.getElementById('sh-rate');
+  const rateGroup=rateEl?.closest('.form-group');
+  if(type==='founder'){
+    rateEl.value=0;
+    if(rateGroup) rateGroup.style.display='none';
+  }else{
+    rateEl.value=settings.defaultRates[type]||30;
+    if(rateGroup) rateGroup.style.display='';
+  }
 }
 
 function addBookingRow(data){
@@ -3470,7 +3478,8 @@ async function importTTPBookings(){
   if(!date){showToast('Set a date first','⚠️');return;}
 
   showToast('Importing walks from TTP...','📥');
-  const walks=await authFetch('/api/walks/today?range=week').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Fetch all walks to cover any date
+  const walks=await authFetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
   const dayWalks=walks.filter(w=>w.date===date);
 
   // Filter by walker name if provided
@@ -3594,7 +3603,7 @@ function renderScheduleSummary(m){
       <div>⏱ <strong>${walkHrs}h</strong> walking</div>
       <div>🚗 <strong>${travelHrs}h</strong> travel</div>
       <div>📊 <strong>${billableHrs}h</strong> billable time</div>
-      <div>💰 Labour: <strong>$${m.labourCost.toFixed(0)}</strong> (${billableHrs}h × $${m.hourlyRate}/hr)</div>
+      <div>💰 Labour: <strong>$${m.labourCost.toFixed(0)}</strong> ${m.walkerType==='founder'?'(fixed daily)':'('+billableHrs+'h × $'+m.hourlyRate+'/hr)'}</div>
     </div>`;
 }
 
@@ -3673,21 +3682,24 @@ function getRouteSettings(){
     travelLoadThresholdWarn: parseFloat(getSetting('s-travel-warn',30))||30,
     travelLoadThresholdDanger: parseFloat(getSetting('s-travel-danger',45))||45,
     targetProfitPerHr: parseFloat(getSetting('s-target-profit',30))||30,
-    founderHourlyRate: parseFloat(getSetting('s-founder-rate',30))||30,
+    founderWeeklyCost: parseFloat(getSetting('s-founder-weekly',850))||850,
+    founderDaysPerWeek: parseFloat(getSetting('s-founder-days',5))||5,
+    founderDailyCost: (parseFloat(getSetting('s-founder-weekly',850))||850)/(parseFloat(getSetting('s-founder-days',5))||5),
     founderTargetHourly: parseFloat(getSetting('s-founder-target',80))||80,
     defaultBufferMins: parseFloat(getSetting('s-buffer-mins',15))||15,
     maxDogsPerShift: parseFloat(getSetting('s-max-dogs',6))||6,
     defaultRates:{
-      founder: parseFloat(getSetting('s-rate-founder',30))||30,
+      founder: 0,// Founder uses fixed daily cost, not hourly
       employee: parseFloat(getSetting('s-rate-employee',30))||30,
       contractor: parseFloat(getSetting('s-rate-contractor',40))||40,
     }
   };
 }
 
-function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading){
+function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading, settings){
+  const s=settings||getRouteSettings();
   const hours=shiftMins/60;
-  if(walkerType==='founder') return hours*hourlyRate;// Notional or 0
+  if(walkerType==='founder') return s.founderDailyCost;// Fixed daily cost
   if(walkerType==='contractor') return hours*hourlyRate;// Raw rate, no loadings
   // Employee/casual: base + super + casual loading
   const loaded=hourlyRate*(1+superRate+(walkerType==='casual'?casualLoading:0));
@@ -3774,8 +3786,8 @@ function getRecommendations(m, settings){
 function calcFounderComparison(metrics, settings){
   const s=settings||getRouteSettings();
   const shiftHrs=metrics.shiftMins/60;
-  // Founder view
-  const founderLabour=shiftHrs*s.founderHourlyRate;
+  // Founder view — fixed daily cost
+  const founderLabour=s.founderDailyCost;
   const founderProfit=metrics.totalRevenue-(founderLabour+metrics.travelCost+metrics.variableCost);
   const founderMargin=metrics.totalRevenue>0?(founderProfit/metrics.totalRevenue)*100:0;
   const founderOpportunityCost=shiftHrs*s.founderTargetHourly;
@@ -3818,7 +3830,7 @@ function calcShiftMetrics(shift, settings){
   const bufferMins=parseFloat(shift.bufferMins)||s.defaultBufferMins;
   const hourlyRate=parseFloat(shift.hourlyRate)||(s.defaultRates[shift.walkerType]||0);
   const variableCost=(parseFloat(shift.variableCost)||0)+(parseFloat(shift.paymentFee)||0)+(parseFloat(shift.adminAlloc)||0);
-  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading);
+  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading,s);
   const travelCost=calcTravelCost(travelKm,s.costPerKm);
   const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(totalRevenue,labourCost,travelCost,variableCost);
   const shiftHrs=shiftMins/60;
