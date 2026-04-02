@@ -3322,8 +3322,8 @@ async function renderRpDashboard(){
 
   if(rpDashRange==='day'){
     cardsEl.innerHTML=shifts.map(renderShiftCard).join('');
-  }else{
-    // Day-by-day view
+  }else if(rpDashRange==='week'){
+    // Week: collapsible day rows
     cardsEl.innerHTML=Object.entries(shiftsByDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,dayShifts])=>{
       const d=new Date(date+'T00:00:00');
       const dayLabel=`${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
@@ -3346,6 +3346,48 @@ async function renderRpDashboard(){
         <div class="walk-day-detail">${dayShifts.map(renderShiftCard).join('')}</div>
       </div>`;
     }).join('');
+  }else{
+    // Month: calendar grid with profitability per day
+    const [sy,sm]=startDate.split('-').map(Number);
+    const firstOfMonth=new Date(sy,sm-1,1);
+    const daysInMonth=new Date(sy,sm,0).getDate();
+    const startDow=(firstOfMonth.getDay()+6)%7;// Monday=0
+    const todayStr=new Date().toISOString().split('T')[0];
+
+    let calHtml=`<div class="walks-cal-grid">`;
+    calHtml+=dayNames.map(d=>`<div class="walks-cal-header">${d}</div>`).join('');
+    for(let i=0;i<startDow;i++) calHtml+=`<div class="walks-cal-cell empty"></div>`;
+
+    for(let day=1;day<=daysInMonth;day++){
+      const dateStr=`${sy}-${String(sm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const dayShifts=shiftsByDate[dateStr]||[];
+      const dayRev=dayShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+      const dayProfit=dayShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+      const dayDogs=dayShifts.reduce((s,sh)=>s+sh.walkCount,0);
+      const dayMargin=dayRev>0?(dayProfit/dayRev)*100:0;
+      const isToday=dateStr===todayStr;
+      const hasWalks=dayShifts.length>0;
+
+      let bgColor='var(--white)';
+      if(hasWalks){
+        if(dayMargin>=60) bgColor='#dcfce7';
+        else if(dayMargin>=40) bgColor='#d1fae5';
+        else if(dayMargin>=20) bgColor='#fef3c7';
+        else if(dayProfit>0) bgColor='#fee2e2';
+        else bgColor='#fca5a5';
+      }
+
+      calHtml+=`<div class="walks-cal-cell${isToday?' cal-today':''}" style="background:${bgColor};cursor:${hasWalks?'pointer':'default'}" onclick="${hasWalks?`rpDashRange='day';document.getElementById('rp-date').value='${dateStr}';renderRpDashboard()`:''}" title="${hasWalks?dayDogs+' dogs · $'+dayRev.toFixed(0)+' rev · $'+dayProfit.toFixed(0)+' profit · '+dayMargin.toFixed(0)+'% margin':'No walks'}">
+        <div class="cal-day-num">${day}</div>
+        ${hasWalks?`
+          <div style="font-size:10px;font-weight:600;color:var(--ink)">${dayDogs} 🐕</div>
+          <div style="font-size:10px;color:${dayProfit>=0?'var(--success)':'var(--danger)'}">$${dayProfit.toFixed(0)}</div>
+          <div style="font-size:9px;color:var(--ink-xlight)">${dayMargin.toFixed(0)}%</div>
+        `:`<div style="font-size:10px;color:var(--ink-xlight)">—</div>`}
+      </div>`;
+    }
+    calHtml+=`</div>`;
+    cardsEl.innerHTML=calHtml;
   }
 }
 
