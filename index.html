@@ -3352,10 +3352,13 @@ async function renderRpDashboard(){
     const firstOfMonth=new Date(sy,sm-1,1);
     const daysInMonth=new Date(sy,sm,0).getDate();
     const startDow=(firstOfMonth.getDay()+6)%7;// Monday=0
-    const todayStr=new Date().toISOString().split('T')[0];
+    // Use Melbourne local date for "today" highlight
+    const nowLocal=new Date();
+    const todayStr=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+    const calDayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
     let calHtml=`<div class="walks-cal-grid">`;
-    calHtml+=dayNames.map(d=>`<div class="walks-cal-header">${d}</div>`).join('');
+    calHtml+=calDayNames.map(d=>`<div class="walks-cal-header">${d}</div>`).join('');
     for(let i=0;i<startDow;i++) calHtml+=`<div class="walks-cal-cell empty"></div>`;
 
     for(let day=1;day<=daysInMonth;day++){
