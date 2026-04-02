@@ -615,60 +615,41 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 
     <!-- ── DASHBOARD ── -->
     <div class="view active" id="view-dashboard">
-      <div class="stat-grid">
-        <div class="stat-card orange"><div class="stat-icon">📥</div><div class="stat-label">New Enquiries</div><div class="stat-value">4</div><div class="stat-sub"><span class="trend-up">↑ 2</span> vs last week</div></div>
-        <div class="stat-card green"><div class="stat-icon">🐕</div><div class="stat-label">Active Clients</div><div class="stat-value">18</div><div class="stat-sub"><span class="trend-up">↑ 3</span> this month</div></div>
-        <div class="stat-card blue"><div class="stat-icon">🦮</div><div class="stat-label">Walks This Week</div><div class="stat-value">23</div><div class="stat-sub"><span class="trend-up">↑ 4</span> vs last week</div></div>
-        <div class="stat-card purple"><div class="stat-icon">💰</div><div class="stat-label">Revenue (Mar)</div><div class="stat-value">$4,850</div><div class="stat-sub"><span class="trend-up">↑ 13%</span> vs Feb</div></div>
-      </div>
+      <!-- KPI Stats (auto-populated) -->
+      <div class="stat-grid" id="dash-stats"></div>
 
+      <!-- Row 1: Today's Schedule + Pipeline -->
       <div class="dash-grid">
         <div class="card">
-          <div class="card-header"><h3>Monthly Revenue</h3><div style="display:flex;gap:8px;align-items:center"><span style="font-size:11px;color:var(--ink-xlight)">Last 6 months</span><span style="font-size:13px;font-weight:700;color:var(--success)">↑ 51%</span></div></div>
-          <div class="card-body" style="padding-bottom:10px"><div class="chart-wrap" id="revenue-chart"></div><div class="chart-labels" id="chart-labels"></div></div>
+          <div class="card-header"><h3>🦮 Today's Schedule</h3><span class="badge" style="background:var(--orange-light);color:var(--orange-dark)" id="dash-walks-badge">—</span></div>
+          <div class="card-body" style="padding:0 20px;max-height:280px;overflow-y:auto"><div class="walk-list" id="dash-walks"></div></div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Today's Walks</h3><span class="badge" style="background:var(--orange-light);color:var(--orange-dark)">6 walks</span></div>
-          <div class="card-body" style="padding:0 20px"><div class="walk-list" id="dash-walks"></div></div>
-        </div>
-      </div>
-
-      <div class="dash-grid">
-        <div class="card">
-          <div class="card-header"><h3>⚠️ Follow-ups Due</h3><span class="badge" style="background:var(--danger-bg);color:var(--danger)" id="fu-badge-count">2 overdue</span></div>
-          <div class="card-body" style="padding:0 20px"><div class="followup-list" id="dash-followups"></div></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Pipeline Summary</h3><span style="font-size:12px;color:var(--ink-xlight)">12 active leads</span></div>
+          <div class="card-header"><h3>📥 Pipeline</h3><span style="font-size:12px;color:var(--ink-xlight)" id="dash-pipeline-count">—</span></div>
           <div class="card-body"><div class="pipeline-mini" id="dash-pipeline"></div></div>
         </div>
-        <div class="card" style="display:flex;flex-direction:column">
-          <div class="card-header"><h3>💰 Xero Snapshot</h3><span style="font-size:10px;background:var(--success-bg);color:var(--success);padding:2px 7px;border-radius:20px;font-weight:700">LIVE</span></div>
-          <div class="card-body" style="flex:1">
-            <div style="display:flex;flex-direction:column;gap:10px">
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Paid this month</span><span id="xero-paid" style="font-size:14px;font-weight:700;color:var(--success)">$4,320</span></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Outstanding</span><span id="xero-outstanding" style="font-size:14px;font-weight:700;color:var(--warning)">$530</span></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)"><span style="font-size:12px;color:var(--ink-light)">Overdue invoices</span><span id="xero-overdue" style="font-size:14px;font-weight:700;color:var(--danger)">$180</span></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><span style="font-size:12px;color:var(--ink-light)">Expenses (Mar)</span><span id="xero-expenses" style="font-size:14px;font-weight:700;color:var(--ink)">$640</span></div>
-            </div>
-          </div>
-        </div>
       </div>
 
-      <!-- Action Centre -->
-      <div class="card" style="margin-top:0">
-        <div class="card-header" style="padding-bottom:0;border-bottom:none">
-          <h3>⚡ Action Centre</h3>
-          <span style="font-size:11px;color:var(--ink-xlight)">Prioritised tasks from your pipeline</span>
+      <!-- Row 2: Follow-ups + Action Centre -->
+      <div class="dash-grid">
+        <div class="card">
+          <div class="card-header"><h3>⚠️ Follow-ups Due</h3><span class="badge" style="background:var(--danger-bg);color:var(--danger)" id="fu-badge-count">—</span></div>
+          <div class="card-body" style="padding:0 20px;max-height:250px;overflow-y:auto"><div class="followup-list" id="dash-followups"></div></div>
         </div>
-        <div class="ac-tabs" style="margin:0 20px">
-          <div class="ac-tab active" data-ac="urgent" onclick="acTab('urgent')">🔴 Urgent</div>
-          <div class="ac-tab" data-ac="today" onclick="acTab('today')">📅 Today</div>
-          <div class="ac-tab" data-ac="opportunities" onclick="acTab('opportunities')">⭐ Opportunities</div>
+        <div class="card">
+          <div class="card-header" style="padding-bottom:0;border-bottom:none">
+            <h3>⚡ Actions</h3>
+            <span style="font-size:11px;color:var(--ink-xlight)">Prioritised tasks</span>
+          </div>
+          <div class="ac-tabs" style="margin:0 20px">
+            <div class="ac-tab active" data-ac="urgent" onclick="acTab('urgent')">🔴 Urgent</div>
+            <div class="ac-tab" data-ac="today" onclick="acTab('today')">📅 Today</div>
+            <div class="ac-tab" data-ac="opportunities" onclick="acTab('opportunities')">⭐ Opportunities</div>
+          </div>
+          <div class="ac-panel active" id="ac-urgent"></div>
+          <div class="ac-panel" id="ac-today"></div>
+          <div class="ac-panel" id="ac-opportunities"></div>
         </div>
-        <div class="ac-panel active" id="ac-urgent"></div>
-        <div class="ac-panel" id="ac-today"></div>
-        <div class="ac-panel" id="ac-opportunities"></div>
       </div>
     </div>
 
@@ -1545,29 +1526,95 @@ function buildChart(containerId,labelId,data,h=110){
 }
 
 // ── DASHBOARD ──
-function renderDashboard(){
-  buildChart('revenue-chart','chart-labels',REVENUE);
+async function renderDashboard(){
+  // Fetch today's walks for real data
+  const todayWalksData=await fetch('/api/walks/today?range=today').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  if(todayWalksData.length) TODAY_WALKS=todayWalksData;
 
-  document.getElementById('dash-walks').innerHTML=TODAY_WALKS.map(w=>`
-    <div class="walk-item">
-      <div class="walk-time">${w.time}</div>
-      <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs}</div><div class="walk-type">${w.type}</div></div>
-      <div class="walk-walker">${w.walker}</div>
-      <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
-    </div>`).join('');
+  // Fetch this week's walks for weekly stats
+  const weekWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const nowLocal=new Date();
+  const todayStr=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+  // This week (Mon-Sun)
+  const dow=nowLocal.getDay()||7;
+  const monDate=new Date(nowLocal);monDate.setDate(nowLocal.getDate()-(dow-1));
+  const monStr=`${monDate.getFullYear()}-${String(monDate.getMonth()+1).padStart(2,'0')}-${String(monDate.getDate()).padStart(2,'0')}`;
+  const sunDate=new Date(monDate);sunDate.setDate(monDate.getDate()+6);
+  const sunStr=`${sunDate.getFullYear()}-${String(sunDate.getMonth()+1).padStart(2,'0')}-${String(sunDate.getDate()).padStart(2,'0')}`;
+  const thisWeekWalks=weekWalks.filter(w=>w.date>=monStr&&w.date<=sunStr);
 
-  const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>a.followup.localeCompare(b.followup));
-  const fuBadge=document.getElementById('fu-badge-count');
+  // Calculate real stats
+  const activeLeads=enquiries.filter(e=>['new','contacted','qualified'].includes(e.stage)).length;
+  const activeClients=clients.filter(c=>c.status==='active').length;
+  const todayWalkCount=TODAY_WALKS.length;
+  const weekWalkCount=thisWeekWalks.length;
+
+  // Estimated weekly revenue
+  const settings=getRouteSettings();
+  const weekRev=thisWeekWalks.reduce((s,w)=>{
+    const svc=(w.service||'').toLowerCase();
+    const isAdv=svc.includes('adventure')||svc.includes('2 hour');
+    return s+(isAdv?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55));
+  },0);
+
+  // Follow-ups
+  const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>(a.followup||'').localeCompare(b.followup||''));
   const overdue=due.filter(e=>fuStatus(e.followup)==='overdue').length;
-  // Fire overdue webhook once per day
+
+  // Clients needing attention (booked < 7 days ahead)
+  const needsAttention=clients.filter(c=>c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7).length;
+  const noUpcoming=clients.filter(c=>c.status==='no-upcoming').length;
+
+  // KPI Stats
+  document.getElementById('dash-stats').innerHTML=`
+    <div class="stat-card orange" onclick="navigate('enquiries')" style="cursor:pointer">
+      <div class="stat-icon">📥</div><div class="stat-label">Active Leads</div>
+      <div class="stat-value">${activeLeads}</div>
+      <div class="stat-sub">${overdue>0?`<span class="trend-down" style="color:var(--danger)">⚠️ ${overdue} overdue follow-ups</span>`:'All followed up ✅'}</div>
+    </div>
+    <div class="stat-card green" onclick="navigate('clients')" style="cursor:pointer">
+      <div class="stat-icon">🐕</div><div class="stat-label">Active Clients</div>
+      <div class="stat-value">${activeClients}</div>
+      <div class="stat-sub">${needsAttention>0?`<span style="color:var(--warning)">${needsAttention} need rebooking</span>`:noUpcoming>0?`<span style="color:var(--danger)">${noUpcoming} no upcoming walks</span>`:'All booked ✅'}</div>
+    </div>
+    <div class="stat-card blue" onclick="navigate('walks')" style="cursor:pointer">
+      <div class="stat-icon">🦮</div><div class="stat-label">Walks This Week</div>
+      <div class="stat-value">${weekWalkCount}</div>
+      <div class="stat-sub">${todayWalkCount} today</div>
+    </div>
+    <div class="stat-card purple" onclick="navigate('routes')" style="cursor:pointer">
+      <div class="stat-icon">💰</div><div class="stat-label">Est. Weekly Revenue</div>
+      <div class="stat-value">$${weekRev.toFixed(0)}</div>
+      <div class="stat-sub">Based on current bookings</div>
+    </div>
+  `;
+
+  // Today's Walks
+  const walksBadge=document.getElementById('dash-walks-badge');
+  if(walksBadge) walksBadge.textContent=todayWalkCount+' walks';
+  const walksEl=document.getElementById('dash-walks');
+  if(todayWalkCount){
+    walksEl.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time||''}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${esc(w.client||w.dogs||'')}</div><div class="walk-type">${esc(w.service||w.type||'')}</div></div>
+        <div class="walk-walker">${esc(w.walker||'')}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }else{
+    walksEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">No walks scheduled today</div>';
+  }
+
+  // Follow-ups
+  const fuBadge=document.getElementById('fu-badge-count');
   const lastFuCheck=load('cw_fu_last_check','');
   if(lastFuCheck!==today()&&overdue>0){
     due.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>fireWebhook('followup-overdue',{name:e.name,email:e.email,dogName:e.dogName,followup:e.followup,stage:e.stage}));
     save('cw_fu_last_check',today());
   }
-  fuBadge.textContent=overdue>0?overdue+' overdue':due.length+' today';
-  fuBadge.style.background=overdue>0?'var(--danger-bg)':'var(--warning-bg)';
-  fuBadge.style.color=overdue>0?'var(--danger)':'var(--warning)';
+  fuBadge.textContent=overdue>0?overdue+' overdue':due.length?due.length+' today':'All clear';
+  fuBadge.style.background=overdue>0?'var(--danger-bg)':due.length?'var(--warning-bg)':'var(--success-bg)';
+  fuBadge.style.color=overdue>0?'var(--danger)':due.length?'var(--warning)':'var(--success)';
 
   const fuEl=document.getElementById('dash-followups');
   if(!due.length){fuEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">🎉 All caught up!</div>';}
@@ -1575,27 +1622,29 @@ function renderDashboard(){
     const s=fuStatus(e.followup);
     return `<div class="followup-item" onclick="navigate('enquiries')">
       <div class="fu-dot ${s}"></div>
-      <div style="flex:1"><div class="followup-name">${esc(e.name)} · ${esc(e.dogName)}</div><div class="followup-detail">${STAGES.find(st=>st.id===e.stage)?.label||''} · ${esc(e.channel)}</div></div>
+      <div style="flex:1"><div class="followup-name">${esc(e.name)}</div><div class="followup-detail">${STAGES.find(st=>st.id===e.stage)?.label||''} · ${esc(e.source||'')}</div></div>
       <div class="followup-date ${s}">${s==='overdue'?'⚠️ ':'📅 '}${fmtDate(e.followup)}</div>
     </div>`;
   }).join('');
 
+  // Pipeline
   const pipelineEl=document.getElementById('dash-pipeline');
-  const total=enquiries.filter(e=>!['closed-won','not-suitable'].includes(e.stage)).length||1;
-  pipelineEl.innerHTML=STAGES.filter(s=>!['closed-won','not-suitable'].includes(s.id)).map(s=>{
+  const pipelineCount=document.getElementById('dash-pipeline-count');
+  const totalActive=enquiries.filter(e=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(e.stage)).length;
+  if(pipelineCount) pipelineCount.textContent=totalActive+' active leads';
+  const totalForBar=totalActive||1;
+  pipelineEl.innerHTML=STAGES.filter(s=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(s.id)).map(s=>{
     const c=enquiries.filter(e=>e.stage===s.id).length;
+    if(!c) return '';
     return `<div class="pm-row">
       <div class="pm-dot" style="background:${s.color}"></div>
       <div class="pm-label">${s.label}</div>
-      <div class="pm-bar-wrap"><div class="pm-bar" style="width:${(c/total)*100}%;background:${s.color}"></div></div>
+      <div class="pm-bar-wrap"><div class="pm-bar" style="width:${(c/totalForBar)*100}%;background:${s.color}"></div></div>
       <div class="pm-count">${c}</div>
     </div>`;
   }).join('');
 
   acTab('urgent');
-  fetchXeroData();
-  fetchNewLeads();
-  fetchTodaysWalks();
 }
 
 // ── XERO FETCH ──
