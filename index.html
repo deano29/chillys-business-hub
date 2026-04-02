@@ -1012,8 +1012,9 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div class="pipeline-filters" id="rp-tabs">
           <div class="filter-pill active" onclick="rpTab('dashboard')">Dashboard</div>
-          <div class="filter-pill" onclick="rpTab('quick')">Quick Assess</div>
-          <div class="filter-pill" onclick="rpTab('growth')">Growth Simulator</div>
+          <div class="filter-pill" onclick="rpTab('revenue')">Revenue</div>
+          <div class="filter-pill" onclick="rpTab('ltv')">Client Value</div>
+          <div class="filter-pill" onclick="rpTab('growth')">Growth</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <div class="pipeline-filters" id="rp-range-pills">
@@ -1040,25 +1041,13 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
         </div>
         <div id="rp-shift-cards"></div>
       </div>
-      <!-- Quick Assess Tab -->
-      <div id="rp-tab-quick" style="display:none">
-        <div style="max-width:700px">
-          <div class="card">
-            <div class="card-header"><h3>Quick Route Assessment</h3></div>
-            <div class="card-body">
-              <p style="font-size:12px;color:var(--ink-light);margin-bottom:14px">Fast napkin-math — is this route worth running?</p>
-              <div class="form-grid">
-                <div class="form-group"><label>Walker Type</label><select id="qa-type" onchange="recalcQuickAssess()"><option value="founder">Founder</option><option value="employee" selected>Employee</option><option value="contractor">Contractor</option></select></div>
-                <div class="form-group"><label>Hourly Rate ($)</label><input id="qa-rate" type="number" value="30" oninput="recalcQuickAssess()"></div>
-                <div class="form-group"><label>Shift Hours</label><input id="qa-hours" type="number" value="4" step="0.5" oninput="recalcQuickAssess()"></div>
-                <div class="form-group"><label>Number of Dogs</label><input id="qa-dogs" type="number" value="5" oninput="recalcQuickAssess()"></div>
-                <div class="form-group"><label>Avg Price Per Dog ($)</label><input id="qa-price" type="number" value="45" oninput="recalcQuickAssess()"></div>
-                <div class="form-group"><label>Est. Travel KM</label><input id="qa-km" type="number" value="15" oninput="recalcQuickAssess()"></div>
-              </div>
-              <div id="qa-results" style="margin-top:16px"></div>
-            </div>
-          </div>
-        </div>
+      <!-- Revenue Forecast Tab -->
+      <div id="rp-tab-revenue" style="display:none">
+        <div id="revenue-forecast-content"></div>
+      </div>
+      <!-- Client Value Tab -->
+      <div id="rp-tab-ltv" style="display:none">
+        <div id="client-ltv-content"></div>
       </div>
       <!-- Growth Simulator Tab -->
       <div id="rp-tab-growth" style="display:none">
@@ -3277,16 +3266,23 @@ function renderRoutes(){
 
 function rpTab(tab){
   rpActiveTab=tab;
-  ['dashboard','quick','growth'].forEach(t=>{
+  ['dashboard','revenue','ltv','growth'].forEach(t=>{
     const el=document.getElementById('rp-tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
   document.querySelectorAll('#rp-tabs .filter-pill').forEach(p=>{
-    const labels={Dashboard:'dashboard','Quick Assess':'quick','Growth Simulator':'growth'};
+    const labels={Dashboard:'dashboard',Revenue:'revenue','Client Value':'ltv',Growth:'growth'};
     p.classList.toggle('active',labels[p.textContent.trim()]===tab);
   });
+  // Show/hide range pills (only for dashboard)
+  const rangePills=document.getElementById('rp-range-pills');
+  const dateInput=document.getElementById('rp-date');
+  if(rangePills) rangePills.style.display=tab==='dashboard'?'flex':'none';
+  if(dateInput) dateInput.style.display=tab==='dashboard'?'':'none';
+
   if(tab==='dashboard') renderRpDashboard();
-  if(tab==='quick') recalcQuickAssess();
+  if(tab==='revenue') renderRevenueForecast();
+  if(tab==='ltv') renderClientLTV();
   if(tab==='growth') renderGrowthSim();
 }
 
@@ -3603,6 +3599,315 @@ function recalcQuickAssess(){
       <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${totalDirectCost.toFixed(0)}</div></div>
       <div class="rp-metric ${grossProfit>0?'good':'bad'}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${grossProfit.toFixed(0)}</div></div>
       <div class="rp-metric"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${profitPerHr.toFixed(0)}</div></div>
+    </div>
+  `;
+}
+
+// ── REVENUE FORECAST ──
+async function renderRevenueForecast(){
+  const el=document.getElementById('revenue-forecast-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Calculating revenue forecast...</div>';
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const lastMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const lastMonth=`${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,'0')}`;
+  const nextMonthDate=new Date(now.getFullYear(),now.getMonth()+1,1);
+  const nextMonth=`${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth()+1).padStart(2,'0')}`;
+  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const dayOfMonth=now.getDate();
+  const daysLeft=daysInMonth-dayOfMonth;
+
+  function walkRevenue(w){
+    const svc=(w.service||'').toLowerCase();
+    return(svc.includes('adventure')||svc.includes('2 hour'))?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55);
+  }
+
+  // This month
+  const thisMonthWalks=walks.filter(w=>w.date.startsWith(thisMonth));
+  const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
+  const bookedWalks=thisMonthWalks.filter(w=>w.date>nowStr);
+  const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const bookedRev=bookedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const totalProjected=completedRev+bookedRev;
+  const monthTarget=parseFloat(getSetting('s-rev-target',6000))||6000;
+  const gapToTarget=Math.max(0,monthTarget-totalProjected);
+  const avgRevPerDog=thisMonthWalks.length>0?totalProjected/thisMonthWalks.length:55;
+  const dogsNeeded=avgRevPerDog>0?Math.ceil(gapToTarget/avgRevPerDog):0;
+  const progressPct=Math.min(100,monthTarget>0?(totalProjected/monthTarget)*100:0);
+
+  // Last month
+  const lastMonthWalks=walks.filter(w=>w.date.startsWith(lastMonth));
+  const lastMonthRev=lastMonthWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const momGrowth=lastMonthRev>0?((totalProjected-lastMonthRev)/lastMonthRev)*100:0;
+
+  // Next month
+  const nextMonthWalks=walks.filter(w=>w.date.startsWith(nextMonth));
+  const nextMonthRev=nextMonthWalks.reduce((s,w)=>s+walkRevenue(w),0);
+
+  // Weekly run rate (last 4 weeks)
+  const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  const fwStr=`${fourWeeksAgo.getFullYear()}-${String(fourWeeksAgo.getMonth()+1).padStart(2,'0')}-${String(fourWeeksAgo.getDate()).padStart(2,'0')}`;
+  const recentWalks=walks.filter(w=>w.date>=fwStr&&w.date<=nowStr);
+  const weeklyRunRate=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
+
+  // By service type this month
+  const advWalks=thisMonthWalks.filter(w=>(w.service||'').toLowerCase().includes('adventure')||(w.service||'').toLowerCase().includes('2 hour'));
+  const soloWalks=thisMonthWalks.filter(w=>!((w.service||'').toLowerCase().includes('adventure')||(w.service||'').toLowerCase().includes('2 hour')));
+  const advRev=advWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const soloRev=soloWalks.reduce((s,w)=>s+walkRevenue(w),0);
+
+  // By walker this month
+  const walkerRevMap={};
+  thisMonthWalks.forEach(w=>{
+    const wk=(w.walker||'Unknown').replace(/\\+$/g,'');
+    walkerRevMap[wk]=(walkerRevMap[wk]||0)+walkRevenue(w);
+  });
+
+  // Weekly breakdown this month
+  const weeklyData=[];
+  for(let wk=0;wk<5;wk++){
+    const wkStart=new Date(now.getFullYear(),now.getMonth(),1+wk*7);
+    const wkEnd=new Date(now.getFullYear(),now.getMonth(),Math.min(7+wk*7,daysInMonth));
+    const wkStartStr=`${wkStart.getFullYear()}-${String(wkStart.getMonth()+1).padStart(2,'0')}-${String(wkStart.getDate()).padStart(2,'0')}`;
+    const wkEndStr=`${wkEnd.getFullYear()}-${String(wkEnd.getMonth()+1).padStart(2,'0')}-${String(wkEnd.getDate()).padStart(2,'0')}`;
+    if(wkStart.getMonth()!==now.getMonth()) break;
+    const wkWalks=thisMonthWalks.filter(w=>w.date>=wkStartStr&&w.date<=wkEndStr);
+    const wkRev=wkWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const isPast=wkEndStr<nowStr;
+    weeklyData.push({label:`Wk ${wk+1}`,rev:wkRev,walks:wkWalks.length,status:isPast?'actual':wkStartStr<=nowStr?'current':'booked'});
+  }
+
+  el.innerHTML=`
+    <!-- Monthly Target Tracker -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--orange)">
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="font-size:16px;font-weight:800">📈 ${thisMonth.split('-')[1]==='01'?'January':thisMonth.split('-')[1]==='02'?'February':thisMonth.split('-')[1]==='03'?'March':thisMonth.split('-')[1]==='04'?'April':thisMonth.split('-')[1]==='05'?'May':thisMonth.split('-')[1]==='06'?'June':thisMonth.split('-')[1]==='07'?'July':thisMonth.split('-')[1]==='08'?'August':thisMonth.split('-')[1]==='09'?'September':thisMonth.split('-')[1]==='10'?'October':thisMonth.split('-')[1]==='11'?'November':'December'} Revenue Tracker</h3>
+          <div style="font-size:12px;color:var(--ink-light)">${daysLeft} days left</div>
+        </div>
+        <!-- Progress bar -->
+        <div style="background:var(--cream);border-radius:20px;height:28px;overflow:hidden;margin-bottom:12px;position:relative">
+          <div style="background:var(--success);height:100%;width:${Math.min(100,(completedRev/monthTarget)*100)}%;border-radius:20px;transition:width .3s"></div>
+          <div style="background:var(--orange);height:100%;width:${Math.min(100-Math.min(100,(completedRev/monthTarget)*100),(bookedRev/monthTarget)*100)}%;position:absolute;top:0;left:${(completedRev/monthTarget)*100}%;border-radius:0 20px 20px 0;opacity:0.5"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:700;color:var(--ink)">${progressPct.toFixed(0)}% of $${(monthTarget/1000).toFixed(1)}k target</div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:12px;margin-bottom:8px">
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:4px"></span>Delivered: <strong>$${completedRev.toFixed(0)}</strong></div>
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--orange);opacity:.5;margin-right:4px"></span>Booked: <strong>$${bookedRev.toFixed(0)}</strong></div>
+          <div>Total projected: <strong>$${totalProjected.toFixed(0)}</strong></div>
+        </div>
+        ${gapToTarget>0?`<div style="padding:8px 12px;background:var(--warning-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">Gap to target: <strong>$${gapToTarget.toFixed(0)}</strong> — that's ~${dogsNeeded} more walks needed</div>`
+        :`<div style="padding:8px 12px;background:var(--success-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--success)"><strong>On track!</strong> Projected to ${totalProjected>=monthTarget?'hit':'exceed'} target by $${Math.abs(totalProjected-monthTarget).toFixed(0)}</div>`}
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+      <div class="rp-metric"><div class="rp-metric-label">Weekly Run Rate</div><div class="rp-metric-value">$${weeklyRunRate.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Monthly Run Rate</div><div class="rp-metric-value">$${(weeklyRunRate*4.3).toFixed(0)}</div></div>
+      <div class="rp-metric ${momGrowth>=0?'good':'bad'}"><div class="rp-metric-label">vs Last Month</div><div class="rp-metric-value">${momGrowth>=0?'+':''}${momGrowth.toFixed(0)}%</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Last Month Total</div><div class="rp-metric-value">$${lastMonthRev.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Next Month Booked</div><div class="rp-metric-value">$${nextMonthRev.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Walk</div><div class="rp-metric-value">$${avgRevPerDog.toFixed(0)}</div></div>
+    </div>
+
+    <!-- Breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- By Service -->
+      <div class="card"><div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Service</h4>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>🐕 Adventures (${advWalks.length})</span><strong>$${advRev.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>🦮 Solo/Group (${soloWalks.length})</span><strong>$${soloRev.toFixed(0)}</strong></div>
+          <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between"><span>Adventure share</span><strong>${totalProjected>0?(advRev/totalProjected*100).toFixed(0):0}%</strong></div>
+        </div>
+      </div></div>
+      <!-- By Walker -->
+      <div class="card"><div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Walker</h4>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          ${Object.entries(walkerRevMap).sort((a,b)=>b[1]-a[1]).map(([name,rev])=>`<div style="display:flex;justify-content:space-between"><span>${esc(name)}</span><strong>$${rev.toFixed(0)}</strong></div>`).join('')}
+        </div>
+      </div></div>
+      <!-- By Week -->
+      <div class="card"><div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">By Week</h4>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          ${weeklyData.map(w=>`<div style="display:flex;justify-content:space-between"><span>${w.label} <span style="font-size:10px;color:${w.status==='actual'?'var(--success)':w.status==='current'?'var(--orange)':'var(--ink-xlight)'}">${w.status}</span></span><strong>$${w.rev.toFixed(0)}</strong></div>`).join('')}
+        </div>
+      </div></div>
+    </div>
+
+    <!-- Set Target -->
+    <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-light)">
+      Monthly target: <input id="s-rev-target" type="number" value="${monthTarget}" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px" onchange="save('cw_settings',{...load('cw_settings',{}),'s-rev-target':this.value});renderRevenueForecast()">
+    </div>
+  `;
+}
+
+// ── CLIENT LIFETIME VALUE ──
+async function renderClientLTV(){
+  const el=document.getElementById('client-ltv-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Calculating client values...</div>';
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  function walkRevenue(w){
+    const svc=(w.service||'').toLowerCase();
+    return(svc.includes('adventure')||svc.includes('2 hour'))?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55);
+  }
+
+  // Build client value map
+  const clientMap={};
+  walks.forEach(w=>{
+    const name=(w.client||'').replace(/\\+$/g,'').trim();
+    if(!name||name==='Potential Client (general)') return;
+    if(!clientMap[name]) clientMap[name]={name,walks:0,revenue:0,firstWalk:null,lastWalk:null,months:new Set(),futureWalks:0};
+    const c=clientMap[name];
+    const rev=walkRevenue(w);
+    c.walks++;
+    c.revenue+=rev;
+    if(w.date<=nowStr) {
+      if(!c.firstWalk||w.date<c.firstWalk) c.firstWalk=w.date;
+      if(!c.lastWalk||w.date>c.lastWalk) c.lastWalk=w.date;
+    } else {
+      c.futureWalks++;
+    }
+    c.months.add(w.date.substring(0,7));
+  });
+
+  const clientList=Object.values(clientMap).map(c=>{
+    const monthsActive=c.months.size;
+    const firstDate=c.firstWalk?new Date(c.firstWalk+'T00:00:00'):null;
+    const tenureMonths=firstDate?Math.max(1,Math.round((now-firstDate)/(30.44*86400000))):0;
+    const avgPerMonth=tenureMonths>0?c.revenue/tenureMonths:c.revenue;
+    const walksPerWeek=tenureMonths>0?c.walks/(tenureMonths*4.3):0;
+    const isActive=c.futureWalks>0||c.lastWalk>=nowStr.substring(0,7);
+    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive};
+  }).sort((a,b)=>b.revenue-a.revenue);
+
+  const activeClients=clientList.filter(c=>c.isActive);
+  const totalClients=clientList.length;
+  const totalRev=clientList.reduce((s,c)=>s+c.revenue,0);
+  const avgLTV=totalClients>0?totalRev/totalClients:0;
+  const avgTenure=clientList.reduce((s,c)=>s+c.tenureMonths,0)/Math.max(1,totalClients);
+  const avgMonthlyPerClient=clientList.reduce((s,c)=>s+c.avgPerMonth,0)/Math.max(1,totalClients);
+
+  // Revenue concentration
+  const top5Rev=clientList.slice(0,5).reduce((s,c)=>s+c.revenue,0);
+  const top5Pct=totalRev>0?(top5Rev/totalRev)*100:0;
+  const topClient=clientList[0];
+  const topClientMonthly=topClient?topClient.avgPerMonth:0;
+
+  // Acquisition value (first 3 months revenue average)
+  const first3MonthRev=clientList.filter(c=>c.tenureMonths>=3).map(c=>{
+    // Approximate first 3 month revenue
+    return Math.min(c.revenue,c.avgPerMonth*3);
+  });
+  const avgFirst3=first3MonthRev.length>0?first3MonthRev.reduce((s,v)=>s+v,0)/first3MonthRev.length:avgLTV*0.3;
+
+  // Cohort data (by start month)
+  const cohorts={};
+  clientList.forEach(c=>{
+    if(!c.firstWalk) return;
+    const cohort=c.firstWalk.substring(0,7);
+    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0};
+    cohorts[cohort].started++;
+    if(c.isActive) cohorts[cohort].active++;
+    cohorts[cohort].totalRev+=c.revenue;
+  });
+
+  el.innerHTML=`
+    <!-- Overview -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+      <div class="rp-metric"><div class="rp-metric-label">Total Clients Ever</div><div class="rp-metric-value">${totalClients}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Currently Active</div><div class="rp-metric-value">${activeClients.length}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Client LTV</div><div class="rp-metric-value">$${avgLTV.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Tenure</div><div class="rp-metric-value">${avgTenure.toFixed(1)}mo</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Client/Month</div><div class="rp-metric-value">$${avgMonthlyPerClient.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Total Revenue (All Time)</div><div class="rp-metric-value">$${totalRev.toFixed(0)}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- Revenue Concentration -->
+      <div class="card" style="border-left:4px solid ${top5Pct>50?'var(--danger)':top5Pct>35?'var(--warning)':'var(--success)'}">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">⚠️ Revenue Concentration</h4>
+          <div style="font-size:24px;font-weight:800;color:${top5Pct>50?'var(--danger)':top5Pct>35?'var(--warning)':'var(--success)'}">${top5Pct.toFixed(0)}%</div>
+          <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">of revenue from your top 5 clients</div>
+          ${top5Pct>50?`<div style="font-size:12px;color:var(--danger)">⚠️ High risk — losing 1-2 top clients would significantly impact revenue</div>`
+          :top5Pct>35?`<div style="font-size:12px;color:var(--warning)">Moderate concentration — keep diversifying your client base</div>`
+          :`<div style="font-size:12px;color:var(--success)">✅ Well diversified — no single client dominates revenue</div>`}
+          ${topClient?`<div style="margin-top:8px;font-size:11px;color:var(--ink-light)">Biggest client: <strong>${esc(topClient.name)}</strong> — $${topClient.revenue.toFixed(0)} total ($${topClientMonthly.toFixed(0)}/mo)</div>`:''}
+        </div>
+      </div>
+
+      <!-- Acquisition Value -->
+      <div class="card" style="border-left:4px solid var(--info)">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">💡 Client Acquisition Value</h4>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+            <div style="display:flex;justify-content:space-between"><span>Avg first 3 months revenue</span><strong>$${avgFirst3.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Avg lifetime revenue</span><strong>$${avgLTV.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Avg monthly value</span><strong>$${avgMonthlyPerClient.toFixed(0)}/mo</strong></div>
+            <div style="border-top:1px solid var(--border);padding-top:8px">
+              <strong>Max acquisition spend:</strong> You can afford up to <strong style="color:var(--success)">$${(avgFirst3*0.3).toFixed(0)}</strong> to acquire a new client (30% of first 3-month value) and still be profitable.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Client Cohorts -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">📊 Client Cohorts</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>Cohort</th><th>Started</th><th>Still Active</th><th>Retention</th><th>Total Revenue</th><th>Avg LTV</th></tr></thead>
+            <tbody>${Object.entries(cohorts).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12).map(([month,d])=>{
+              const ret=d.started>0?(d.active/d.started)*100:0;
+              return `<tr>
+                <td><strong>${month}</strong></td>
+                <td>${d.started}</td>
+                <td>${d.active}</td>
+                <td style="color:${ret>=70?'var(--success)':ret>=40?'var(--warning)':'var(--danger)'}">${ret.toFixed(0)}%</td>
+                <td>$${d.totalRev.toFixed(0)}</td>
+                <td>$${d.started>0?(d.totalRev/d.started).toFixed(0):0}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Client Rankings -->
+    <div class="card">
+      <div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Client Rankings by Lifetime Value</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>#</th><th>Client</th><th>Status</th><th>Tenure</th><th>Total Walks</th><th>Walks/Week</th><th>Lifetime Revenue</th><th>Monthly Avg</th></tr></thead>
+            <tbody>${clientList.slice(0,20).map((c,i)=>`<tr>
+              <td><strong>${i+1}</strong></td>
+              <td><strong>${esc(c.name)}</strong></td>
+              <td><span style="color:${c.isActive?'var(--success)':'var(--danger)'};font-size:11px">${c.isActive?'● Active':'○ Inactive'}</span></td>
+              <td>${c.tenureMonths}mo</td>
+              <td>${c.walks}</td>
+              <td>${c.walksPerWeek.toFixed(1)}</td>
+              <td style="font-weight:700">$${c.revenue.toFixed(0)}</td>
+              <td>$${c.avgPerMonth.toFixed(0)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
     </div>
   `;
 }
