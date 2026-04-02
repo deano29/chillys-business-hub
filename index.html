@@ -2785,99 +2785,99 @@ function generateSmartDraft(){
   let draft='';
 
   if(msgType==='welcome'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Thanks for your enquiry${ctx.isReferral?' — always great to hear from a referral':ctx.isFromAd?' through our ad':''}. I wanted to follow up personally.${dn?`\n\nWe'd love to look after ${d}${ctx.breed?' the '+ctx.breed:''}.`:''} ${breedLine||''}${socialProof?`\n\n${socialProof}`:''}${concernLine?`\n\n${concernLine}`:''}
+Thanks for getting in touch${ctx.isReferral?' — love getting referrals':''}.${dn?` Would be great to look after ${d}${ctx.breed?' the '+ctx.breed:''}`:''}.${breedLine?` ${breedLine}`:''}${socialProof?`\n\n${socialProof}`:''}${concernLine?`\n\n${concernLine}`:''}
 
-A quick overview of what we offer:
+Here's a quick rundown on what we do:
 
-- 2-Hour Dog Adventures — off-lead exploration, enrichment, and socialisation. Our most popular service.
-- Private Solo Walks (45-60 min) — one-on-one, ideal for dogs that prefer their own space.
-- Group Walks (45-60 min) — small groups of compatible dogs.
+- 2-Hour Dog Adventures — off-lead exploring, sniffing, socialising. ${dn?d+' would':'Dogs'} come home tired and happy. It's our most popular one.
+- Private Solo Walks (45-60 min) — one-on-one, great for dogs that like their own space.
+- Group Walks (45-60 min) — small group of friendly dogs, good value.
 
-Every walk includes GPS tracking, photos, and a report card sent to you afterwards.${notesRef?`\n\n${notesRef}`:''}${daysRef?`\n\n${daysRef}`:''}
+Every walk comes with GPS tracking, photos, and a report card sent straight to your phone.${notesRef?`\n\n${notesRef}`:''}${daysRef?`\n\n${daysRef}`:''}
 
-If you're interested, the first step is a free meet & greet. I'll come to you, meet ${dn?d:'your dog'}, and we can work out what suits best. Takes about 15 minutes, no obligation.
+First step would be a quick meet & greet — I come to you, meet ${dn?d:'your dog'}, and we figure out what works best. About 15 mins, totally free.
 
-Let me know if you'd like to arrange a time.
+Happy to lock in a time if you're keen.
 
 ${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='followup'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Just following up${ctx.daysSinceEnquiry>7?` from my earlier message`:', wanted to make sure you received my message'} — are you still looking into walks for ${dn?d:'your dog'}?${socialProof?`\n\n${socialProof}`:''}${breedLine&&ctx.daysSinceEnquiry>7?`\n\n${breedLine}`:''}
+Just checking in${ctx.daysSinceEnquiry>7?' — hope my last message came through okay':''}.  Still thinking about walks for ${dn?d:'your dog'}?${socialProof?`\n\n${socialProof}`:''}${breedLine&&ctx.daysSinceEnquiry>7?`\n\n${breedLine}`:''}
 
-Happy to answer any questions or send through more detail on what we offer. If the timing has changed, no problem at all — just let me know.${ctx.suburb?`\n\nI can also send through some photos and reports from recent walks in the ${ctx.suburb} area if that's helpful.`:''}
+Happy to answer any questions or send through some info. And if the timing isn't right, no worries at all — just let me know.${ctx.suburb?`\n\nCan also send some photos from recent walks in ${ctx.suburb} if you'd like to see what we get up to.`:''}
 
 ${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='info'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Here's a full overview of our services.${breedLine?` ${breedLine}`:''}${socialProof?` ${socialProof}`:''}
+Here's the full rundown on what we offer.${breedLine?` ${breedLine}`:''}${socialProof?` ${socialProof}`:''}
 
 OUR SERVICES
 
 2-Hour Dog Adventure
-Off-lead exploration across Melbourne's parks. Includes enrichment, socialisation, and proper exercise. Dogs come home well-exercised and settled. Our most popular option.
+Off-lead exploring across Melbourne's best parks. Proper enrichment — sniffing, socialising, running around. ${dn?d+' would':'Dogs'} come home settled and happy. It's what we're known for.
 
 Private Solo Walk (45-60 min)
-One-on-one walks for dogs that prefer individual attention${ctx.isReactive?', or need a quieter environment':''}.
+One-on-one with our walker. Good for dogs that prefer their own space${ctx.isReactive?', or need a calmer environment':''}.
 
 Group Walk (45-60 min)
-Small groups of compatible dogs. Good value and great for socialisation.${concernLine?`\n\n${concernLine}`:''}
+Small group of friendly dogs. Great value and good for socialisation.${concernLine?`\n\n${concernLine}`:''}
 
-INCLUDED IN EVERY WALK
-- GPS-tracked route
-- Photos after each walk
+EVERY WALK INCLUDES
+- GPS tracking
+- Photos sent after each walk
 - Walk report card
-- Full insurance coverage
-- Managed through our client app
+- Full insurance
+- Managed through our app
 
-GETTING STARTED
-1. Free meet & greet — we come to you (15 mins, no obligation)
-2. Online intake form (5 mins)
-3. Digital T&Cs
+HOW IT WORKS
+1. Free meet & greet — we come to you (15 mins, no commitment)
+2. Quick online form (5 mins)
+3. Sign T&Cs digitally
 4. First walk booked${daysRef?`\n\n${daysRef}`:''}
 
-Most clients are up and running within a week. Would you like to book a meet & greet?
+Most people are walking within a week of the meet & greet. Want me to come meet ${dn?d:'your dog'}?
 
 ${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='close'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Wanted to check in — are you ready to get ${dn?d:'your dog'} started with us?${socialProof?`\n\n${socialProof}`:''}\n\n${ctx.suburb?`We have availability in ${ctx.suburb}`:'We have spots available'} and could have ${dn?d:'your dog'} walking as early as next week.${daysRef?` ${daysRef}`:''}
+Just wanted to check in — keen to get ${dn?d:'your dog'} started?${socialProof?`\n\n${socialProof}`:''}\n\n${ctx.suburb?`We've got availability in ${ctx.suburb}`:'We have spots open'} and could have ${dn?d:'your dog'} out with us as early as next week.${daysRef?` ${daysRef}`:''}
 
-All I need is a 15-minute meet & greet to get things moving. I come to you, no cost, no obligation.
+All we need to do is a quick meet & greet — I come to you, takes about 15 mins, no commitment.
 
-Would any time this week work?
+Let me know when suits and I'll lock it in.
 
 ${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='reengage'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Hope you and ${dn?d:'your dog'} are well. Wanted to reach out as it's been a little while.${ctx.isExistingClient?`\n\nWe've enjoyed having ${dn?d:'your dog'} with us and noticed the schedule has been quiet recently. If anything has changed or there's something we can do differently, I'm happy to have a chat.`:`\n\nI understand the timing may not have been right before. If circumstances have changed and you're looking at walks again, we're here.`}${socialProof?`\n\n${socialProof}`:''}
+Hope you and ${dn?d:'your dog'} are going well. Just wanted to touch base as it's been a bit quiet.${ctx.isExistingClient?`\n\nWe've really enjoyed having ${dn?d:'your dog'} with us. If anything's changed on your end — schedule, needs, whatever it might be — happy to chat about it.`:`\n\nI know the timing might not have been right before. If things have changed and you're thinking about walks again, we'd love to help.`}${socialProof?`\n\n${socialProof}`:''}
 
-No pressure — just wanted to make sure you know the door is open.
+No pressure at all — just wanted to check in.
 
 ${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='notsuitable'){
-    draft=`Hi ${ctx.name},
+    draft=`Hey ${ctx.name},
 
-Thank you for taking the time to chat with us about ${dn?d:'walks'}.
+Thanks for chatting with us about ${dn?d:'walks'}.
 
-Having thought about it, I don't think we're the right fit at this stage${ctx.isReactive?` given ${d}'s specific needs`:ctx.notes?' — '+ctx.notes.substring(0,60).trim():''}.${ctx.suburb?` I'm happy to recommend another walker in the ${ctx.suburb} area if that would help.`:''}
+After giving it some thought, I don't think we're the right fit for this one${ctx.isReactive?` given what you've mentioned about ${d}`:ctx.notes?' — '+ctx.notes.substring(0,60).trim():''}.${ctx.suburb?` Happy to point you towards another good walker in ${ctx.suburb} if that'd help.`:''}
 
-Appreciate your time, and if anything changes feel free to get in touch.
+Thanks again, and feel free to reach out if anything changes down the track.
 
 ${ctx.walker}
 ${ctx.biz}`;
