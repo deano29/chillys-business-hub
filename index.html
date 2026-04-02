@@ -1364,7 +1364,7 @@ async function loadFromNotion(){
   try{
     const [enqRes,cliRes]=await Promise.all([
       authFetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
-      authFetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
     if(enqRes&&enqRes.length>0){
       enquiries=enqRes;
@@ -1634,7 +1634,7 @@ async function fetchXeroData(){
 // ── FETCH TODAY'S WALKS (Google Calendar via Make.com) ──
 async function fetchTodaysWalks(){
   try{
-    const res=await authFetch('/api/walks/today?range=today');
+    const res=await fetch('/api/walks/today?range=today');
     if(!res.ok) return;
     const walks=await res.json();
     if(walks.length>0){
@@ -2033,7 +2033,7 @@ function setWalksRange(r){
 
 async function fetchWalks(range){
   try{
-    const res=await authFetch('/api/walks/today?range='+range);
+    const res=await fetch('/api/walks/today?range='+range);
     if(!res.ok) return [];
     return await res.json();
   }catch(e){return [];}
@@ -2754,7 +2754,7 @@ async function loadCoverageData(){
   covDataLoaded=true;// Prevent duplicate calls
 
   // Load client data from TTP (addresses, no geocoding yet)
-  const locRes=await authFetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
+  const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
   const allItems=[...(locRes||[])];
 
   // Add enquiries with suburbs
@@ -3144,7 +3144,7 @@ async function renderRpDashboard(){
   cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data...</div>';
 
   // Fetch walks — 'upcoming' returns today + 30 days
-  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>{
+  const walks=await fetch('/api/walks/today?range=upcoming').then(r=>{
     if(!r.ok) throw new Error('API error '+r.status);
     return r.json();
   }).catch(e=>{
@@ -3435,7 +3435,7 @@ async function renderRpCompare(){
   el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data for the next month...</div>';
 
   // Fetch upcoming walks (today + 30 days)
-  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const walks=await fetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
   const futureWalks=walks;// Already filtered by API
   const settings=getRouteSettings();
 
@@ -3749,7 +3749,7 @@ async function importTTPBookings(){
 
   showToast('Importing walks from TTP...','📥');
   // Fetch upcoming walks
-  const walks=await authFetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const walks=await fetch('/api/walks/today?range=upcoming').then(r=>r.ok?r.json():[]).catch(()=>[]);
   const dayWalks=walks.filter(w=>w.date===date);
 
   // Filter by walker name if provided
