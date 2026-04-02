@@ -3167,12 +3167,13 @@ async function renderRpDashboard(){
   const todayWalks=rpDashRange==='day'?rangeWalks:rangeWalks;// For day mode, same thing
   const settings=getRouteSettings();
 
-  // Group walks by walker into shifts
+  // Group walks by walker + date into routes
   const walkerGroups={};
   todayWalks.forEach(w=>{
     const walker=w.walker||'Unknown';
-    if(!walkerGroups[walker]) walkerGroups[walker]={walks:[],walker};
-    walkerGroups[walker].walks.push(w);
+    const key=walker+'_'+w.date;
+    if(!walkerGroups[key]) walkerGroups[key]={walks:[],walker,date:w.date};
+    walkerGroups[key].walks.push(w);
   });
 
   // Convert each walker group into a shift — detect group walks (overlapping times)
@@ -3232,8 +3233,8 @@ async function renderRpDashboard(){
     const wRate=wConfig?.rate||0;
 
     const shift={
-      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+date,
-      date,walker:g.walker,walkerType:wType,
+      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+g.date,
+      date:g.date,walker:g.walker,walkerType:wType,
       startTime:parseAmPmTo24(firstStart),
       endTime:parseAmPmTo24(lastEnd),
       breakMins:0,maxDogs:settings.maxDogsPerShift,
