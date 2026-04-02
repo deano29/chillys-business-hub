@@ -1091,7 +1091,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
             <div class="form-group"><label>Date</label><input id="sh-date" type="date" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Walker Name</label><input id="sh-walker" type="text" placeholder="e.g. Jessica" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Walker Type</label><select id="sh-type" onchange="updateShiftRate();recalcShiftLive()"><option value="founder">Founder</option><option value="employee">Employee</option><option value="contractor">Contractor</option></select></div>
-            <div class="form-group"><label>Hourly Rate ($)</label><input id="sh-rate" type="number" value="30" oninput="recalcShiftLive()"></div>
+            <div class="form-group" style="display:none"><label>Hourly Rate ($)</label><input id="sh-rate" type="number" value="0" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Max Dogs Per Walk</label><input id="sh-maxdogs" type="number" value="6" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Est. Travel KM (total)</label><input id="sh-km" type="number" value="15" oninput="recalcShiftLive()"></div>
             <div class="form-group"><label>Est. Travel Mins (total)</label><input id="sh-travel-mins" type="number" value="30" oninput="recalcShiftLive()"></div>
@@ -3406,6 +3406,7 @@ function openShiftBuilder(id){
     document.getElementById('sh-fee').value=0;
     document.getElementById('sh-btn-delete').style.display='none';
   }
+  updateShiftRate();// Show/hide hourly rate based on walker type
   renderBookingRows();
   recalcShiftLive();
   openModal('modal-shift');
