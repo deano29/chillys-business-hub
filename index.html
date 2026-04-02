@@ -2755,145 +2755,129 @@ function generateSmartDraft(){
   const preview=document.getElementById('ai-draft-preview');
   const d=ctx.dog,dn=d!=='your dog';// shorthand
 
-  // SOCIAL PROOF LINE
+  // SOCIAL PROOF
   let socialProof='';
-  if(ctx.suburbClientCount>=3) socialProof=`We currently walk ${ctx.suburbClientCount} other dogs in ${ctx.suburb} — so ${dn?d:'your pup'} would have plenty of local friends!`;
-  else if(ctx.suburbClientCount>=1) socialProof=`We already walk dogs in ${ctx.suburb}, so we know the area and the best spots really well.`;
-  else if(ctx.totalActiveClients>=10) socialProof=`We're currently walking ${ctx.totalActiveClients}+ dogs across Melbourne's south-east — a growing pack of happy pups!`;
+  if(ctx.suburbClientCount>=3) socialProof=`We walk ${ctx.suburbClientCount} other dogs in ${ctx.suburb}, so we know the area well.`;
+  else if(ctx.suburbClientCount>=1) socialProof=`We already service ${ctx.suburb} regularly.`;
+  else if(ctx.totalActiveClients>=10) socialProof=`We currently look after ${ctx.totalActiveClients}+ dogs across Melbourne's south-east.`;
 
   // BREED HOOK
   let breedLine='';
-  if(ctx.breedComment&&dn) breedLine=`${ctx.breed}s ${ctx.breedComment} — ${d} is going to fit right in.`;
-  else if(ctx.breed&&dn) breedLine=`We've walked plenty of ${ctx.breed}s and they always have a great time with us.`;
+  if(ctx.breedComment&&dn) breedLine=`${ctx.breed}s ${ctx.breedComment}. ${d} would do well with us.`;
+  else if(ctx.breed&&dn) breedLine=`We walk a number of ${ctx.breed}s and they tend to do really well with our team.`;
 
   // CONCERN HANDLING
   let concernLine='';
-  if(ctx.isReactive) concernLine=`I noticed ${dn?d:'your pup'} might need some extra care around other dogs — that's completely fine. We specialise in this and our solo walk option gives ${dn?d:'them'} one-on-one time with no pressure. Safety and comfort always come first with us.`;
-  else if(ctx.isPuppy) concernLine=`Puppies are our favourite! We take extra care with young ones — shorter walks, gentle introductions, and lots of positive reinforcement. ${dn?d:'Your pup'} will be in very safe hands.`;
-  else if(ctx.hasMedical) concernLine=`I saw ${dn?d:'your pup'} has some health considerations — no problem at all. We'll work around any medical needs and our walkers are experienced with dogs who need a little extra care.`;
-  else if(ctx.isBudgetConscious) concernLine=`We offer a few different options to suit different budgets — our group walks are the best value, and we also offer multi-day packages that bring the per-walk cost down.`;
+  if(ctx.isReactive) concernLine=`We're well set up for dogs that need a bit more space. Our solo walk option keeps things calm and controlled, and all our walkers are experienced with reactive dogs.`;
+  else if(ctx.isPuppy) concernLine=`We love working with young dogs. We adjust the pace and duration, keep introductions gentle, and make sure they're comfortable throughout.`;
+  else if(ctx.hasMedical) concernLine=`Happy to accommodate any health needs. Our walkers are experienced with dogs that require a bit of extra attention.`;
+  else if(ctx.isBudgetConscious) concernLine=`We have options at different price points. Group walks are the most affordable, and we offer multi-day rates that bring the per-walk cost down.`;
 
-  // NOTES (natural, not quoted)
+  // NOTES
   let notesRef='';
   if(ctx.notes&&ctx.notes.length>5&&!ctx.isReactive&&!ctx.isPuppy&&!ctx.hasMedical){
-    notesRef=`Regarding what you mentioned — "${ctx.notes.substring(0,80).trim()}${ctx.notes.length>80?'...':''}" — absolutely, happy to chat more about this.`;
+    notesRef=`You mentioned "${ctx.notes.substring(0,80).trim()}${ctx.notes.length>80?'...':''}" — happy to discuss this further.`;
   }
 
   // PREFERRED DAYS
-  let daysRef=ctx.preferredDays?`${ctx.preferredDays} works perfectly — we have availability on those days and can get ${dn?d:'your pup'} started straight away.`:'';
+  let daysRef=ctx.preferredDays?`${ctx.preferredDays} works well with our current schedule.`:'';
 
   let draft='';
 
   if(msgType==='welcome'){
-    const opn=ctx.isReferral?`Thanks for reaching out — it means a lot when someone recommends us.`
-      :ctx.isFromAd?`Thanks for filling out our form — I wanted to reach out personally rather than send a generic reply.`
-      :`Thanks for getting in touch!`;
-
     draft=`Hi ${ctx.name},
 
-${opn}
+Thanks for your enquiry${ctx.isReferral?' — always great to hear from a referral':ctx.isFromAd?' through our ad':''}. I wanted to follow up personally.${dn?`\n\nWe'd love to look after ${d}${ctx.breed?' the '+ctx.breed:''}.`:''} ${breedLine||''}${socialProof?`\n\n${socialProof}`:''}${concernLine?`\n\n${concernLine}`:''}
 
-I know finding someone you trust with ${dn?d:'your dog'} is a big deal, and we don't take that lightly. ${ctx.biz} isn't a big faceless company — we're a small, dedicated team that genuinely cares about every dog we walk.${breedLine?`\n\n${breedLine}`:''}${socialProof?`\n\n${socialProof}`:''}${concernLine?`\n\n${concernLine}`:''}
+A quick overview of what we offer:
 
-Here's what makes us different:
+- 2-Hour Dog Adventures — off-lead exploration, enrichment, and socialisation. Our most popular service.
+- Private Solo Walks (45-60 min) — one-on-one, ideal for dogs that prefer their own space.
+- Group Walks (45-60 min) — small groups of compatible dogs.
 
-🌿 Our signature 2-hour Dog Adventures aren't just walks — they're proper outings. Off-lead exploring, sniffing, socialising, and genuine enrichment. ${dn?d+'comes':'Your pup comes'} home tired and happy.
+Every walk includes GPS tracking, photos, and a report card sent to you afterwards.${notesRef?`\n\n${notesRef}`:''}${daysRef?`\n\n${daysRef}`:''}
 
-🦮 We also offer private solo walks for dogs who prefer one-on-one attention, and shorter group walks for regular exercise.
+If you're interested, the first step is a free meet & greet. I'll come to you, meet ${dn?d:'your dog'}, and we can work out what suits best. Takes about 15 minutes, no obligation.
 
-Every single walk includes GPS tracking, photos, and a report card sent to your phone. You'll always know exactly what ${dn?d:'your pup'} got up to. 📱${notesRef?`\n\n${notesRef}`:''}${daysRef?`\n\n${daysRef}`:''}
+Let me know if you'd like to arrange a time.
 
-The next step is a free meet & greet — I come to you, meet ${dn?d:'your pup'}, and we chat about what would work best. Zero obligation, takes about 15 minutes.
-
-Would this week work for you?
-
-${ctx.walker} 🐾
+${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='followup'){
-    const urgency=ctx.daysSinceEnquiry>14?'I completely understand life gets busy'
-      :ctx.daysSinceEnquiry>7?'Just wanted to make sure my last message didn\'t get lost'
-      :'Checking in from the other day';
-
     draft=`Hi ${ctx.name},
 
-${urgency} — I wanted to see if you're still thinking about walking for ${dn?d:'your pup'}?${ctx.isFromAd?`\n\nI know online forms can feel impersonal — I'm a real person and genuinely happy to answer any questions you have, no matter how small.`:''}${socialProof&&ctx.daysSinceEnquiry>7?`\n\n${socialProof}`:''}${breedLine&&ctx.daysSinceEnquiry>10?`\n\nBy the way, ${breedLine}`:''}
+Just following up${ctx.daysSinceEnquiry>7?` from my earlier message`:', wanted to make sure you received my message'} — are you still looking into walks for ${dn?d:'your dog'}?${socialProof?`\n\n${socialProof}`:''}${breedLine&&ctx.daysSinceEnquiry>7?`\n\n${breedLine}`:''}
 
-If the timing isn't right, totally fine — just let me know and I'll check back another time. And if you'd like to see what our walks actually look like, I'm happy to send some photos and GPS reports from recent walks in ${ctx.suburb||'your area'}.
+Happy to answer any questions or send through more detail on what we offer. If the timing has changed, no problem at all — just let me know.${ctx.suburb?`\n\nI can also send through some photos and reports from recent walks in the ${ctx.suburb} area if that's helpful.`:''}
 
-No sales pitch, just here to help whenever you're ready.
-
-${ctx.walker} 🐾
+${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='info'){
     draft=`Hi ${ctx.name},
 
-Here's the full rundown on what we do — I've tried to cover everything but feel free to ask me anything!${breedLine?`\n\n🐶 ${breedLine}`:''} ${socialProof?`\n\n📍 ${socialProof}`:''}
+Here's a full overview of our services.${breedLine?` ${breedLine}`:''}${socialProof?` ${socialProof}`:''}
 
 OUR SERVICES
-━━━━━━━━━━━━
-🌿 2-Hour Dog Adventure (our most popular)
-Off-lead exploration across Melbourne's best parks. It's not just a walk — it's genuine enrichment. Sniffing, socialising, running, swimming (in summer). ${dn?d+'would':'Your pup would'} come home properly tired and happy.
 
-🦮 Private Solo Walk (45-60 min)
-One-on-one with our walker. Perfect for ${ctx.isReactive?'dogs who need their own space':'dogs who prefer individual attention'}, or for days when you just need a quick walk.
+2-Hour Dog Adventure
+Off-lead exploration across Melbourne's parks. Includes enrichment, socialisation, and proper exercise. Dogs come home well-exercised and settled. Our most popular option.
 
-🐕 Group Walk (45-60 min)
-Small group of friendly, compatible dogs. Great value and amazing for socialisation.${concernLine?`\n\n💡 ${concernLine}`:''}
+Private Solo Walk (45-60 min)
+One-on-one walks for dogs that prefer individual attention${ctx.isReactive?', or need a quieter environment':''}.
 
-WHAT'S INCLUDED IN EVERY WALK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📱 Real-time GPS tracking
-📸 Photos sent after every walk
-📋 Walk report card (what they did, how they were, any notes)
-🛡️ Fully insured
-📲 Managed via our app — you can see everything
+Group Walk (45-60 min)
+Small groups of compatible dogs. Good value and great for socialisation.${concernLine?`\n\n${concernLine}`:''}
 
-HOW TO GET STARTED
-━━━━━━━━━━━━━━━━━━
-1. Free meet & greet — we come to you (15 mins, zero obligation)
-2. Quick online form (5 mins)
-3. Sign our T&Cs digitally
-4. First walk booked! 🎉${daysRef?`\n\n${daysRef}`:''}
+INCLUDED IN EVERY WALK
+- GPS-tracked route
+- Photos after each walk
+- Walk report card
+- Full insurance coverage
+- Managed through our client app
 
-Most people are walking within a week of their meet & greet. Want me to come meet ${dn?d:'your pup'}?
+GETTING STARTED
+1. Free meet & greet — we come to you (15 mins, no obligation)
+2. Online intake form (5 mins)
+3. Digital T&Cs
+4. First walk booked${daysRef?`\n\n${daysRef}`:''}
 
-${ctx.walker} 🐾
+Most clients are up and running within a week. Would you like to book a meet & greet?
+
+${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='close'){
     draft=`Hi ${ctx.name},
 
-I've been thinking about ${dn?d:'your enquiry'} — are you ready to get started? 🐾${socialProof?`\n\n${socialProof}`:''}\n\n${ctx.suburb?`We've got availability in ${ctx.suburb}`:'We have spots open'} and I could have ${dn?d:'your pup'} booked in as early as next week.${daysRef?` ${daysRef}`:''}
+Wanted to check in — are you ready to get ${dn?d:'your dog'} started with us?${socialProof?`\n\n${socialProof}`:''}\n\n${ctx.suburb?`We have availability in ${ctx.suburb}`:'We have spots available'} and could have ${dn?d:'your dog'} walking as early as next week.${daysRef?` ${daysRef}`:''}
 
-Here's what I need from you:
-✅ A 15-minute meet & greet (I come to you — free, no obligation)
-✅ That's literally it. Everything else we sort out after.
+All I need is a 15-minute meet & greet to get things moving. I come to you, no cost, no obligation.
 
-${dn?d+'deserves':'Your pup deserves'} great walks — shall I lock in a time?
+Would any time this week work?
 
-${ctx.walker} 🐾
+${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='reengage'){
     draft=`Hi ${ctx.name},
 
-Hope you and ${dn?d:'the pup'} are doing well! Just wanted to check in.${ctx.isExistingClient?`\n\nWe've really loved having ${dn?d:'your pup'} as part of the pack and I noticed things have been a bit quiet lately. If anything's changed — schedule, needs, anything at all — I'd love to chat about it.`:`\n\nI know we chatted a while back about walks for ${dn?d:'your pup'} and it didn't work out at the time. Just wanted to let you know we're still here if things have changed.`}${socialProof?`\n\n${socialProof}`:''}
+Hope you and ${dn?d:'your dog'} are well. Wanted to reach out as it's been a little while.${ctx.isExistingClient?`\n\nWe've enjoyed having ${dn?d:'your dog'} with us and noticed the schedule has been quiet recently. If anything has changed or there's something we can do differently, I'm happy to have a chat.`:`\n\nI understand the timing may not have been right before. If circumstances have changed and you're looking at walks again, we're here.`}${socialProof?`\n\n${socialProof}`:''}
 
-Genuinely no pressure — I just didn't want you to think we'd forgotten about ${dn?d:'you'}. If the timing is better now, or if you just want to chat, I'm here.
+No pressure — just wanted to make sure you know the door is open.
 
-${ctx.walker} 🐾
+${ctx.walker}
 ${ctx.biz}`;
 
   }else if(msgType==='notsuitable'){
     draft=`Hi ${ctx.name},
 
-Thanks so much for chatting with us about ${dn?d:'dog walking'} — I really appreciate you taking the time.
+Thank you for taking the time to chat with us about ${dn?d:'walks'}.
 
-After thinking it through, I don't think we're the best fit right now${ctx.isReactive?' given what you\'ve described about '+d+'\'s needs':ctx.notes?' — '+ctx.notes.substring(0,60).trim():''}. I'd rather be honest upfront than take on something I can't do justice to.${ctx.suburb?`\n\nI'd be happy to recommend another great walker in the ${ctx.suburb} area if you'd like — just let me know.`:''}
+Having thought about it, I don't think we're the right fit at this stage${ctx.isReactive?` given ${d}'s specific needs`:ctx.notes?' — '+ctx.notes.substring(0,60).trim():''}.${ctx.suburb?` I'm happy to recommend another walker in the ${ctx.suburb} area if that would help.`:''}
 
-Wishing you and ${dn?d:'your pup'} all the best. If anything changes down the track, don't hesitate to reach out.
+Appreciate your time, and if anything changes feel free to get in touch.
 
 ${ctx.walker}
 ${ctx.biz}`;
