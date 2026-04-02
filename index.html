@@ -3788,61 +3788,6 @@ async function renderRevenueForecast(){
   }
 
   const currentMonth=monthlyData.find(m=>m.isCurrent);
-  const thisMonthWalks=walks.filter(w=>w.date.startsWith(thisMonth));
-  const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
-  const bookedWalks=thisMonthWalks.filter(w=>w.date>nowStr);
-  const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const bookedRev=bookedWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const totalProjected=completedRev+bookedRev;
-  const monthTarget=parseFloat(getSetting('s-rev-target',6000))||6000;
-  const gapToTarget=Math.max(0,monthTarget-totalProjected);
-  const avgRevPerDog=thisMonthWalks.length>0?totalProjected/thisMonthWalks.length:55;
-  const dogsNeeded=avgRevPerDog>0?Math.ceil(gapToTarget/avgRevPerDog):0;
-  const progressPct=Math.min(100,monthTarget>0?(totalProjected/monthTarget)*100:0);
-
-  // Last month
-  const lastMonthWalks=walks.filter(w=>w.date.startsWith(lastMonth));
-  const lastMonthRev=lastMonthWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const momGrowth=lastMonthRev>0?((totalProjected-lastMonthRev)/lastMonthRev)*100:0;
-
-  // Next month
-  const nextMonthWalks=walks.filter(w=>w.date.startsWith(nextMonth));
-  const nextMonthRev=nextMonthWalks.reduce((s,w)=>s+walkRevenue(w),0);
-
-  // Weekly run rate (last 4 weeks)
-  const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-  const fwStr=`${fourWeeksAgo.getFullYear()}-${String(fourWeeksAgo.getMonth()+1).padStart(2,'0')}-${String(fourWeeksAgo.getDate()).padStart(2,'0')}`;
-  const recentWalks=walks.filter(w=>w.date>=fwStr&&w.date<=nowStr);
-  const weeklyRunRate=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
-
-  // By service type this month
-  const advWalks=thisMonthWalks.filter(w=>(w.service||'').toLowerCase().includes('adventure')||(w.service||'').toLowerCase().includes('2 hour'));
-  const soloWalks=thisMonthWalks.filter(w=>!((w.service||'').toLowerCase().includes('adventure')||(w.service||'').toLowerCase().includes('2 hour')));
-  const advRev=advWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const soloRev=soloWalks.reduce((s,w)=>s+walkRevenue(w),0);
-
-  // By walker this month
-  const walkerRevMap={};
-  thisMonthWalks.forEach(w=>{
-    const wk=(w.walker||'Unknown').replace(/\\+$/g,'');
-    walkerRevMap[wk]=(walkerRevMap[wk]||0)+walkRevenue(w);
-  });
-
-  // Weekly breakdown this month
-  const weeklyData=[];
-  for(let wk=0;wk<5;wk++){
-    const wkStart=new Date(now.getFullYear(),now.getMonth(),1+wk*7);
-    const wkEnd=new Date(now.getFullYear(),now.getMonth(),Math.min(7+wk*7,daysInMonth));
-    const wkStartStr=`${wkStart.getFullYear()}-${String(wkStart.getMonth()+1).padStart(2,'0')}-${String(wkStart.getDate()).padStart(2,'0')}`;
-    const wkEndStr=`${wkEnd.getFullYear()}-${String(wkEnd.getMonth()+1).padStart(2,'0')}-${String(wkEnd.getDate()).padStart(2,'0')}`;
-    if(wkStart.getMonth()!==now.getMonth()) break;
-    const wkWalks=thisMonthWalks.filter(w=>w.date>=wkStartStr&&w.date<=wkEndStr);
-    const wkRev=wkWalks.reduce((s,w)=>s+walkRevenue(w),0);
-    const isPast=wkEndStr<nowStr;
-    weeklyData.push({label:`Wk ${wk+1}`,rev:wkRev,walks:wkWalks.length,status:isPast?'actual':wkStartStr<=nowStr?'current':'booked'});
-  }
-
-  // Current month calculations
   const cm=currentMonth;
   const progressPct=cm.target>0?Math.min(100,(cm.rev/cm.target)*100):0;
   const gapToTarget=Math.max(0,cm.target-cm.rev);
