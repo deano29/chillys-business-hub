@@ -3934,7 +3934,7 @@ async function renderRevenueForecast(){
                 <td>$${m.target.toFixed(0)}</td>
                 <td>$${m.rev.toFixed(0)}${m.isCurrent?` <span style="font-size:10px;color:var(--ink-light)">(${m.walks} walks)</span>`:m.walks>0?` <span style="font-size:10px;color:var(--ink-xlight)">(${m.walks})</span>`:''}</td>
                 <td style="color:${vsTarget>=0?'var(--success)':'var(--danger)'}; font-weight:700">${m.rev>0||m.isPast?(vsTarget>=0?'+':'')+vsTarget.toFixed(0)+'%':'—'}</td>
-                <td style="color:${mom>=0?'var(--success)':'var(--danger)'">${prev&&(m.rev>0||m.isPast)?(mom>=0?'+':'')+mom.toFixed(0)+'%':'—'}</td>
+                <td style="color:${mom>=0?'var(--success)':'var(--danger)'}">${prev&&(m.rev>0||m.isPast)?(mom>=0?'+':'')+mom.toFixed(0)+'%':'—'}</td>
                 <td><span style="color:${statusColor};font-size:11px;font-weight:600">${statusLabel}</span></td>
               </tr>`;
             }).join('')}</tbody>
