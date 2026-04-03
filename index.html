@@ -1103,6 +1103,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <div class="filter-pill" onclick="setCovFilter('active')">🐕 Active Clients</div>
           <div class="filter-pill" onclick="setCovFilter('inactive')">💤 Inactive Clients</div>
           <div class="filter-pill" onclick="setCovFilter('lead')">📥 Enquiries</div>
+          <div class="filter-pill" onclick="toggleOffLeashParks()" id="cov-parks-toggle" style="background:var(--success-bg);color:var(--success);border-color:var(--success)">🌳 Off-Leash Parks</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="cov-assign-select" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;outline:none;background:var(--cream);min-width:220px;color:var(--ink)">
@@ -1136,6 +1137,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
             <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div> Enquiry (New/Contacted)</div>
             <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div> Enquiry (Qualified)</div>
             <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Enquiry (Closed Won)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#22c55e;border:2px solid #16a34a"></div> Off-Leash Dog Park</div>
+          </div>
+          <div class="cluster-card" id="parks-sidebar" style="display:none">
+            <h4>🌳 Nearby Off-Leash Parks</h4>
+            <p style="font-size:11px;color:var(--ink-light);margin-bottom:8px">Click a client pin to find parks nearby</p>
+            <div id="parks-list" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto"></div>
           </div>
           <div class="cluster-card">
             <h4>➕ Manual Address</h4>
@@ -3358,6 +3365,7 @@ function renderMapPins(pins){
         ${p.service?`<div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">${esc(p.service)}</div>`:''}
         <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${esc(p.suburb||p.addr||'')}</div>
         <div>${badge}</div>
+        <div style="margin-top:6px"><button onclick="showNearbyParks(${p.lat},${p.lng},'${esc(p.name).replace(/'/g,"\\'")}')" style="background:#dcfce7;border:1px solid #86efac;color:#16a34a;padding:3px 10px;border-radius:14px;font-size:10px;cursor:pointer;font-weight:600">🌳 Find off-leash parks nearby</button></div>
       </div>`);
     covMarkers.addLayer(marker);
   });
@@ -3410,6 +3418,100 @@ function geocodeAddress(){
     showToast('Address plotted on map!','📍');
   })
   .catch(()=>{status.textContent='Geocoding failed — check connection.';status.style.color='var(--danger)';});
+}
+
+// ── OFF-LEASH PARKS ──
+let offLeashParks=[];
+let offLeashLayer=null;
+let offLeashVisible=false;
+let radiusCircle=null;
+
+async function toggleOffLeashParks(){
+  offLeashVisible=!offLeashVisible;
+  const btn=document.getElementById('cov-parks-toggle');
+  if(btn) btn.classList.toggle('active',offLeashVisible);
+  const sidebar=document.getElementById('parks-sidebar');
+  if(sidebar) sidebar.style.display=offLeashVisible?'block':'none';
+
+  if(offLeashVisible){
+    if(!offLeashParks.length){
+      showToast('Loading off-leash parks...','🌳');
+      try{
+        offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);
+        showToast(`Found ${offLeashParks.length} off-leash areas`,'🌳');
+      }catch{offLeashParks=[];}
+    }
+    renderParkMarkers();
+  }else{
+    if(offLeashLayer&&covMap){covMap.removeLayer(offLeashLayer);offLeashLayer=null;}
+    if(radiusCircle&&covMap){covMap.removeLayer(radiusCircle);radiusCircle=null;}
+  }
+}
+
+function renderParkMarkers(){
+  if(!covMap||!offLeashParks.length) return;
+  if(offLeashLayer) covMap.removeLayer(offLeashLayer);
+
+  offLeashLayer=L.layerGroup();
+  offLeashParks.forEach(p=>{
+    const icon=L.divIcon({
+      html:`<div style="background:#22c55e;width:12px;height:12px;border-radius:50%;border:2.5px solid #16a34a;box-shadow:0 1px 4px rgba(0,0,0,.25)"></div>`,
+      className:'',iconSize:[12,12],iconAnchor:[6,6]
+    });
+    const marker=L.marker([p.lat,p.lng],{icon});
+    marker.bindPopup(`
+      <div style="font-family:Inter,sans-serif;min-width:160px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">🌳 ${p.name}</div>
+        <div style="font-size:11px;color:#6b6b6b;margin-bottom:2px">${p.type==='dog_park'?'Designated Dog Park':'Off-Leash Area'}</div>
+        ${p.fenced?'<div style="font-size:11px;color:#16a34a">Fenced</div>':''}
+        ${p.note?`<div style="font-size:10px;color:#a0a0a0;margin-top:4px">${p.note.substring(0,100)}</div>`:''}
+      </div>
+    `);
+    offLeashLayer.addLayer(marker);
+  });
+  offLeashLayer.addTo(covMap);
+}
+
+function showNearbyParks(lat,lng,clientName){
+  if(!offLeashParks.length){
+    toggleOffLeashParks().then(()=>showNearbyParks(lat,lng,clientName));
+    return;
+  }
+  // Draw radius circle
+  if(radiusCircle&&covMap) covMap.removeLayer(radiusCircle);
+  radiusCircle=L.circle([lat,lng],{radius:2000,color:'#22c55e',fillColor:'#22c55e',fillOpacity:0.08,weight:2,dashArray:'6'}).addTo(covMap);
+
+  // Find parks within 2km
+  const nearby=offLeashParks.map(p=>{
+    const dist=haversine(lat,lng,p.lat,p.lng);
+    return {...p,dist};
+  }).filter(p=>p.dist<=2000).sort((a,b)=>a.dist-b.dist);
+
+  // Update sidebar
+  const el=document.getElementById('parks-list');
+  const sidebar=document.getElementById('parks-sidebar');
+  if(sidebar) sidebar.style.display='block';
+  if(el){
+    if(nearby.length){
+      el.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px">${nearby.length} parks within 2km of ${esc(clientName)}</div>`+
+        nearby.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--cream);border-radius:var(--radius-sm);cursor:pointer;font-size:12px" onclick="covMap.setView([${p.lat},${p.lng}],16)">
+          <span style="color:var(--success)">🌳</span>
+          <div style="flex:1"><strong>${esc(p.name)}</strong>${p.fenced?' <span style="font-size:9px;color:var(--success)">Fenced</span>':''}</div>
+          <span style="font-size:11px;color:var(--ink-xlight)">${p.dist<1000?Math.round(p.dist)+'m':(p.dist/1000).toFixed(1)+'km'}</span>
+        </div>`).join('');
+    }else{
+      el.innerHTML=`<div style="font-size:12px;color:var(--warning);padding:8px">No off-leash parks found within 2km of ${esc(clientName)}. Try the full parks layer.</div>`;
+    }
+  }
+  covMap.fitBounds(radiusCircle.getBounds(),{padding:[20,20]});
+}
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371000;
+  const dLat=(lat2-lat1)*Math.PI/180;
+  const dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
 // ── FILTER PILLS ──
