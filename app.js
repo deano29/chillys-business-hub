@@ -1,0 +1,4161 @@
+// ── CLERK AUTH ──
+let clerkInstance=null;
+let authToken=null;
+
+async function initClerk(){
+  // Wait for Clerk SDK to load (it loads async via the script tag)
+  let attempts=0;
+  while(!window.Clerk&&attempts<50){await new Promise(r=>setTimeout(r,100));attempts++;}
+
+  try{
+    const clerk=window.Clerk;
+    if(!clerk||!clerk.load) throw new Error('Clerk SDK not available');
+
+    // If not already loaded, load it
+    if(!clerk.user&&!clerk.loaded) await clerk.load();
+
+    clerkInstance=clerk;
+
+    if(!clerk.user){
+      // Show sign-in UI
+      clerk.mountSignIn(document.getElementById('clerk-auth'));
+      // Wait for sign-in
+      await new Promise(resolve=>{
+        clerk.addListener(({user})=>{if(user) resolve();});
+      });
+    }
+    // User is signed in — get token and show app
+    authToken=await clerk.session?.getToken();
+    document.getElementById('auth-overlay').style.display='none';
+    // Now load data (auth token is ready)
+    loadFromNotion();
+    // Refresh token periodically (tokens expire after ~60s)
+    setInterval(async()=>{
+      if(clerkInstance?.session) authToken=await clerkInstance.session.getToken();
+    },50000);
+    // Add user info to sidebar
+    const userPill=document.querySelector('.user-pill');
+    if(userPill&&clerk.user){
+      userPill.innerHTML=`<span style="font-size:12px">👤 ${clerk.user.firstName||clerk.user.emailAddresses?.[0]?.emailAddress||'User'}</span>
+        <button onclick="clerkInstance.signOut().then(()=>location.reload())" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--ink-light);margin-left:8px">Sign out</button>`;
+    }
+  }catch(e){
+    console.warn('Clerk init failed, running without auth:',e.message);
+    document.getElementById('auth-overlay').style.display='none';
+    loadFromNotion();// Load without auth as fallback
+  }
+}
+initClerk();
+
+// Auth-aware fetch wrapper
+async function authFetch(url,options={}){
+  // Wait for auth token if not ready yet (max 5 seconds)
+  if(!authToken&&clerkInstance){
+    for(let i=0;i<50&&!authToken;i++) await new Promise(r=>setTimeout(r,100));
+  }
+  // Refresh token if we have a session (tokens expire quickly)
+  if(clerkInstance?.session){
+    try{authToken=await clerkInstance.session.getToken();}catch{}
+  }
+  if(authToken){
+    options.headers={...options.headers,'Authorization':'Bearer '+authToken};
+  }
+  return fetch(url,options);
+}
+
+// ── STAGES ──
+const STAGES=[
+  {id:'new',label:'New',color:'#3b82f6'},
+  {id:'contacted',label:'Contacted',color:'#f59e0b'},
+  {id:'qualified',label:'Qualified',color:'#06b6d4'},
+  {id:'closed-won',label:'Closed Won',color:'#22c55e'},
+  {id:'not-suitable',label:'Not Suitable',color:'#ef4444'},
+  {id:'closed-lost',label:'Closed Lost',color:'#6b7280'},
+  {id:'uncontactable',label:'Uncontactable',color:'#9ca3af'},
+  {id:'not-interested',label:'Not Interested',color:'#a1a1aa'},
+  {id:'archived',label:'Archived',color:'#d1d5db'},
+];
+
+const OB_STEPS=[
+  'Intake form sent to client',
+  'Intake form received & reviewed',
+  'T&Cs / contract signed (Dropbox Sign)',
+  'Meet & greet scheduled (Calendly)',
+  'Meet & greet completed',
+  'Dog profile added to Time to Pet',
+  'First walk scheduled & confirmed',
+  'Welcome pack / Bonjoro video sent',
+];
+
+// ── DUMMY DATA ──
+const DUMMY_ENQ=[
+  {id:'e1',name:'Sarah Mitchell',phone:'0412 345 678',email:'sarah.mitchell@gmail.com',channel:'WhatsApp',dogName:'Buddy',dogBreed:'Golden Retriever',services:'Daily group walks',stage:'new',followup:'2026-03-28',notes:'Has a friendly dog, looking for 5 days/week.',dateAdded:'2026-03-27',source:'Facebook Ad',suburb:'Fitzroy'},
+  {id:'e2',name:'James Thompson',phone:'0423 456 789',email:'james.t@outlook.com',channel:'Instagram',dogName:'Bella',dogBreed:'Labrador',services:'Solo walks, drop-ins',stage:'new',followup:'2026-03-27',notes:'Enquired via Instagram DM. 2yr old lab.',dateAdded:'2026-03-26',source:'Instagram',suburb:'Richmond'},
+  {id:'e3',name:'Emma Chen',phone:'0434 567 890',email:'emma.chen@gmail.com',channel:'Facebook',dogName:'Max',dogBreed:'Border Collie',services:'Group walks',stage:'new',followup:'2026-04-01',notes:'Very active dog, needs stimulation.',dateAdded:'2026-03-25',source:'Facebook Ad',suburb:'Collingwood'},
+  {id:'e4',name:'Michael Torres',phone:'0445 678 901',email:'mtorres@hotmail.com',channel:'Website',dogName:'Luna',dogBreed:'Poodle',services:'Solo walks',stage:'new',followup:'2026-04-02',notes:'Prefers afternoon walks. Luna is well trained.',dateAdded:'2026-03-24',source:'Website',suburb:'South Yarra'},
+  {id:'e5',name:'Priya Sharma',phone:'0456 789 012',email:'priya.sharma@gmail.com',channel:'Referral',dogName:'Coco',dogBreed:'Cavoodle',services:'Group walks, puppy visits',stage:'contacted',followup:'2026-04-03',notes:'Referred by Amy Foster. 6-month old puppy.',dateAdded:'2026-03-23',source:'Referral',suburb:'Northcote'},
+  {id:'e6',name:'Tom Wilson',phone:'0467 890 123',email:'tom.wilson@gmail.com',channel:'Email',dogName:'Archie',dogBreed:'Staffy',services:'Daily walks',stage:'contacted',followup:'2026-04-04',notes:'Works from home, wants 9am walks Mon-Fri.',dateAdded:'2026-03-22',source:'Google',suburb:'Brunswick'},
+  {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'qualified',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
+  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'qualified',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Facebook Ad',suburb:'Fitzroy North'},
+  {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'closed-won',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
+  {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'closed-won',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
+  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'closed-won',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Facebook Ad',suburb:'Fitzroy'},
+  {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
+];
+
+const DUMMY_CLIENTS=[
+  {id:'c1',owner:'Amy Foster',dog:'Biscuit',breed:'Spoodle',emoji:'🐶',walks:5,nextWalk:'Today 9:00am',status:'active',health:'active',tags:[],suburb:'Fitzroy',monthWalks:22,joined:'Feb 2026',phone:'0412 345 670',email:'amy.foster@gmail.com',ltv:'$880'},
+  {id:'c2',owner:'Jessica Lee',dog:'Pepper',breed:'Cavoodle',emoji:'🐾',walks:3,nextWalk:'Today 10:30am',status:'active',health:'active',tags:['vip'],suburb:'Richmond',monthWalks:13,joined:'Nov 2025',phone:'0423 456 781',email:'jessica.lee@gmail.com',ltv:'$1,560'},
+  {id:'c3',owner:'Connor Hayes',dog:'Banjo',breed:'Aust. Shepherd',emoji:'🦮',walks:5,nextWalk:'Tomorrow 8:00am',status:'active',health:'active',tags:['vip','review-due'],suburb:'Collingwood',monthWalks:21,joined:'Sep 2025',phone:'0434 567 892',email:'connor.hayes@gmail.com',ltv:'$2,100'},
+  {id:'c4',owner:'Olivia Martin',dog:'Noodle',breed:'Labradoodle',emoji:'🐕',walks:2,nextWalk:'Wed 9:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'South Yarra',monthWalks:8,joined:'Jan 2026',phone:'0445 678 903',email:'olivia.martin@gmail.com',ltv:'$640'},
+  {id:'c5',owner:'Ryan Chang',dog:'Scout',breed:'Kelpie',emoji:'🐕‍🦺',walks:5,nextWalk:'Today 2:00pm',status:'active',health:'active',tags:['vip','review-due'],suburb:'Northcote',monthWalks:20,joined:'Aug 2025',phone:'0456 789 014',email:'ryan.chang@gmail.com',ltv:'$2,600'},
+  {id:'c6',owner:'Hannah Brown',dog:'Maple',breed:'Border Collie',emoji:'🐾',walks:4,nextWalk:'Tomorrow 7:30am',status:'active',health:'active',tags:[],suburb:'Brunswick',monthWalks:17,joined:'Oct 2025',phone:'0467 890 125',email:'hannah.brown@gmail.com',ltv:'$1,980'},
+  {id:'c7',owner:'Daniel Nguyen',dog:'Bear',breed:'Samoyed',emoji:'🐶',walks:3,nextWalk:'Wed 11:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'Carlton',monthWalks:12,joined:'Dec 2025',phone:'0478 901 236',email:'daniel.nguyen@gmail.com',ltv:'$960'},
+  {id:'c8',owner:'Sophie Turner',dog:'Lola',breed:'Dachshund',emoji:'🦴',walks:1,nextWalk:'—',status:'inactive',health:'win-back',tags:['reactivation'],suburb:'St Kilda',monthWalks:2,joined:'Jul 2025',phone:'0489 012 347',email:'sophie.turner@gmail.com',ltv:'$1,740'},
+];
+
+let TODAY_WALKS=[
+  {time:'7:00am',dogs:'Biscuit (Amy F.)',type:'Solo Walk',walker:'Jake',status:'completed'},
+  {time:'8:30am',dogs:'Pepper + Scout',type:'Group Walk',walker:'Sarah',status:'inprogress'},
+  {time:'9:00am',dogs:'Banjo (Connor H.)',type:'Solo Walk',walker:'Jake',status:'upcoming'},
+  {time:'10:30am',dogs:'Noodle + Bear',type:'Group Walk',walker:'Sarah',status:'upcoming'},
+  {time:'2:00pm',dogs:'Scout (Ryan C.)',type:'Drop-in',walker:'Jake',status:'upcoming'},
+  {time:'4:00pm',dogs:'Lola + Maple',type:'Group Walk',walker:'Chris',status:'upcoming'},
+];
+
+const REVENUE=[
+  {month:'Oct',val:3200},{month:'Nov',val:3850},{month:'Dec',val:4100},
+  {month:'Jan',val:3620},{month:'Feb',val:4280},{month:'Mar',val:4850},
+];
+
+const EMAILS=[
+  {id:'m1',from:'Sarah Mitchell',email:'sarah.mitchell@gmail.com',subject:"Dog walking enquiry for Buddy 🐶",preview:"Hi! I saw your Instagram and would love to find out more...",time:'9:23am',read:false,tag:'enquiry',body:`Hi Chilly's team!\n\nI came across your Instagram and honestly your service looks amazing — Buddy would absolutely love it! 🐶\n\nHe's a 3-year-old Golden Retriever, super friendly and loves other dogs. I'm looking for someone to walk him 5 days a week while I'm at work. We're based in Fitzroy.\n\nCould you let me know your pricing and availability? Happy to arrange a meet and greet whenever suits.\n\nThanks so much!\nSarah 😊`},
+  {id:'m2',from:'Emma Chen',email:'emma.chen@gmail.com',subject:"Re: Chilly's Dog Walking - Info Pack",preview:"Thanks so much for sending through all the info! Max and I would love...",time:'8:45am',read:false,tag:'reply',body:`Hi there!\n\nThanks so much for sending through all the info — Max and I would absolutely love to get started! The group walks sound perfect for his energy levels 😄\n\nI've had a look at the pricing and we'd like to go ahead with 5 group walks per week. Is next Monday too soon to start?\n\nAlso is there a form I need to fill in? Happy to get it done today.\n\nEmma & Max 🐾`},
+  {id:'m3',from:'Time to Pet',email:'noreply@timetopet.com',subject:'New booking request — Jessica Lee',preview:'A new service request has been submitted by Jessica Lee for...',time:'Yesterday',read:true,tag:'booking',body:`Hi Chilly's,\n\nA new service request has been submitted through your client portal.\n\nClient: Jessica Lee\nPet: Pepper (Cavoodle, 2 years)\nService: Group Walk (1 hour)\nRequested dates: Mon 30 Mar – Fri 3 Apr\nTime preference: 8:30–10:30am\n\nPlease log in to Time to Pet to confirm or decline.\n\n— Time to Pet`},
+  {id:'m4',from:'Nick Patel',email:'nick.patel@gmail.com',subject:"T&Cs signed — ready to start! 🎉",preview:"Hi! Just signed the T&Cs and filled out the intake form. So excited to...",time:'Yesterday',read:true,tag:'onboarding',body:`Hi!\n\nJust signed the T&Cs and filled in Rosie's intake form. So excited to get started! 🎉\n\nRosie is a 4-year-old Golden Retriever, no medical issues, up to date on all vaccinations. Her vet is Dr. Kim at Brunswick Vet Clinic.\n\nShe LOVES other dogs so the group walks will be perfect. Looking forward to meeting the team!\n\nNick & Rosie 🐕`},
+  {id:'m5',from:'Xero',email:'no-reply@xero.com',subject:'Invoice #INV-0234 paid — $180.00',preview:'Amy Foster has paid invoice #INV-0234 for $180.00...',time:'2 days ago',read:true,tag:'payment',body:`Hi Chilly's,\n\nGreat news — the following invoice has been paid:\n\nInvoice: #INV-0234\nClient: Amy Foster\nAmount: $180.00 AUD\nDate paid: 27 March 2026\nPayment method: Credit card\n\nThis has been recorded in Xero automatically.\n\n— Xero`},
+];
+
+const TEMPLATES=[
+  {id:'t1',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'First Response to New Enquiry',
+   body:`Hi {name}! 👋\n\nThanks so much for getting in touch — we'd love to help with {dog_name}!\n\nWe're Chilly's Dog Adventures, a professional dog walking service based in Melbourne. Here's a quick overview:\n\n🐾 Group walks (1 hour) — $XX per walk\n🐾 Solo/private walks (1 hour) — $XX per walk\n🐾 Drop-in visits (30 min) — $XX per visit\n🐾 Puppy visits (30 min) — $XX per visit\n\nAll our walkers are fully insured, DBS checked, and dog-obsessed 🐶\n\nI'd love to find out more about {dog_name}! Could you let me know:\n• What service(s) are you interested in?\n• How many days per week?\n• Any medical or behavioural needs?\n\nLooking forward to hearing from you!\n\n{walker_name} 🐾\nChilly's Dog Adventures\nchillys.com.au`},
+  {id:'t2',cat:'info',catLabel:'Info Pack',catClass:'tc-info',name:'Services & Pricing Info Pack',
+   body:`Hi {name},\n\nThanks for your interest in Chilly's! Here's everything you need to know 🐾\n\n📋 OUR SERVICES & PRICING\n━━━━━━━━━━━━━━━━━━━━━━━━\n🦮 Group Walk (60 min)      — $XX/walk\n🐕 Solo Walk (60 min)       — $XX/walk\n🏠 Drop-in Visit (30 min)   — $XX/visit\n🐾 Puppy Package (30 min)   — $XX/visit\n\n📋 HOW IT WORKS\n━━━━━━━━━━━━━━━━━━━━━━━━\n1️⃣ Free meet & greet (no obligation)\n2️⃣ Complete our quick online intake form\n3️⃣ Sign our T&Cs (takes 2 minutes via DocuSign)\n4️⃣ You're in the pack! Walks tracked via our app 📱\n\nAfter every walk you'll receive a GPS-tracked report card with photos 📸\n\nWould you like to book a free meet & greet?\n\nCan't wait to meet {dog_name}! 🐶\n\n{walker_name}\nChilly's Dog Adventures`},
+  {id:'t3',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Follow-up — No Reply',
+   body:`Hi {name},\n\nJust following up on my message from the other day — didn't want it to get lost! 😊\n\nWe'd still love to welcome {dog_name} to the Chilly's pack. If you have any questions or want to chat, just reply here or give me a call/WhatsApp.\n\nNo pressure at all — just checking in!\n\n{walker_name} 🐾`},
+  {id:'t4',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Confirmation',
+   body:`Hi {name},\n\nBrilliant — looking forward to meeting you and {dog_name}! 🐾\n\nHere are the details for our free meet & greet:\n\n📅 Date: [DATE]\n⏰ Time: [TIME]\n📍 Location: [ADDRESS / your home]\n\nThis usually takes about 20-30 minutes. We'll go over {dog_name}'s routine, any needs, and answer all your questions.\n\nSee you soon!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
+  {id:'t5',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome to the Pack! 🎉',
+   body:`Hi {name},\n\nWe're SO excited to welcome {dog_name} to the Chilly's pack! 🎉🐾\n\nHere's what happens next:\n\n1️⃣ Fill in {dog_name}'s profile form: [TYPEFORM LINK]\n   (takes ~5 mins — vet details, emergency contacts, routine)\n\n2️⃣ Sign our T&Cs here: [DOCUSIGN LINK]\n\n3️⃣ We'll add you to our app (Time to Pet) — you'll get a login to view walk schedules, GPS reports, photos & invoices 📱\n\n4️⃣ Your first walk is confirmed for [DATE] at [TIME]! 🐶\n\nAny questions at all, just message me. {dog_name} is going to LOVE it!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
+  {id:'t6',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Sorry — Not the Right Fit',
+   body:`Hi {name},\n\nThank you so much for your enquiry and for thinking of us for {dog_name} 🐾\n\nAfter careful consideration, unfortunately we're not quite the right fit at this stage.\n\nI'd really recommend checking out local alternatives — I'm happy to refer you to another trusted walker in your area.\n\nWishing you and {dog_name} all the best!\n\n{walker_name}\nChilly's Dog Adventures`},
+];
+
+const INTEGRATIONS=[
+  {icon:'📔',name:'Notion',desc:'CRM database — enquiries & clients',status:'connected',bg:'#f3f0ff'},
+  {icon:'✉️',name:'Microsoft Outlook',desc:'Email — send templates, view inbox, sync calendar',status:'connected',bg:'#dbeafe'},
+  {icon:'📊',name:'Xero',desc:'Accounting — invoices, payments, revenue reports',status:'connected',bg:'#dcfce7'},
+  {icon:'🕐',name:'Time to Pet',desc:'Client walks, scheduling, GPS reports (via Zapier)',status:'connected',bg:'#fde8d8'},
+  {icon:'📘',name:'Facebook Lead Ads',desc:'Auto-capture new ad leads into pipeline',status:'connected',bg:'#dbeafe'},
+  {icon:'📷',name:'Instagram',desc:'DM enquiries captured automatically via Make.com',status:'pending',bg:'#fce7f3'},
+  {icon:'📅',name:'Calendly',desc:'Meet & greet auto-booking — link sent in templates',status:'pending',bg:'#f0fdf4'},
+  {icon:'📝',name:'Typeform',desc:'Client intake forms — feeds into Notion + Time to Pet',status:'disconnected',bg:'#fff4ed'},
+  {icon:'⚡',name:'Make.com',desc:'Automation engine — powers all workflow automations',status:'connected',bg:'#ede9fe'},
+  {icon:'✍️',name:'Dropbox Sign',desc:'Digital T&Cs signing',status:'disconnected',bg:'#f0f9ff'},
+];
+
+const AUTOMATION_LOG_BASE=[
+  {id:'al1',event:'Enquiry added',detail:'Sarah Mitchell → New stage (via WhatsApp)',time:'9:23am today',status:'success',icon:'📥'},
+  {id:'al2',event:'Stage changed',detail:'Emma Chen: Info Sent → Meet & Greet',time:'8:45am today',status:'success',icon:'📊'},
+  {id:'al3',event:'Template copied',detail:'First Response — used for James Thompson',time:'8:30am today',status:'info',icon:'📋'},
+  {id:'al4',event:'Follow-up overdue',detail:'Sarah Mitchell — was due 28 Mar',time:'8:00am today',status:'warning',icon:'⚠️'},
+  {id:'al5',event:'Onboarding step updated',detail:'Lisa Park: T&Cs signed (step 3 of 8)',time:'Yesterday 4:12pm',status:'success',icon:'✅'},
+  {id:'al6',event:'Stage changed',detail:'Nick Patel: Meet & Greet → Onboarding',time:'Yesterday 2:30pm',status:'success',icon:'📊'},
+  {id:'al7',event:'Enquiry added',detail:'Emma Chen → New stage (via Facebook Ad)',time:'25 Mar, 11:02am',status:'success',icon:'📥'},
+  {id:'al8',event:'Converted to client',detail:'Amy Foster: Onboarding → Converted 🎉',time:'1 Mar, 9:15am',status:'success',icon:'🎉'},
+];
+
+// ── STATE ──
+let enquiries=[...DUMMY_ENQ];
+let clients=[...DUMMY_CLIENTS];
+let editingId=null;
+let activeEmail=null;
+let aiDraftText='';
+let currentAiEnqId=null;
+let dataLoaded=false;
+
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+
+// Load from localStorage cache first (instant)
+const stored=load('cw_enq',null);
+if(stored&&stored.length>0)enquiries=stored;
+const storedClients=load('cw_clients',null);
+if(storedClients&&storedClients.length>0)clients=storedClients;
+
+// Async load from APIs
+async function loadFromNotion(){
+  try{
+    const [enqRes,cliRes]=await Promise.all([
+      authFetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
+    ]);
+    if(enqRes&&enqRes.length>0){
+      enquiries=enqRes;
+      save('cw_enq',enquiries);
+    }
+    if(cliRes&&cliRes.length>0){
+      clients=cliRes;
+      save('cw_clients',clients);
+    }
+    dataLoaded=true;
+    renderDashboard();
+    logEvent('Data sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients from TTP','success','📔');
+  }catch(e){
+    console.warn('Notion sync failed, using cached data:',e.message);
+  }
+}
+// Data load is triggered after Clerk auth completes (see initClerk)
+// Fallback: if Clerk fails, load anyway after 3 seconds
+setTimeout(()=>{if(!dataLoaded) loadFromNotion();},3000);
+
+// ── UTILS ──
+function today(){return new Date().toISOString().slice(0,10)}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmtDate(d){if(!d)return '';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}
+function fuStatus(d){if(!d)return null;if(d<today())return 'overdue';if(d===today())return 'today';return 'upcoming'}
+
+function showToast(msg,emoji='✅'){
+  const el=document.getElementById('toast');
+  el.innerHTML=`<span>${emoji}</span> ${msg}`;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2400);
+}
+
+function logEvent(event,detail,status='success',icon='📊'){
+  const log=load('cw_log',[]);
+  const now=new Date();
+  const t=now.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit',hour12:true});
+  log.unshift({id:'l'+Date.now(),event,detail,time:t+' today',status,icon});
+  save('cw_log',log.slice(0,30));
+}
+
+// ── WEBHOOKS ──
+function fireWebhook(type,payload){
+  const url=getWebhookUrl('wh-'+type);
+  if(!url) return;
+  fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event:type,timestamp:new Date().toISOString(),...payload})
+  })
+  .then(r=>{if(r.ok) logEvent('Webhook fired',type+' → Make.com','success','⚡');})
+  .catch(()=>logEvent('Webhook failed',type,'warning','⚠️'));
+}
+
+// ── EMAIL ──
+function composeEmail(to,subject,body){
+  const mailto=`mailto:${encodeURIComponent(to||'')}?subject=${encodeURIComponent(subject||'')}&body=${encodeURIComponent(body||'')}`;
+  window.open(mailto,'_blank');
+  logEvent('Email composed','To: '+(to||'(blank)')+' — '+(subject||'(no subject)'),'info','✉️');
+  showToast('Opening mail client...','✉️');
+}
+function sendEmailWebhook(to,subject,body){
+  const url=getWebhookUrl('wh-send-email');
+  if(!url){composeEmail(to,subject,body);return;}
+  fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({to,subject,body,timestamp:new Date().toISOString()})
+  })
+  .then(r=>{if(r.ok){showToast('Email sent via Make.com!','✉️');logEvent('Email sent','To: '+to,'success','✉️');}else{composeEmail(to,subject,body);}})
+  .catch(()=>composeEmail(to,subject,body));
+}
+
+// ── FIT SCORE ──
+function calcFitScore(e){
+  let s=0;
+  const src={Referral:5,'Facebook Ad':3,WhatsApp:3,Instagram:3,Facebook:2,Website:2,Email:1,Google:1,Other:1};
+  s+=src[e.source]||src[e.channel]||1;
+  const svc=(e.services||'').toLowerCase();
+  if(/daily|5 day/i.test(svc))s+=3;
+  else if(/solo|private/i.test(svc))s+=2;
+  else if(/group/i.test(svc))s+=2;
+  else s+=1;
+  if(e.followup)s+=1;
+  if(e.followup&&fuStatus(e.followup)!=='overdue')s+=1;
+  const sb={new:0,contacted:1,qualified:2,'closed-won':3};
+  s+=sb[e.stage]||0;
+  const norm=Math.min(10,Math.max(1,Math.round((s/13)*10)));
+  let label,cls;
+  if(norm>=8){label='Hot';cls='fit-hot';}
+  else if(norm>=6){label='Good';cls='fit-good';}
+  else if(norm>=4){label='Medium';cls='fit-medium';}
+  else{label='Low';cls='fit-low';}
+  return{score:norm,label,cls};
+}
+
+// ── NEXT ACTIONS ──
+function getEnqNextAction(e){
+  if(['closed-won','not-suitable'].includes(e.stage))return null;
+  const fu=fuStatus(e.followup);
+  if(e.stage==='new'&&!e.followup)return{icon:'📅',text:'Set a follow-up date'};
+  if(e.stage==='new'&&fu==='overdue')return{icon:'⚠️',text:'Follow up now — overdue!'};
+  if(e.stage==='new'&&fu==='today')return{icon:'📞',text:'Call or message today'};
+  if(e.stage==='new')return{icon:'💬',text:'Send first reply'};
+  if(e.stage==='contacted')return{icon:'📄',text:'Send info pack'};
+  if(e.stage==='qualified')return{icon:'📋',text:'Follow up to close'};
+  return null;
+}
+
+function getClientNextAction(c){
+  if(c.health==='win-back')return{icon:'💌',text:'Send reactivation offer'};
+  if(c.health==='at-risk')return{icon:'💬',text:'Check in this week'};
+  if(c.tags&&c.tags.includes('review-due'))return{icon:'⭐',text:'Schedule review call'};
+  return null;
+}
+
+function getObNextAction(e){
+  const checks=load('cw_ob_'+e.id,new Array(OB_STEPS.length).fill(false));
+  const nextIdx=checks.findIndex(c=>!c);
+  if(nextIdx===-1)return{icon:'🎉',text:'All done — ready to convert!'};
+  return{icon:'▶️',text:'Next: '+OB_STEPS[nextIdx].split('(')[0].trim()};
+}
+
+// ── NAV ──
+const VIEW_TITLES={
+  dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
+  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
+  reports:'Reports & KPIs',settings:'Settings',
+};
+
+function navigate(v){
+  document.body.classList.remove('sidebar-open');// Close mobile sidebar
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-'+v)?.classList.add('active');
+  document.querySelector(`.nav-item[data-view="${v}"]`)?.classList.add('active');
+  document.getElementById('topbar-title').textContent=VIEW_TITLES[v];
+  const actions={
+    enquiries:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button><button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>`,
+    templates:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft Reply</button>`,
+    reports:`<button class="btn btn-secondary btn-sm" onclick="window.print()">📥 Export PDF</button>`,
+    coverage:`<button class="btn btn-ghost btn-sm" onclick="assignedPins={};save('cw_map_pins',{});renderCoverage();showToast('All pins cleared — defaults will reload','🗑️')">🗑️ Reset Map</button>`,
+  };
+  document.getElementById('topbar-actions').innerHTML=actions[v]||'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-light)"><span class="int-live-dot"></span> Live sync</div>';
+  if(v==='dashboard')renderDashboard();
+  if(v==='enquiries')renderPipeline();
+  if(v==='clients')renderClients();
+  if(v==='walks')renderWalks();
+  if(v==='routes')renderRoutes();
+  if(v==='inbox')renderInbox();
+  if(v==='coverage')renderCoverage();
+  if(v==='parks')renderParksPage();
+  if(v==='templates')renderTemplates();
+  if(v==='reports')renderReports();
+  if(v==='settings')renderSettings();
+  updateBadges();
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(el=>{
+  el.addEventListener('click',()=>navigate(el.dataset.view));
+});
+
+function updateBadges(){
+  const n=enquiries.filter(e=>e.stage==='new').length;
+  const be=document.getElementById('badge-enq');
+  be.textContent=n;be.style.display=n>0?'inline-block':'none';
+}
+
+// ── CHART ──
+function buildChart(containerId,labelId,data,h=110){
+  const max=Math.max(...data.map(d=>d.val))*1.1;
+  const min=Math.min(...data.map(d=>d.val))*.85;
+  const W=600,H=h,n=data.length;
+  const pts=data.map((d,i)=>{
+    const x=i*(W/(n-1));
+    const y=H-((d.val-min)/(max-min))*H;
+    return[x,y];
+  });
+  const pathD=pts.map((p,i)=>i===0?`M${p[0]},${p[1]}`:`C${pts[i-1][0]+40},${pts[i-1][1]} ${p[0]-40},${p[1]} ${p[0]},${p[1]}`).join(' ');
+  const areaD=pathD+` L${pts[n-1][0]},${H} L0,${H} Z`;
+  const uid='g'+Math.random().toString(36).slice(2,7);
+  document.getElementById(containerId).innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg" preserveAspectRatio="none" style="height:${H}px">
+    <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F26B21" stop-opacity=".18"/><stop offset="100%" stop-color="#F26B21" stop-opacity="0"/></linearGradient></defs>
+    <path d="${areaD}" fill="url(#${uid})"/>
+    <path d="${pathD}" fill="none" stroke="#F26B21" stroke-width="2.5" stroke-linecap="round"/>
+    ${pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#F26B21" stroke="#fff" stroke-width="2"/><text x="${p[0]}" y="${p[1]-10}" text-anchor="middle" font-size="11" fill="#6b6b6b" font-family="Inter">$${(data[i].val/1000).toFixed(1)}k</text>`).join('')}
+  </svg>`;
+  document.getElementById(labelId).innerHTML=data.map(d=>`<span>${d.month}</span>`).join('');
+}
+
+// ── DASHBOARD ──
+async function renderDashboard(){
+  // Fetch today's walks for real data
+  const todayWalksData=await fetch('/api/walks/today?range=today').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  if(todayWalksData.length) TODAY_WALKS=todayWalksData;
+
+  // Fetch this week's walks for weekly stats
+  const weekWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const nowLocal=new Date();
+  const todayStr=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+  // This week (Mon-Sun)
+  const dow=nowLocal.getDay()||7;
+  const monDate=new Date(nowLocal);monDate.setDate(nowLocal.getDate()-(dow-1));
+  const monStr=`${monDate.getFullYear()}-${String(monDate.getMonth()+1).padStart(2,'0')}-${String(monDate.getDate()).padStart(2,'0')}`;
+  const sunDate=new Date(monDate);sunDate.setDate(monDate.getDate()+6);
+  const sunStr=`${sunDate.getFullYear()}-${String(sunDate.getMonth()+1).padStart(2,'0')}-${String(sunDate.getDate()).padStart(2,'0')}`;
+  const thisWeekWalks=weekWalks.filter(w=>w.date>=monStr&&w.date<=sunStr);
+
+  // Calculate real stats
+  const activeLeads=enquiries.filter(e=>['new','contacted','qualified'].includes(e.stage)).length;
+  const activeClients=clients.filter(c=>c.status==='active').length;
+  const todayWalkCount=TODAY_WALKS.length;
+  const weekWalkCount=thisWeekWalks.length;
+
+  // Estimated weekly revenue
+  const settings=getRouteSettings();
+  const weekRev=thisWeekWalks.reduce((s,w)=>s+getClientPrice(w.client,w.service),0);
+
+  // Follow-ups
+  const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>(a.followup||'').localeCompare(b.followup||''));
+  const overdue=due.filter(e=>fuStatus(e.followup)==='overdue').length;
+
+  // Clients needing attention (booked < 7 days ahead)
+  const needsAttention=clients.filter(c=>c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7).length;
+  const noUpcoming=clients.filter(c=>c.status==='no-upcoming').length;
+  const unpricedClients=clients.filter(c=>c.name&&!isClientPriced(c.name.replace(/\\+$/g,'').trim())).length;
+
+  // KPI Stats
+  document.getElementById('dash-stats').innerHTML=`
+    <div class="stat-card orange" onclick="navigate('enquiries')" style="cursor:pointer">
+      <div class="stat-icon">📥</div><div class="stat-label">Active Leads</div>
+      <div class="stat-value">${activeLeads}</div>
+      <div class="stat-sub">${overdue>0?`<span class="trend-down" style="color:var(--danger)">⚠️ ${overdue} overdue follow-ups</span>`:'All followed up ✅'}</div>
+    </div>
+    <div class="stat-card green" onclick="navigate('clients')" style="cursor:pointer">
+      <div class="stat-icon">🐕</div><div class="stat-label">Active Clients</div>
+      <div class="stat-value">${activeClients}</div>
+      <div class="stat-sub">${needsAttention>0?`<span style="color:var(--warning)">${needsAttention} need rebooking</span>`:noUpcoming>0?`<span style="color:var(--danger)">${noUpcoming} no upcoming walks</span>`:'All booked ✅'}</div>
+    </div>
+    <div class="stat-card blue" onclick="navigate('walks')" style="cursor:pointer">
+      <div class="stat-icon">🦮</div><div class="stat-label">Walks This Week</div>
+      <div class="stat-value">${weekWalkCount}</div>
+      <div class="stat-sub">${todayWalkCount} today</div>
+    </div>
+    <div class="stat-card purple" onclick="navigate('routes')" style="cursor:pointer">
+      <div class="stat-icon">💰</div><div class="stat-label">Est. Weekly Revenue</div>
+      <div class="stat-value">$${weekRev.toFixed(0)}</div>
+      <div class="stat-sub">${unpricedClients>0?`<span style="color:var(--warning)">${unpricedClients} clients need pricing</span>`:'Based on current bookings'}</div>
+    </div>
+  `;
+
+  // Today's Walks
+  const walksBadge=document.getElementById('dash-walks-badge');
+  if(walksBadge) walksBadge.textContent=todayWalkCount+' walks';
+  const walksEl=document.getElementById('dash-walks');
+  if(todayWalkCount){
+    walksEl.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time||''}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${esc(w.client||w.dogs||'')}</div><div class="walk-type">${esc(w.service||w.type||'')}</div></div>
+        <div class="walk-walker">${esc(w.walker||'')}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }else{
+    walksEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">No walks scheduled today</div>';
+  }
+
+  // Follow-ups
+  const fuBadge=document.getElementById('fu-badge-count');
+  const lastFuCheck=load('cw_fu_last_check','');
+  if(lastFuCheck!==today()&&overdue>0){
+    due.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>fireWebhook('followup-overdue',{name:e.name,email:e.email,dogName:e.dogName,followup:e.followup,stage:e.stage}));
+    save('cw_fu_last_check',today());
+  }
+  fuBadge.textContent=overdue>0?overdue+' overdue':due.length?due.length+' today':'All clear';
+  fuBadge.style.background=overdue>0?'var(--danger-bg)':due.length?'var(--warning-bg)':'var(--success-bg)';
+  fuBadge.style.color=overdue>0?'var(--danger)':due.length?'var(--warning)':'var(--success)';
+
+  const fuEl=document.getElementById('dash-followups');
+  if(!due.length){fuEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">🎉 All caught up!</div>';}
+  else fuEl.innerHTML=due.map(e=>{
+    const s=fuStatus(e.followup);
+    return `<div class="followup-item" onclick="navigate('enquiries')">
+      <div class="fu-dot ${s}"></div>
+      <div style="flex:1"><div class="followup-name">${esc(e.name)}</div><div class="followup-detail">${STAGES.find(st=>st.id===e.stage)?.label||''} · ${esc(e.source||'')}</div></div>
+      <div class="followup-date ${s}">${s==='overdue'?'⚠️ ':'📅 '}${fmtDate(e.followup)}</div>
+    </div>`;
+  }).join('');
+
+  // Pipeline
+  const pipelineEl=document.getElementById('dash-pipeline');
+  const pipelineCount=document.getElementById('dash-pipeline-count');
+  const totalActive=enquiries.filter(e=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(e.stage)).length;
+  if(pipelineCount) pipelineCount.textContent=totalActive+' active leads';
+  const totalForBar=totalActive||1;
+  pipelineEl.innerHTML=STAGES.filter(s=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(s.id)).map(s=>{
+    const c=enquiries.filter(e=>e.stage===s.id).length;
+    if(!c) return '';
+    return `<div class="pm-row">
+      <div class="pm-dot" style="background:${s.color}"></div>
+      <div class="pm-label">${s.label}</div>
+      <div class="pm-bar-wrap"><div class="pm-bar" style="width:${(c/totalForBar)*100}%;background:${s.color}"></div></div>
+      <div class="pm-count">${c}</div>
+    </div>`;
+  }).join('');
+
+  acTab('urgent');
+}
+
+// ── XERO FETCH ──
+async function fetchXeroData(){
+  const url=getWebhookUrl('wh-xero');
+  if(!url){
+    const cache=load('cw_xero_cache',null);
+    if(cache){
+      document.getElementById('xero-paid').textContent=cache.paid;
+      document.getElementById('xero-outstanding').textContent=cache.outstanding;
+      document.getElementById('xero-overdue').textContent=cache.overdue;
+      document.getElementById('xero-expenses').textContent=cache.expenses;
+    }
+    return;
+  }
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await res.json();
+    if(data.paid) document.getElementById('xero-paid').textContent=data.paid;
+    if(data.outstanding) document.getElementById('xero-outstanding').textContent=data.outstanding;
+    if(data.overdue) document.getElementById('xero-overdue').textContent=data.overdue;
+    if(data.expenses) document.getElementById('xero-expenses').textContent=data.expenses;
+    save('cw_xero_cache',data);
+  }catch(e){/* silent fail — keep showing current values */}
+}
+
+// ── FETCH TODAY'S WALKS (Google Calendar via Make.com) ──
+async function fetchTodaysWalks(){
+  try{
+    const res=await fetch('/api/walks/today?range=today');
+    if(!res.ok) return;
+    const walks=await res.json();
+    if(walks.length>0){
+      TODAY_WALKS=walks;
+      renderWalksList();
+      const wb=document.querySelector('#dash-walks')?.closest('.card')?.querySelector('.badge');
+      if(wb) wb.textContent=walks.length+' walks';
+    }
+  }catch(e){/* silent fail — keep showing current data */}
+}
+function renderWalksList(){
+  const el=document.getElementById('dash-walks');
+  if(!el) return;
+  if(TODAY_WALKS.length&&TODAY_WALKS[0].client){
+    // Real walk data from API
+    el.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${esc(w.client)}</div><div class="walk-type">${esc(w.service)}</div></div>
+        <div class="walk-walker">${esc(w.walker||'')}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }else{
+    // Fallback dummy data format
+    el.innerHTML=TODAY_WALKS.map(w=>`
+      <div class="walk-item">
+        <div class="walk-time">${w.time}</div>
+        <div class="walk-info"><div class="walk-dogs">🐕 ${w.dogs||''}</div><div class="walk-type">${w.type||''}</div></div>
+        <div class="walk-walker">${w.walker||''}</div>
+        <div class="walk-status ws-${w.status}">${w.status==='completed'?'Done':w.status==='inprogress'?'On Walk':'Upcoming'}</div>
+      </div>`).join('');
+  }
+}
+
+// ── FETCH NEW LEADS (FB/Instagram) ──
+let lastLeadFetch=0;
+async function fetchNewLeads(){
+  const url=getWebhookUrl('wh-fetch-leads');
+  if(!url) return;
+  if(Date.now()-lastLeadFetch<300000) return; // max once per 5 min
+  lastLeadFetch=Date.now();
+  try{
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lastFetch:load('cw_leads_last','')})});
+    const data=await res.json();
+    const leads=Array.isArray(data)?data:(data.leads||[]);
+    if(!leads.length) return;
+    let added=0;
+    leads.forEach(lead=>{
+      const exists=enquiries.some(e=>e.email===lead.email||e.phone===lead.phone||(e.name===lead.name&&e.dogName===lead.dogName));
+      if(exists) return;
+      enquiries.push({
+        id:'e'+Date.now()+Math.random().toString(36).slice(2,6),
+        name:lead.name||'',phone:lead.phone||'',email:lead.email||'',
+        channel:lead.channel||lead.source||'Facebook',
+        dogName:lead.dogName||lead.dog_name||'',dogBreed:lead.dogBreed||lead.dog_breed||'',
+        services:lead.services||'',stage:'new',followup:null,
+        notes:lead.notes||lead.message||'',suburb:lead.suburb||'',
+        source:lead.source||'Facebook Ad',dateAdded:today()
+      });
+      added++;
+    });
+    if(added>0){
+      save('cw_enq',enquiries);
+      save('cw_leads_last',new Date().toISOString());
+      showToast(`${added} new lead${added>1?'s':''} imported!`,'📥');
+      logEvent('Leads imported',`${added} new lead${added>1?'s':''} from Facebook/Instagram`,'success','📥');
+      renderPipeline();updateBadges();
+    }
+  }catch(e){/* silent fail */}
+}
+
+// ── ACTION CENTRE ──
+function acTab(tab){
+  document.querySelectorAll('.ac-tab').forEach(t=>t.classList.toggle('active',t.dataset.ac===tab));
+  document.querySelectorAll('.ac-panel').forEach(p=>p.classList.toggle('active',p.id==='ac-'+tab));
+  renderAcPanel(tab);
+}
+
+function renderAcPanel(tab){
+  const el=document.getElementById('ac-'+tab);
+  if(!el)return;
+  let items=[];
+
+  if(tab==='urgent'){
+    enquiries.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>{
+      items.push({cls:'urgent',icon:'⚠️',title:`Follow up ${esc(e.name)}`,sub:`${esc(e.dogName)} · ${STAGES.find(s=>s.id===e.stage)?.label} · Overdue since ${fmtDate(e.followup)}`,cta:'Open enquiry',fn:`openEditEnquiry('${e.id}')`});
+    });
+    enquiries.filter(e=>e.stage==='qualified').forEach(e=>{
+      const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
+      if(days>=14)items.push({cls:'urgent',icon:'🔄',title:`Stalled lead: ${esc(e.name)}`,sub:`${days} days as qualified — follow up to close`,cta:'Open enquiry',fn:`openEditEnquiry('${e.id}')`});
+    });
+    clients.filter(c=>c.health==='win-back').forEach(c=>{
+      items.push({cls:'urgent',icon:'💔',title:`Re-engage ${esc(c.owner)}`,sub:`${esc(c.dog)} hasn't walked recently — send reactivation message`,cta:'Email client',fn:`composeEmail('${c.email||''}','We miss ${esc(c.dog)}!','Hi ${esc(c.owner)},\\n\\nWe noticed ${esc(c.dog)} hasn\\'t been on a walk recently. We\\'d love to have them back!\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">🎉 Nothing urgent right now — great work!</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+
+  if(tab==='today'){
+    enquiries.filter(e=>fuStatus(e.followup)==='today').forEach(e=>{
+      items.push({cls:'warn',icon:'📅',title:`Follow up today: ${esc(e.name)}`,sub:`${esc(e.dogName)} · ${STAGES.find(s=>s.id===e.stage)?.label}`,cta:'Open',fn:`openEditEnquiry('${e.id}')`});
+    });
+    TODAY_WALKS.filter(w=>w.status==='upcoming').forEach(w=>{
+      items.push({cls:'',icon:'🦮',title:`Walk at ${w.time}: ${w.dogs}`,sub:`${w.type} · Walker: ${w.walker}`,cta:'View clients',fn:`navigate('clients')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">✅ Nothing else on for today!</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+
+  if(tab==='opportunities'){
+    enquiries.filter(e=>e.stage==='new'&&e.source==='Referral').forEach(e=>{
+      items.push({cls:'',icon:'⭐',title:`Referral lead: ${esc(e.name)}`,sub:`${esc(e.dogName)} · Referrals convert at 2× the rate — contact now`,cta:'Contact now',fn:`openEditEnquiry('${e.id}')`});
+    });
+    clients.filter(c=>c.health==='at-risk').forEach(c=>{
+      items.push({cls:'warn',icon:'📉',title:`At risk: ${esc(c.owner)}`,sub:`${esc(c.dog)}'s walk frequency has dropped — check in this week`,cta:'Send message',fn:`composeEmail('${c.email||''}','Checking in — ${esc(c.dog)}','Hi ${esc(c.owner)},\\n\\nJust checking in — we noticed ${esc(c.dog)}\\'s walk schedule has dropped off. Everything okay?\\n\\nBest,\\n${getSetting("s-your-name","Chilly")}')`});
+    });
+    enquiries.filter(e=>e.stage==='new').forEach(e=>{
+      const fit=calcFitScore(e);
+      if(fit.score>=8)items.push({cls:'',icon:'🔥',title:`Hot lead: ${esc(e.name)}`,sub:`${esc(e.dogName)} · Fit score ${fit.score}/10 — don't let this one cool`,cta:'Follow up',fn:`openEditEnquiry('${e.id}')`});
+    });
+    if(!items.length)el.innerHTML='<div style="text-align:center;padding:24px;color:var(--ink-xlight);font-size:13px">👀 Check back later for opportunities.</div>';
+    else el.innerHTML=items.map(renderAcItem).join('');
+  }
+}
+
+function renderAcItem(item){
+  return `<div class="ac-item ${item.cls}" onclick="${item.fn}">
+    <div class="ac-icon">${item.icon}</div>
+    <div class="ac-content"><div class="ac-title">${item.title}</div><div class="ac-sub">${item.sub}</div></div>
+    <div class="ac-cta">${item.cta} →</div>
+  </div>`;
+}
+
+// ── PIPELINE ──
+let pipelineFilter='all';
+let pipelineViewMode='cards';
+let showClosedStages=false;
+const CLOSED_STAGES=['closed-won','not-suitable','closed-lost','uncontactable','not-interested','archived'];
+const ACTIVE_STAGES=STAGES.filter(s=>!CLOSED_STAGES.includes(s.id));
+
+function getFilteredEnquiries(){
+  const search=(document.getElementById('enq-search')?.value||'').toLowerCase().trim();
+  let list=enquiries;
+  if(search){
+    list=list.filter(e=>(e.name||'').toLowerCase().includes(search)||(e.suburb||'').toLowerCase().includes(search)||(e.source||'').toLowerCase().includes(search)||(e.dogName||'').toLowerCase().includes(search)||(e.email||'').toLowerCase().includes(search)||(e.phone||'').toLowerCase().includes(search));
+  }
+  return list;
+}
+
+function renderPipeline(){
+  const filtered=getFilteredEnquiries();
+  // Build filter pills
+  const filtersEl=document.getElementById('pipeline-filters');
+  if(filtersEl){
+    const activeCount=filtered.filter(e=>!CLOSED_STAGES.includes(e.stage)).length;
+    const closedCount=filtered.filter(e=>CLOSED_STAGES.includes(e.stage)).length;
+    const counts={all:activeCount};
+    const visibleStages=showClosedStages?STAGES:ACTIVE_STAGES;
+    visibleStages.forEach(s=>{counts[s.id]=filtered.filter(e=>e.stage===s.id).length;});
+    filtersEl.innerHTML=`<div class="filter-pill${pipelineFilter==='all'?' active':''}" onclick="setPipelineFilter('all')">Active <strong>${activeCount}</strong></div>`+
+      visibleStages.filter(s=>counts[s.id]>0).map(s=>
+        `<div class="filter-pill${pipelineFilter===s.id?' active':''}" style="cursor:pointer" onclick="setPipelineFilter('${s.id}')">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:4px"></span>${s.label} <strong>${counts[s.id]}</strong>
+        </div>`
+      ).join('')+
+      `<button class="show-closed-toggle" onclick="showClosedStages=!showClosedStages;if(!showClosedStages&&CLOSED_STAGES.includes(pipelineFilter))pipelineFilter='all';renderPipeline()">${showClosedStages?'Hide closed ▲':'Closed '+closedCount+' ▼'}</button>`;
+  }
+  // Update view toggle buttons
+  document.querySelectorAll('.vt-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.vt-btn[onclick*="${pipelineViewMode}"]`)?.classList.add('active');
+
+  const board=document.getElementById('kanban-board');
+
+  if(pipelineViewMode==='list'){
+    board.className='kanban-grid';
+    const stagesToShow=pipelineFilter==='all'?(showClosedStages?STAGES:ACTIVE_STAGES):STAGES.filter(s=>s.id===pipelineFilter);
+    const rows=stagesToShow.flatMap(s=>filtered.filter(e=>e.stage===s.id));
+    board.innerHTML=rows.length?`<table class="enq-list-table">
+      <thead><tr><th>Name</th><th>Stage</th><th>Source</th><th>Suburb</th><th>Dog</th><th>Date</th><th>Follow-up</th></tr></thead>
+      <tbody>${rows.map(e=>{
+        const s=STAGES.find(s=>s.id===e.stage);
+        const fs=fuStatus(e.followup);
+        return `<tr onclick="openEditEnquiry('${e.id}')">
+          <td><strong>${esc(e.name)}</strong>${e.email?`<div style="font-size:11px;color:var(--ink-light)">${esc(e.email)}</div>`:''}</td>
+          <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span>${(e.stageTags||[]).map(t=>`<span style="font-size:9px;color:#6b7280;margin-left:4px">${esc(t)}</span>`).join('')}</td>
+          <td>${esc(e.source||'—')}</td>
+          <td>${esc(e.suburb||'—')}</td>
+          <td>${esc(e.dogName||'—')}</td>
+          <td>${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
+          <td>${fs?`<span style="color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ ':''}${e.followup?fmtDate(e.followup):fs}</span>`:'—'}</td>
+        </tr>`}).join('')}</tbody></table>`
+      :'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No enquiries found</div>';
+    return;
+  }
+
+  // Card view
+  const singleStage=pipelineFilter!=='all';
+  board.className=singleStage?'kanban-grid':'kanban';
+  if(singleStage){
+    const s=STAGES.find(s=>s.id===pipelineFilter);
+    const cards=filtered.filter(e=>e.stage===pipelineFilter);
+    board.innerHTML=`<div class="k-col-head" style="margin-bottom:12px">
+        <div class="k-stage-dot" style="background:${s.color}"></div>
+        <div class="k-stage-title">${s.label}</div>
+        <div class="k-count">${cards.length}</div>
+      </div>
+      <div class="k-grid">${cards.length?cards.map(renderEnqCard).join(''):'<div class="k-empty">No enquiries</div>'}</div>`;
+  }else{
+    const stagesToShow=showClosedStages?STAGES:ACTIVE_STAGES;
+    const MAX_VISIBLE=5;
+    board.innerHTML=stagesToShow.map(s=>{
+      const cards=filtered.filter(e=>e.stage===s.id);
+      const visible=cards.slice(0,MAX_VISIBLE);
+      const hidden=cards.length-MAX_VISIBLE;
+      return `<div class="k-col">
+        <div class="k-col-head">
+          <div class="k-stage-dot" style="background:${s.color}"></div>
+          <div class="k-stage-title">${s.label}</div>
+          <div class="k-count">${cards.length}</div>
+        </div>
+        <div class="k-cards">${cards.length?visible.map(renderEnqCard).join('')+''+(hidden>0?`<button class="k-show-more" onclick="expandColumn(this,'${s.id}')">Show ${hidden} more...</button>`:''):'<div class="k-empty">○</div>'}</div>
+      </div>`;
+    }).join('');
+  }
+}
+function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
+function setViewMode(m){pipelineViewMode=m;renderPipeline();}
+function expandColumn(btn,stageId){
+  const filtered=getFilteredEnquiries();
+  const cards=filtered.filter(e=>e.stage===stageId);
+  const container=btn.closest('.k-cards');
+  btn.remove();
+  container.innerHTML+=cards.slice(5).map(renderEnqCard).join('');
+}
+
+function renderEnqCard(e){
+  const fs=fuStatus(e.followup);
+  const fuHtml=fs?`<div class="fu-badge ${fs}">${fs==='overdue'?'⚠️':'📅'} ${fs==='upcoming'?fmtDate(e.followup):fs.charAt(0).toUpperCase()+fs.slice(1)}</div>`:'';
+  const na=getEnqNextAction(e);
+  return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
+    <div class="enq-name">${esc(e.name)}</div>
+    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' ('+esc(e.dogBreed)+')':''}`:'<span style="color:var(--ink-xlight)">No dog info</span>'}</div>
+    <div class="enq-tags">
+      ${e.channel?`<span class="tag tag-channel">${esc(e.channel)}</span>`:''}
+      ${e.source&&e.source!==e.channel?`<span class="tag tag-source">${esc(e.source)}</span>`:''}
+      ${e.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(e.suburb)}</span>`:''}
+      ${(e.stageTags||[]).map(t=>`<span class="tag" style="background:#f3f4f6;color:#6b7280;font-size:9px">${esc(t)}</span>`).join('')}
+    </div>
+    <div class="enq-footer">
+      <div class="enq-date">Added ${fmtDate(e.dateAdded)}</div>
+      <div style="display:flex;align-items:center;gap:4px">
+        ${fuHtml}
+        <button style="background:none;border:1px solid var(--border);border-radius:20px;padding:1px 6px;font-size:10px;cursor:pointer;color:var(--ink-light)" onclick="event.stopPropagation();openAiDraft('${e.id}')">🤖</button>
+      </div>
+    </div>
+    ${na?`<div class="next-action"><span>${na.icon}</span>${na.text}</div>`:''}
+  </div>`;
+}
+
+// ── ONBOARDING ──
+function renderOnboarding(){
+  const clients=enquiries.filter(e=>e.stage==='onboarding');
+  const el=document.getElementById('ob-list');
+  if(!clients.length){el.innerHTML=`<div class="empty"><div class="ei">✅</div><h4>No clients in onboarding</h4><p>Move an enquiry to "Onboarding" to track them here.</p></div>`;return;}
+  el.innerHTML=clients.map(e=>{
+    const checks=load('cw_ob_'+e.id,new Array(OB_STEPS.length).fill(false));
+    const done=checks.filter(Boolean).length;
+    const pct=Math.round((done/OB_STEPS.length)*100);
+    const na=getObNextAction(e);
+    const days=Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5));
+    return `<div class="ob-card">
+      <div class="ob-head" onclick="toggleOb('${e.id}')">
+        <div style="font-size:28px">🐕</div>
+        <div>
+          <div class="name">${esc(e.name)}</div>
+          <div class="dog">${e.dogName?`${esc(e.dogName)} · ${esc(e.dogBreed||'')}`:'No dog info'}</div>
+          ${na?`<div class="next-action" style="margin-top:4px"><span>${na.icon}</span>${na.text}</div>`:''}
+        </div>
+        <div class="ob-meta">
+          <div style="text-align:right">
+            <div class="progress-wrap">
+              <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+              <div class="progress-label">${done}/${OB_STEPS.length} complete · ${pct}%</div>
+            </div>
+            <div style="font-size:10px;color:${days>=14?'var(--danger)':'var(--ink-xlight)'};margin-top:3px">${days} days in onboarding${days>=14?' ⚠️':''}</div>
+          </div>
+          <span class="ob-toggle" id="ob-tog-${e.id}">▼</span>
+        </div>
+      </div>
+      <div class="ob-checklist" id="ob-cl-${e.id}">
+        ${OB_STEPS.map((step,i)=>`
+          <div class="check-item">
+            <input type="checkbox" id="ck-${e.id}-${i}" ${checks[i]?'checked':''} onchange="toggleObStep('${e.id}',${i},this.checked)">
+            <label for="ck-${e.id}-${i}">${step}</label>
+            <span class="check-badge ${checks[i]?'done':'pending'}">${checks[i]?'Done':'Pending'}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleOb(id){
+  document.getElementById('ob-cl-'+id).classList.toggle('open');
+  document.getElementById('ob-tog-'+id).classList.toggle('open');
+}
+
+function toggleObStep(id,i,val){
+  const checks=load('cw_ob_'+id,new Array(OB_STEPS.length).fill(false));
+  checks[i]=val;save('cw_ob_'+id,checks);
+  logEvent('Onboarding step updated',`${enquiries.find(e=>e.id===id)?.name||id}: step ${i+1} ${val?'completed':'unchecked'}`,'success','✅');
+  renderOnboarding();
+  document.getElementById('ob-cl-'+id)?.classList.add('open');
+  document.getElementById('ob-tog-'+id)?.classList.add('open');
+  showToast(val?'Step marked complete':'Step unchecked');
+}
+
+// ── CLIENTS ──
+let clientFilter='all';
+function renderClients(){
+  const search=(document.getElementById('client-search')?.value||'').toLowerCase().trim();
+  let list=clients;
+  if(search){
+    list=list.filter(c=>((c.name||c.owner||'').toLowerCase().includes(search))||(c.suburb||'').toLowerCase().includes(search)||(c.primaryService||'').toLowerCase().includes(search)||(c.services||'').toLowerCase().includes(search));
+  }
+
+  // Build filter pills
+  const filtersEl=document.getElementById('client-filters');
+  if(filtersEl){
+    const statusCounts={
+      all:clients.length,
+      active:clients.filter(c=>c.status==='active').length,
+      'no-upcoming':clients.filter(c=>c.status==='no-upcoming').length,
+      'needs-attention':clients.filter(c=>c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7).length,
+      'well-booked':clients.filter(c=>c.daysAhead>=14).length,
+    };
+    filtersEl.innerHTML=[
+      {id:'all',label:'All Clients',count:statusCounts.all},
+      {id:'active',label:'Active',count:statusCounts.active,color:'#22c55e'},
+      {id:'needs-attention',label:'Booked < 7 Days Ahead',count:statusCounts['needs-attention'],color:'#f59e0b'},
+      {id:'well-booked',label:'Booked 14+ Days Ahead',count:statusCounts['well-booked'],color:'#06b6d4'},
+      {id:'no-upcoming',label:'No Upcoming',count:statusCounts['no-upcoming'],color:'#ef4444'},
+    ].filter(f=>f.count>0).map(f=>
+      `<div class="filter-pill${clientFilter===f.id?' active':''}" style="cursor:pointer" onclick="clientFilter='${f.id}';renderClients()">
+        ${f.color?`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.color};margin-right:4px"></span>`:''}${f.label} <strong>(${f.count})</strong>
+      </div>`
+    ).join('');
+  }
+
+  if(clientFilter==='needs-attention') list=list.filter(c=>c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7);
+  else if(clientFilter==='well-booked') list=list.filter(c=>c.daysAhead>=14);
+  else if(clientFilter!=='all') list=list.filter(c=>c.status===clientFilter);
+
+  document.getElementById('clients-grid').innerHTML=list.length?list.map(c=>{
+    const statusLabel=c.status==='active'?'● Active':c.status==='no-upcoming'?'⚠️ No Upcoming':'○ Inactive';
+    const statusColor=c.status==='active'?'var(--success)':c.status==='no-upcoming'?'var(--danger)':'var(--ink-light)';
+    const bookingInfo=c.daysAhead>0?`Booked ${c.daysAhead}d ahead · ${c.futureWalks} walks`:(c.lastWalk?`Last walk: ${fmtDate(c.lastWalk)}`:'No walk history');
+    const bookingColor=c.daysAhead>=14?'var(--success)':c.daysAhead>=7?'var(--warning)':'var(--danger)';
+    return `<div class="client-card">
+      <div class="client-top">
+        <div class="client-avatar">🐕</div>
+        <div>
+          <div class="client-name">${esc(c.name||c.owner||'')}</div>
+          <span class="client-badge" style="color:${statusColor}">${statusLabel}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0">
+        ${c.primaryService?`<span class="tag tag-channel">${esc(c.primaryService)}</span>`:''}
+        ${c.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(c.suburb)}</span>`:''}
+        ${c.walker?`<span class="tag" style="background:var(--info-bg);color:var(--info)">${esc(c.walker)}</span>`:''}
+      </div>
+      <div class="client-stats">
+        <div class="cs-stat"><div class="cs-val">${c.walksPerWeek||0}</div><div class="cs-lbl">walks/wk</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.totalWalks||0}</div><div class="cs-lbl">total walks</div></div>
+        <div class="cs-stat"><div class="cs-val">${c.futureWalks||0}</div><div class="cs-lbl">upcoming</div></div>
+      </div>
+      <div style="font-size:11px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);color:${bookingColor}">${bookingInfo}</div>
+      ${c.nextWalk?`<div style="font-size:11px;color:var(--ink-light);margin-top:4px">Next walk: ${fmtDate(c.nextWalk)}</div>`:''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="window.open('https://www.timetopet.com/portal','_blank')">📋 Time to Pet</button>
+      </div>
+    </div>`;
+  }).join(''):'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No clients found</div>';
+}
+
+// ── WALKS ──
+let walksRange='today';
+let walksData=[];
+let walksLoading=false;
+
+function setWalksRange(r){
+  walksRange=r;
+  document.querySelectorAll('#walks-range-filters .filter-pill').forEach(p=>p.classList.remove('active'));
+  event?.target?.classList.add('active');
+  renderWalks();
+}
+
+async function fetchWalks(range){
+  try{
+    const res=await fetch('/api/walks/today?range='+range);
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){return [];}
+}
+
+async function renderWalks(){
+  const content=document.getElementById('walks-content');
+  const summary=document.getElementById('walks-summary');
+  if(!content) return;
+
+  // Update filter pills
+  document.querySelectorAll('#walks-range-filters .filter-pill').forEach(p=>{
+    p.classList.toggle('active',p.textContent.trim().toLowerCase().includes(walksRange==='today'?'today':walksRange==='week'?'week':'month'));
+  });
+
+  content.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading walks...</div>';
+  walksData=await fetchWalks(walksRange);
+
+  // Summary stats
+  const completed=walksData.filter(w=>w.status==='completed').length;
+  const inProgress=walksData.filter(w=>w.status==='inprogress').length;
+  const upcoming=walksData.filter(w=>w.status==='upcoming').length;
+  const uniqueClients=[...new Set(walksData.map(w=>w.client))].length;
+  const totalHrs=walksData.reduce((sum,w)=>{
+    if(!w.start||!w.end) return sum;
+    return sum+(new Date(w.end)-new Date(w.start))/3600000;
+  },0);
+
+  summary.innerHTML=`
+    <div class="walks-stat"><div class="walks-stat-val">${walksData.length}</div><div class="walks-stat-lbl">Total Walks</div></div>
+    <div class="walks-stat"><div class="walks-stat-val">${uniqueClients}</div><div class="walks-stat-lbl">Clients</div></div>
+    <div class="walks-stat"><div class="walks-stat-val">${totalHrs.toFixed(1)}h</div><div class="walks-stat-lbl">Walk Hours</div></div>
+    <div class="walks-stat"><div class="walks-stat-val" style="color:var(--success)">${completed}</div><div class="walks-stat-lbl">Completed</div></div>
+    ${inProgress?`<div class="walks-stat"><div class="walks-stat-val" style="color:var(--warning)">${inProgress}</div><div class="walks-stat-lbl">In Progress</div></div>`:''}
+    <div class="walks-stat"><div class="walks-stat-val" style="color:var(--info)">${upcoming}</div><div class="walks-stat-lbl">Upcoming</div></div>
+  `;
+
+  if(!walksData.length){
+    content.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this period</div>';
+    return;
+  }
+
+  if(walksRange==='today'){
+    content.innerHTML=walksData.map(renderWalkRow).join('');
+  }else if(walksRange==='week'){
+    // Weekly: collapsible day rows
+    const groups={};
+    walksData.forEach(w=>{if(!groups[w.date])groups[w.date]=[];groups[w.date].push(w);});
+    const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    content.innerHTML=Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,walks])=>{
+      const d=new Date(date+'T00:00:00');
+      const dayName=dayNames[d.getDay()];
+      const dateLabel=`${dayName} ${d.getDate()}/${d.getMonth()+1}`;
+      const hrs=walks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
+      const clients=[...new Set(walks.map(w=>w.client))];
+      const clientPreview=clients.slice(0,3).map(c=>esc(c)).join(', ')+(clients.length>3?' +' +(clients.length-3)+' more':'');
+      const isToday=date===new Date().toISOString().split('T')[0];
+      return `<div class="walk-day-collapse${isToday?' walk-day-today':''}" onclick="this.classList.toggle('expanded')">
+        <div class="walk-day-summary">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-weight:700;min-width:70px">${dateLabel}</span>
+            <span class="walk-day-pill">${walks.length} walks</span>
+            <span class="walk-day-pill">${hrs.toFixed(1)}h</span>
+            ${isToday?'<span class="walk-day-pill" style="background:var(--orange-light);color:var(--orange)">Today</span>':''}
+          </div>
+          <div style="font-size:11px;color:var(--ink-light)">${clientPreview}</div>
+          <span style="font-size:10px;color:var(--ink-xlight)">Click to expand</span>
+        </div>
+        <div class="walk-day-detail">${walks.map(renderWalkRow).join('')}</div>
+      </div>`;
+    }).join('');
+  }else{
+    // Monthly: calendar heatmap grid
+    const groups={};
+    walksData.forEach(w=>{if(!groups[w.date])groups[w.date]=[];groups[w.date].push(w);});
+    const now=new Date();
+    const year=now.getFullYear(),month=now.getMonth();
+    const firstDay=new Date(year,month,1).getDay();
+    const daysInMonth=new Date(year,month+1,0).getDate();
+    const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const mondayOffset=(firstDay+6)%7; // Days before Monday
+
+    let calHtml=`<div class="walks-cal-grid">`;
+    calHtml+=dayNames.map(d=>`<div class="walks-cal-header">${d}</div>`).join('');
+    // Empty cells before first day
+    for(let i=0;i<mondayOffset;i++) calHtml+=`<div class="walks-cal-cell empty"></div>`;
+    for(let day=1;day<=daysInMonth;day++){
+      const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const walks=groups[dateStr]||[];
+      const count=walks.length;
+      const hrs=walks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0);
+      const isToday=dateStr===now.toISOString().split('T')[0];
+      const intensity=count===0?0:count<=3?1:count<=6?2:count<=10?3:4;
+      calHtml+=`<div class="walks-cal-cell heat-${intensity}${isToday?' cal-today':''}" onclick="expandCalDay('${dateStr}')">
+        <div class="cal-day-num">${day}</div>
+        ${count?`<div class="cal-day-count">${count} walks</div><div class="cal-day-hrs">${hrs.toFixed(1)}h</div>`:'<div class="cal-day-count" style="color:var(--ink-xlight)">—</div>'}
+      </div>`;
+    }
+    calHtml+=`</div><div id="walks-cal-expanded"></div>`;
+    content.innerHTML=calHtml;
+  }
+}
+
+function expandCalDay(dateStr){
+  const el=document.getElementById('walks-cal-expanded');
+  if(!el) return;
+  const walks=walksData.filter(w=>w.date===dateStr);
+  if(!walks.length){el.innerHTML='';return;}
+  const d=new Date(dateStr+'T00:00:00');
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const label=`${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
+  el.innerHTML=`<div style="margin-top:16px"><div class="walk-day-header"><span>${label}</span><span style="font-weight:500;font-size:11px;color:var(--ink-light)">${walks.length} walks</span></div>${walks.map(renderWalkRow).join('')}</div>`;
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function renderWalkRow(w){
+  const statusStyle=w.status==='completed'?'background:var(--success-bg);color:var(--success)':w.status==='inprogress'?'background:var(--warning-bg);color:var(--warning)':'background:var(--cream-dark);color:var(--ink-light)';
+  const statusLabel=w.status==='completed'?'Done':w.status==='inprogress'?'In Progress':'Upcoming';
+  return `<div class="walk-row">
+    <div class="walk-time">${w.time} — ${w.endTime}</div>
+    <div style="flex:1">
+      <div class="walk-client">${esc(w.client)}</div>
+      <div class="walk-detail">${esc(w.service)}${w.walker?' · Walker: '+esc(w.walker):''}</div>
+      ${w.location?`<div class="walk-detail">📍 ${esc(w.location.split(',').slice(0,2).join(','))}</div>`:''}
+    </div>
+    <span class="walk-status" style="${statusStyle}">${statusLabel}</span>
+  </div>`;
+}
+
+// ── CLIENT BOOKING VISIBILITY ──
+async function renderClientBookings(){
+  const el=document.getElementById('client-bookings');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight)">Loading booking data...</div>';
+
+  // Fetch all walks to check bookings per client
+  const allWalks=await fetchWalks('all');
+  const now=new Date();
+  const futureWalks=allWalks.filter(w=>new Date(w.start)>now);
+
+  // Build booking map per client
+  const bookingMap={};
+  futureWalks.forEach(w=>{
+    if(!bookingMap[w.client]) bookingMap[w.client]={count:0,nextDate:'',lastDate:''};
+    bookingMap[w.client].count++;
+    if(!bookingMap[w.client].nextDate||w.date<bookingMap[w.client].nextDate) bookingMap[w.client].nextDate=w.date;
+    if(!bookingMap[w.client].lastDate||w.date>bookingMap[w.client].lastDate) bookingMap[w.client].lastDate=w.date;
+  });
+
+  // Match with active Notion clients
+  const activeClients=clients.filter(c=>c.health==='active');
+  const rows=activeClients.map(c=>{
+    const booking=bookingMap[c.owner]||null;
+    const matched=booking?true:false;
+    // Try fuzzy match if exact doesn't work
+    let b=booking;
+    if(!b){
+      const key=Object.keys(bookingMap).find(k=>k.toLowerCase().includes((c.owner||'').toLowerCase().split(' ')[0].toLowerCase()));
+      if(key) b=bookingMap[key];
+    }
+    return {client:c,booking:b};
+  }).sort((a,b)=>(a.booking?0:1)-(b.booking?0:1));
+
+  if(!rows.length){
+    el.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight)">No active clients</div>';
+    return;
+  }
+
+  el.innerHTML=rows.map(({client:c,booking:b})=>{
+    let statusHtml,statusColor;
+    if(b&&b.count>0){
+      const daysAhead=Math.ceil((new Date(b.lastDate)-now)/(864e5));
+      statusHtml=`${b.count} walks booked · Until ${fmtDate(b.lastDate)} (${daysAhead}d ahead)`;
+      statusColor=daysAhead>=14?'var(--success)':daysAhead>=7?'var(--warning)':'var(--danger)';
+    }else{
+      statusHtml='No upcoming walks booked';
+      statusColor='var(--danger)';
+    }
+    return `<div class="booking-row">
+      <div style="flex:1"><strong>${esc(c.owner)}</strong><span style="margin-left:8px;font-size:11px;color:var(--ink-light)">${esc(c.primaryService||'')} · ${esc(c.suburb||'')}</span></div>
+      <span class="booking-status" style="background:${statusColor}20;color:${statusColor}">${statusHtml}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── INBOX ──
+function renderInbox(){/* static view — no dynamic rendering needed */}
+
+function getEmailContext(m){
+  const enq=enquiries.find(e=>e.name===m.from||e.email===m.email);
+  if(enq){
+    const fit=calcFitScore(enq);
+    const na=getEnqNextAction(enq);
+    return `<div class="ctx-header">📥 Linked Enquiry</div>
+    <div class="ctx-card">
+      <div class="ctx-field"><div class="ctx-label">Name</div><div class="ctx-value">${esc(enq.name)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Dog</div><div class="ctx-value">${esc(enq.dogName)} (${esc(enq.dogBreed||'?')})</div></div>
+      <div class="ctx-field"><div class="ctx-label">Stage</div><div class="ctx-value" style="color:${STAGES.find(s=>s.id===enq.stage)?.color};font-weight:700">${STAGES.find(s=>s.id===enq.stage)?.label}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Channel</div><div class="ctx-value">${esc(enq.channel)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Suburb</div><div class="ctx-value">${esc(enq.suburb||'—')}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Fit Score</div><div class="ctx-value"><span class="fit-badge ${fit.cls}">🎯 ${fit.score}/10 ${fit.label}</span></div></div>
+      ${na?`<div class="ctx-field"><div class="ctx-label">Next Action</div><div class="next-action" style="margin-top:4px"><span>${na.icon}</span>${na.text}</div></div>`:''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+      <button class="btn btn-primary btn-sm" onclick="openAiDraft('${enq.id}')">🤖 AI Draft Reply</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditEnquiry('${enq.id}')">📝 Open Enquiry</button>
+    </div>`;
+  }
+  const client=clients.find(c=>c.owner===m.from);
+  if(client){
+    const na=getClientNextAction(client);
+    return `<div class="ctx-header">🐕 Linked Client</div>
+    <div class="ctx-card">
+      <div class="ctx-field"><div class="ctx-label">Owner</div><div class="ctx-value">${esc(client.owner)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Dog</div><div class="ctx-value">${esc(client.dog)} (${esc(client.breed)})</div></div>
+      <div class="ctx-field"><div class="ctx-label">Health</div><div class="ctx-value"><span class="client-badge health-${client.health}" style="font-size:11px">${{active:'● Active','at-risk':'⚠️ At Risk','win-back':'💔 Win-back'}[client.health]}</span></div></div>
+      <div class="ctx-field"><div class="ctx-label">Next Walk</div><div class="ctx-value">${esc(client.nextWalk)}</div></div>
+      <div class="ctx-field"><div class="ctx-label">Lifetime Value</div><div class="ctx-value" style="font-weight:700;color:var(--orange)">${esc(client.ltv)}</div></div>
+      ${na?`<div class="next-action" style="margin-top:6px"><span>${na.icon}</span>${na.text}</div>`:''}
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="composeEmail('${client.email||''}','Re: ','')">✉️ Reply to ${esc(client.owner)}</button>
+    </div>`;
+  }
+  return `<div class="ctx-header">Context</div><div style="font-size:12px;color:var(--ink-xlight);line-height:1.7">No matched enquiry or client for this sender.<br><br>If this is a new lead, <span style="color:var(--orange);cursor:pointer;font-weight:600" onclick="openAddEnquiry()">add to pipeline →</span></div>`;
+}
+
+function openEmail(id){
+  activeEmail=id;
+  const m=EMAILS.find(e=>e.id===id);
+  if(!m)return;
+  m.read=true;
+  const unread=EMAILS.filter(e=>!e.read).length;
+  document.getElementById('badge-inbox').textContent=unread;
+  document.getElementById('badge-inbox').style.display=unread>0?'inline-block':'none';
+  renderInbox();
+  document.getElementById('inbox-main').innerHTML=`
+    <div class="inbox-email-view">
+      <div class="email-view-header">
+        <div class="email-view-subject">${esc(m.subject)}</div>
+        <div class="email-view-meta">
+          <div><strong>${esc(m.from)}</strong> &lt;${esc(m.email)}&gt;</div>
+          <div style="display:flex;gap:8px"><span class="ei-tag ${m.tag}">${m.tag}</span><span>${m.time}</span></div>
+        </div>
+      </div>
+      <div class="email-view-body">${esc(m.body)}</div>
+      <div style="margin-top:20px;display:flex;gap:8px;border-top:1px solid var(--border);padding-top:16px">
+        <button class="btn btn-primary btn-sm" onclick="composeEmail('${m.email}','Re: ${esc(m.subject)}','')">↩️ Reply</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAiDraftFromEmail('${m.id}')">🤖 AI Draft Reply</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAddEnquiry()">📥 Add to Pipeline</button>
+      </div>
+    </div>`;
+  document.getElementById('inbox-context').innerHTML=getEmailContext(m);
+}
+
+// ── TEMPLATES ──
+function renderTemplates(){
+  document.getElementById('templates-list').innerHTML=TEMPLATES.map(t=>{
+    const bodyHtml=t.body.replace(/\{(\w+)\}/g,'<span class="merge-field">{$1}</span>').replace(/\n/g,'<br>');
+    return `<div class="tmpl-card">
+      <div class="tmpl-head" onclick="toggleTmpl('${t.id}')">
+        <span class="tmpl-cat ${t.catClass}">${t.catLabel}</span>
+        <span class="tmpl-name">${esc(t.name)}</span>
+        <span class="tmpl-toggle" id="tt-${t.id}">▼</span>
+      </div>
+      <div class="tmpl-body" id="tb-${t.id}">
+        <div class="tmpl-text">${bodyHtml}</div>
+        <div class="tmpl-actions">
+          <button class="btn btn-primary btn-sm" onclick="copyTmpl('${t.id}')">📋 Copy to Clipboard</button>
+          <button class="btn btn-ghost btn-sm" onclick="composeEmail('','${esc(t.name)}',\`${t.body.replace(/`/g,"\\`")}\`)">✉️ Send via Outlook</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.open('https://wa.me/?text='+encodeURIComponent(\`${t.body.replace(/`/g,"\\`")}\`))">💬 WhatsApp</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTmpl(id){
+  document.getElementById('tb-'+id).classList.toggle('open');
+  document.getElementById('tt-'+id).classList.toggle('open');
+}
+
+function copyTmpl(id){
+  const t=TEMPLATES.find(x=>x.id===id);if(!t)return;
+  navigator.clipboard.writeText(t.body).then(()=>{
+    logEvent('Template copied',t.name+' — copied to clipboard','info','📋');
+    showToast('Template copied!','📋');
+  });
+}
+
+// ── REPORTS ──
+function renderReports(){
+  buildChart('reports-chart','reports-labels',REVENUE,100);
+  const sources=[
+    {label:'Facebook Ads',pct:45,color:'#3b82f6'},{label:'Instagram',pct:22,color:'#ec4899'},
+    {label:'Referral',pct:18,color:'#22c55e'},{label:'Website / SEO',pct:10,color:'#8b5cf6'},{label:'Other',pct:5,color:'#a0a0a0'},
+  ];
+  document.getElementById('source-list').innerHTML=sources.map(s=>`
+    <div class="source-row"><div class="source-label">${s.label}</div><div class="source-bar-bg"><div class="source-bar" style="width:${s.pct}%;background:${s.color}"></div></div><div class="source-pct">${s.pct}%</div></div>`).join('');
+  const funnel=[
+    {label:'Enquiries received',val:48,pct:100,color:'#3b82f6'},{label:'Contacted',val:42,pct:88,color:'#f59e0b'},
+    {label:'Info sent',val:35,pct:73,color:'#8b5cf6'},{label:'Meet & greet',val:28,pct:58,color:'#ec4899'},{label:'Converted to client',val:22,pct:46,color:'#22c55e'},
+  ];
+  document.getElementById('conversion-funnel').innerHTML=funnel.map(f=>`
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:12px;color:var(--ink-mid);width:150px;flex-shrink:0">${f.label}</div>
+      <div style="flex:1;background:var(--cream-dark);border-radius:4px;height:10px;overflow:hidden"><div style="width:${f.pct}%;height:100%;background:${f.color};border-radius:4px"></div></div>
+      <div style="font-size:12px;font-weight:700;color:var(--ink-mid);width:30px;text-align:right">${f.val}</div>
+    </div>`).join('');
+  const walkers=[{name:'Jake',util:92,walks:18,color:'#F26B21'},{name:'Sarah',util:88,walks:16,color:'#3b82f6'},{name:'Chris',util:75,walks:14,color:'#22c55e'}];
+  document.getElementById('walker-util').innerHTML=walkers.map(w=>`
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">${w.name}</span><span style="font-size:12px;color:var(--ink-light)">${w.walks} walks/wk · <strong>${w.util}%</strong> utilised</span></div>
+      <div style="background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden"><div style="width:${w.util}%;height:100%;background:${w.color};border-radius:4px"></div></div>
+    </div>`).join('');
+}
+
+function reportTab(tab){
+  document.querySelectorAll('.report-tab').forEach(t=>t.classList.toggle('active',t.dataset.rtab===tab));
+  document.querySelectorAll('.report-panel').forEach(p=>p.classList.toggle('active',p.id==='rp-'+tab));
+  if(tab==='by-source')renderBySource();
+  if(tab==='by-service')renderByService();
+  if(tab==='by-suburb')renderBySuburb();
+}
+
+function reportTableWrap(title,subtitle,theadHtml,tbodyHtml){
+  return `<div class="card"><div class="card-header"><h3>${title}</h3><span style="font-size:11px;color:var(--ink-xlight)">${subtitle}</span></div><div class="card-body" style="padding:0"><table class="report-table"><thead><tr>${theadHtml}</tr></thead><tbody>${tbodyHtml}</tbody></table></div></div>`;
+}
+
+function renderBySource(){
+  const map={};
+  enquiries.forEach(e=>{
+    const s=e.source||'Unknown';
+    if(!map[s])map[s]={total:0,converted:0};
+    map[s].total++;
+    if(e.stage==='closed-won')map[s].converted++;
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100);
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-source').innerHTML=reportTableWrap('Leads by Source','All time','<th>Source</th><th>Leads</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+function renderByService(){
+  const map={};
+  enquiries.forEach(e=>{
+    const svc=(e.services||'').toLowerCase();
+    const keys=[];
+    if(/group/i.test(svc))keys.push('Group Walks');
+    if(/solo|private/i.test(svc))keys.push('Solo Walks');
+    if(/drop/i.test(svc))keys.push('Drop-ins');
+    if(/puppy/i.test(svc))keys.push('Puppy Visits');
+    if(!keys.length)keys.push('Other');
+    keys.forEach(k=>{
+      if(!map[k])map[k]={total:0,converted:0};
+      map[k].total++;
+      if(e.stage==='closed-won')map[k].converted++;
+    });
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100);
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-service').innerHTML=reportTableWrap('Leads by Service','All time','<th>Service Type</th><th>Enquiries</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+function renderBySuburb(){
+  const map={};
+  enquiries.forEach(e=>{
+    const s=e.suburb||'Unknown';
+    if(!map[s])map[s]={total:0,converted:0};
+    map[s].total++;
+    if(e.stage==='closed-won')map[s].converted++;
+  });
+  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const tbody=rows.map(([s,d])=>{
+    const rate=Math.round((d.converted/d.total)*100)||0;
+    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${d.total>=3?'var(--success)':'var(--ink-xlight)'}">${rate}%</span></td></tr>`;
+  }).join('');
+  document.getElementById('rp-by-suburb').innerHTML=reportTableWrap('Leads by Suburb','All time — shows best coverage areas','<th>Suburb</th><th>Enquiries</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+// ── SETTINGS ──
+// ── SETTINGS PERSISTENCE ──
+const SETTINGS_FIELDS={
+  business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
+  ai:['s-api-key','s-auto-reply','s-tone'],
+  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
+  base:['s-base-lat','s-base-lng'],
+  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
+};
+function saveSettings(section){
+  const s=load('cw_settings',{});
+  const fields=section?SETTINGS_FIELDS[section]:Object.values(SETTINGS_FIELDS).flat();
+  fields.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) s[id]=el.tagName==='SELECT'?el.selectedIndex:el.value;
+  });
+  save('cw_settings',s);
+  showToast('Settings saved!','✅');
+  logEvent('Settings updated',section||'all','info','⚙️');
+}
+function loadSettings(){
+  const s=load('cw_settings',{});
+  Object.entries(s).forEach(([id,val])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(el.tagName==='SELECT') el.selectedIndex=val;
+    else el.value=val;
+  });
+}
+function getSetting(id,fallback){
+  const s=load('cw_settings',{});
+  return s[id]!==undefined?s[id]:fallback;
+}
+function getWebhookUrl(id){
+  return getSetting(id,'')||'';
+}
+
+const INTEGRATION_URLS={
+  'Notion':'https://notion.so','Microsoft Outlook':'https://outlook.live.com',
+  'Xero':'https://go.xero.com','Time to Pet':'https://www.timetopet.com',
+  'Facebook Lead Ads':'https://business.facebook.com','Instagram':'https://business.instagram.com',
+  'Calendly':'https://calendly.com','Typeform':'https://typeform.com',
+  'Make.com':'https://www.make.com','Dropbox Sign':'https://sign.dropbox.com'
+};
+function openIntegration(name){
+  const url=INTEGRATION_URLS[name];
+  if(url) window.open(url,'_blank');
+  showToast(`Opening ${name}...`,'🔌');
+}
+
+function renderSettings(){
+  document.getElementById('integrations-list').innerHTML=INTEGRATIONS.map(i=>`
+    <div class="integration-row">
+      <div class="int-info">
+        <div class="int-icon" style="background:${i.bg}">${i.icon}</div>
+        <div><div class="int-name">${i.name}</div><div class="int-desc">${i.desc}</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="int-status ${i.status==='connected'?'int-connected':i.status==='pending'?'int-pending':'int-disconnected'}">
+          ${i.status==='connected'?'● Connected':i.status==='pending'?'◌ Setup needed':'○ Not connected'}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openIntegration('${i.name}')">${i.status==='connected'?'Manage':'Connect'}</button>
+      </div>
+    </div>`).join('');
+
+  const userLog=load('cw_log',[]);
+  const allLog=[...userLog,...AUTOMATION_LOG_BASE].slice(0,12);
+  document.getElementById('auto-log').innerHTML=allLog.map(al=>`
+    <div class="al-item">
+      <div class="al-icon-wrap al-${al.status}">${al.icon}</div>
+      <div class="al-content"><div class="al-event">${al.event}</div><div class="al-detail">${al.detail}</div></div>
+      <div class="al-time">${al.time}</div>
+    </div>`).join('');
+  loadSettings();
+  renderWalkerConfig();
+}
+
+// ── AI DRAFT ──
+// ── SMART REPLY GENERATOR ──
+const MSG_TYPES=[
+  {id:'welcome',label:'Welcome Reply',icon:'👋',desc:'Warm first response to a new enquiry',stages:['new']},
+  {id:'followup',label:'Follow Up',icon:'📞',desc:'Check in after no reply',stages:['new','contacted']},
+  {id:'info',label:'Service Info',icon:'📋',desc:'Detailed services and pricing',stages:['new','contacted','qualified']},
+  {id:'close',label:'Close the Deal',icon:'🎯',desc:'Nudge a qualified lead to commit',stages:['qualified']},
+  {id:'reengage',label:'Re-engage',icon:'💬',desc:'Win back a quiet or dropping client',stages:['contacted','qualified']},
+  {id:'notsuitable',label:'Not the Right Fit',icon:'🙏',desc:'Polite decline',stages:['not-suitable','closed-lost']},
+];
+
+function getSmartContext(e){
+  if(!e) return {name:'there',dog:'your dog',breed:'',suburb:'',walker:getSetting('s-your-name','Jess'),biz:getSetting('s-biz-name',"Chilly's Dog Adventures")};
+  const name=e.name?.split(' ')[0]||e.name||'there';
+  const fullName=e.name||'';
+  const dog=e.dogName||'your dog';
+  const breed=e.dogBreed||'';
+  const suburb=e.suburb||e.postCode||'';
+  const source=(e.source||e.channel||'').toLowerCase();
+  const stage=e.stage||'new';
+  const notes=e.notes||'';
+  const services=e.services||e.enquiryType||'';
+  const preferredDays=e.preferredDays||'';
+  const walker=getSetting('s-your-name','Jess');
+  const biz=getSetting('s-biz-name',"Chilly's Dog Adventures");
+  const daysSinceEnquiry=e.dateAdded?Math.floor((new Date()-new Date(e.dateAdded+'T00:00:00'))/(864e5)):0;
+  const isFromAd=source.includes('meta')||source.includes('facebook')||source.includes('instagram');
+  const isReferral=source.includes('referral');
+  const isFromWeb=source.includes('website')||source.includes('google');
+
+  // TTP client check
+  const ttpClient=clients.find(c=>(c.name||'').toLowerCase().includes(name.toLowerCase()));
+  const isExistingClient=!!ttpClient;
+
+  // SOCIAL PROOF — clients in their suburb
+  const suburbClients=clients.filter(c=>c.suburb&&suburb&&c.suburb.toLowerCase().includes(suburb.toLowerCase())&&c.status==='active');
+  const suburbClientCount=suburbClients.length;
+
+  // TOTAL active clients + walks for credibility
+  const totalActiveClients=clients.filter(c=>c.status==='active').length;
+
+  // BREED INTELLIGENCE — what do similar breeds do?
+  const breedHooks={
+    'cavoodle':['social butterflies of the group','absolutely thrive on our adventures','one of our most popular breeds'],
+    'spoodle':['such happy walkers','love the social aspect of group walks','always the life of the party'],
+    'labradoodle':['have the best energy for our adventures','love a good long walk','always up for an explore'],
+    'golden retriever':['born adventurers','the happiest walkers we have','love every second outdoors'],
+    'french bulldog':['do great on our shorter solo walks','love their one-on-one time','such characters'],
+    'kelpie':['need the exercise and stimulation our adventures provide','have incredible energy','thrive with regular walks'],
+    'border collie':['are incredibly smart and love the mental stimulation of new routes','thrive on our adventures','need the outlet our walks provide'],
+    'dachshund':['are surprisingly great walkers','love to explore at their own pace','have more energy than people think'],
+    'maltese':['do wonderfully on our gentler group walks','love the social time','are always crowd favourites'],
+    'beagle':['are born sniffers — our walks are basically a sniff safari for them','love exploring new routes','have the best noses in the pack'],
+    'rottweiler':['do really well with our experienced walkers','are gentle giants on our walks','respond great to our structured walks'],
+    'samoyed':['are absolute showstoppers on walks','love the cooler Melbourne weather for adventures','always make friends'],
+    'australian shepherd':['need the exercise and mental stimulation our adventures provide','are incredibly smart walkers','thrive on variety'],
+  };
+  const breedLower=breed.toLowerCase();
+  const breedHook=Object.entries(breedHooks).find(([b])=>breedLower.includes(b));
+  const breedComment=breedHook?pickRandom(breedHook[1]):'';
+
+  // NOTES INTELLIGENCE — detect concerns
+  const notesLower=notes.toLowerCase();
+  const isReactive=notesLower.includes('reactive')||notesLower.includes('aggressive')||notesLower.includes('nervous')||notesLower.includes('anxious');
+  const isPuppy=notesLower.includes('puppy')||notesLower.includes('pup')||notesLower.includes('young');
+  const isBudgetConscious=notesLower.includes('price')||notesLower.includes('cost')||notesLower.includes('budget')||notesLower.includes('expensive');
+  const hasMedical=notesLower.includes('medical')||notesLower.includes('medication')||notesLower.includes('surgery')||notesLower.includes('health');
+
+  return {name,fullName,dog,breed,suburb,source,stage,notes,services,preferredDays,walker,biz,
+    daysSinceEnquiry,isFromAd,isReferral,isFromWeb,isExistingClient,ttpClient,
+    suburbClientCount,totalActiveClients,breedComment,
+    isReactive,isPuppy,isBudgetConscious,hasMedical};
+}
+
+function pickRandom(arr){return Array.isArray(arr)?arr[Math.floor(Math.random()*arr.length)]:arr;}
+
+function generateSmartDraft(){
+  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
+  const typeSelect=document.getElementById('smart-msg-type');
+  const msgType=typeSelect?.value||'welcome';
+  const ctx=getSmartContext(e);
+  const preview=document.getElementById('ai-draft-preview');
+  const d=ctx.dog,dn=d!=='your dog';// shorthand
+
+  // SOCIAL PROOF
+  let socialProof='';
+  if(ctx.suburbClientCount>=3) socialProof=`We walk ${ctx.suburbClientCount} other dogs in ${ctx.suburb}, so we know the area well.`;
+  else if(ctx.suburbClientCount>=1) socialProof=`We already service ${ctx.suburb} regularly.`;
+  else if(ctx.totalActiveClients>=10) socialProof=`We currently look after ${ctx.totalActiveClients}+ dogs across Melbourne's south-east.`;
+
+  // BREED HOOK
+  let breedLine='';
+  if(ctx.breedComment&&dn) breedLine=`${ctx.breed}s ${ctx.breedComment}. ${d} would do well with us.`;
+  else if(ctx.breed&&dn) breedLine=`We walk a number of ${ctx.breed}s and they tend to do really well with our team.`;
+
+  // CONCERN HANDLING
+  let concernLine='';
+  if(ctx.isReactive) concernLine=`We're well set up for dogs that need a bit more space. Our solo walk option keeps things calm and controlled, and all our walkers are experienced with reactive dogs.`;
+  else if(ctx.isPuppy) concernLine=`We love working with young dogs. We adjust the pace and duration, keep introductions gentle, and make sure they're comfortable throughout.`;
+  else if(ctx.hasMedical) concernLine=`Happy to accommodate any health needs. Our walkers are experienced with dogs that require a bit of extra attention.`;
+  else if(ctx.isBudgetConscious) concernLine=`We have options at different price points. Group walks are the most affordable, and we offer multi-day rates that bring the per-walk cost down.`;
+
+  // NOTES
+  let notesRef='';
+  if(ctx.notes&&ctx.notes.length>5&&!ctx.isReactive&&!ctx.isPuppy&&!ctx.hasMedical){
+    notesRef=`You mentioned "${ctx.notes.substring(0,80).trim()}${ctx.notes.length>80?'...':''}" — happy to discuss this further.`;
+  }
+
+  // PREFERRED DAYS
+  let daysRef=ctx.preferredDays?`${ctx.preferredDays} works well with our current schedule.`:'';
+
+  let draft='';
+
+  if(msgType==='welcome'){
+    draft=`Hey ${ctx.name},
+
+Thanks for getting in touch${ctx.isReferral?' — love getting referrals':''}.${dn?` Would be great to look after ${d}${ctx.breed?' the '+ctx.breed:''}`:''}.${breedLine?` ${breedLine}`:''}${socialProof?`\n\n${socialProof}`:''}${concernLine?`\n\n${concernLine}`:''}
+
+Here's a quick rundown on what we do:
+
+- 2-Hour Dog Adventures — off-lead exploring, sniffing, socialising. ${dn?d+' would':'Dogs'} come home tired and happy. It's our most popular one.
+- Private Solo Walks (45-60 min) — one-on-one, great for dogs that like their own space.
+- Group Walks (45-60 min) — small group of friendly dogs, good value.
+
+Every walk comes with GPS tracking, photos, and a report card sent straight to your phone.${notesRef?`\n\n${notesRef}`:''}${daysRef?`\n\n${daysRef}`:''}
+
+First step would be a quick meet & greet — I come to you, meet ${dn?d:'your dog'}, and we figure out what works best. About 15 mins, totally free.
+
+Happy to lock in a time if you're keen.
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='followup'){
+    draft=`Hey ${ctx.name},
+
+Just checking in${ctx.daysSinceEnquiry>7?' — hope my last message came through okay':''}.  Still thinking about walks for ${dn?d:'your dog'}?${socialProof?`\n\n${socialProof}`:''}${breedLine&&ctx.daysSinceEnquiry>7?`\n\n${breedLine}`:''}
+
+Happy to answer any questions or send through some info. And if the timing isn't right, no worries at all — just let me know.${ctx.suburb?`\n\nCan also send some photos from recent walks in ${ctx.suburb} if you'd like to see what we get up to.`:''}
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='info'){
+    draft=`Hey ${ctx.name},
+
+Here's the full rundown on what we offer.${breedLine?` ${breedLine}`:''}${socialProof?` ${socialProof}`:''}
+
+OUR SERVICES
+
+2-Hour Dog Adventure
+Off-lead exploring across Melbourne's best parks. Proper enrichment — sniffing, socialising, running around. ${dn?d+' would':'Dogs'} come home settled and happy. It's what we're known for.
+
+Private Solo Walk (45-60 min)
+One-on-one with our walker. Good for dogs that prefer their own space${ctx.isReactive?', or need a calmer environment':''}.
+
+Group Walk (45-60 min)
+Small group of friendly dogs. Great value and good for socialisation.${concernLine?`\n\n${concernLine}`:''}
+
+EVERY WALK INCLUDES
+- GPS tracking
+- Photos sent after each walk
+- Walk report card
+- Full insurance
+- Managed through our app
+
+HOW IT WORKS
+1. Free meet & greet — we come to you (15 mins, no commitment)
+2. Quick online form (5 mins)
+3. Sign T&Cs digitally
+4. First walk booked${daysRef?`\n\n${daysRef}`:''}
+
+Most people are walking within a week of the meet & greet. Want me to come meet ${dn?d:'your dog'}?
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='close'){
+    draft=`Hey ${ctx.name},
+
+Just wanted to check in — keen to get ${dn?d:'your dog'} started?${socialProof?`\n\n${socialProof}`:''}\n\n${ctx.suburb?`We've got availability in ${ctx.suburb}`:'We have spots open'} and could have ${dn?d:'your dog'} out with us as early as next week.${daysRef?` ${daysRef}`:''}
+
+All we need to do is a quick meet & greet — I come to you, takes about 15 mins, no commitment.
+
+Let me know when suits and I'll lock it in.
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='reengage'){
+    draft=`Hey ${ctx.name},
+
+Hope you and ${dn?d:'your dog'} are going well. Just wanted to touch base as it's been a bit quiet.${ctx.isExistingClient?`\n\nWe've really enjoyed having ${dn?d:'your dog'} with us. If anything's changed on your end — schedule, needs, whatever it might be — happy to chat about it.`:`\n\nI know the timing might not have been right before. If things have changed and you're thinking about walks again, we'd love to help.`}${socialProof?`\n\n${socialProof}`:''}
+
+No pressure at all — just wanted to check in.
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='notsuitable'){
+    draft=`Hey ${ctx.name},
+
+Thanks for chatting with us about ${dn?d:'walks'}.
+
+After giving it some thought, I don't think we're the right fit for this one${ctx.isReactive?` given what you've mentioned about ${d}`:ctx.notes?' — '+ctx.notes.substring(0,60).trim():''}.${ctx.suburb?` Happy to point you towards another good walker in ${ctx.suburb} if that'd help.`:''}
+
+Thanks again, and feel free to reach out if anything changes down the track.
+
+${ctx.walker}
+${ctx.biz}`;
+  }
+
+  aiDraftText=draft;
+  preview.textContent=draft;
+  preview.style.fontStyle='normal';
+  preview.style.color='var(--ink)';
+  showToast('Smart reply generated','✨');
+  logEvent('Smart reply generated',`${ctx.fullName||'Unknown'} — ${msgType}`,'success','✨');
+}
+
+function openAiDraft(enqId){
+  currentAiEnqId=enqId;
+  const e=enquiries.find(x=>x.id===enqId);
+  const ctx=getSmartContext(e);
+  const stage=e?.stage||'new';
+
+  // Auto-recommend message type based on stage
+  const recommended=MSG_TYPES.find(t=>t.stages.includes(stage))||MSG_TYPES[0];
+
+  document.getElementById('ai-draft-body').innerHTML=`
+    ${e?`<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;border:1px solid var(--border-light)">
+      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">${esc(e.name)}${ctx.dog!=='your dog'?' · 🐶 '+esc(ctx.dog)+(ctx.breed?' ('+esc(ctx.breed)+')':''):''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--ink-light)">
+        <span>${STAGES.find(s=>s.id===stage)?.label||stage}</span>
+        ${ctx.suburb?`<span>· 📍 ${esc(ctx.suburb)}</span>`:''}
+        ${ctx.source?`<span>· via ${esc(ctx.source)}</span>`:''}
+        ${ctx.services?`<span>· ${esc(ctx.services)}</span>`:''}
+        ${ctx.preferredDays?`<span>· ${esc(ctx.preferredDays)}</span>`:''}
+        ${ctx.daysSinceEnquiry>0?`<span>· ${ctx.daysSinceEnquiry}d ago</span>`:''}
+      </div>
+      ${ctx.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light)">📝 ${esc(ctx.notes.substring(0,150))}${ctx.notes.length>150?'...':''}</div>`:''}
+      ${ctx.isExistingClient?`<div style="font-size:11px;color:var(--success);margin-top:4px">✅ Also a TTP client — ${ctx.ttpClient.futureWalks||0} upcoming walks</div>`:''}
+    </div>`:''}
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:var(--ink-light)">Message Type</label>
+      <select id="smart-msg-type" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:Inter,sans-serif">
+        ${MSG_TYPES.map(t=>`<option value="${t.id}" ${t.id===recommended.id?'selected':''}>${t.icon} ${t.label} — ${t.desc}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Preview — click Generate to create</div>
+    <div class="ai-preview" id="ai-draft-preview" style="white-space:pre-wrap;min-height:120px;color:var(--ink-xlight);font-style:italic">Click "✨ Generate" to create a personalised reply using all available context.</div>`;
+  openModal('modal-ai-draft');
+}
+
+function openAiDraftNew(){
+  const newEnq=enquiries.filter(e=>['new','contacted','qualified'].includes(e.stage));
+  if(newEnq.length>0)openAiDraft(newEnq[0].id);
+  else{currentAiEnqId=null;openAiDraft(null);}
+}
+
+function openAiDraftFromEmail(emailId){
+  const m=EMAILS.find(e=>e.id===emailId);
+  const enq=enquiries.find(e=>e.name===m?.from||e.email===m?.email);
+  if(enq)openAiDraft(enq.id);
+  else openAiDraftNew();
+}
+
+function copyAiDraft(){
+  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
+  navigator.clipboard.writeText(aiDraftText).then(()=>{
+    logEvent('Smart reply copied','Copied to clipboard','info','✨');
+    showToast('Copied!','📋');
+    closeModal('modal-ai-draft');
+  });
+}
+
+function sendAiDraftEmail(){
+  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
+  const e=enquiries.find(x=>x.id===currentAiEnqId);
+  const to=e?.email||'';
+  const dog=e?.dogName||'';
+  const subject=dog?`Re: Dog Walking — ${dog}`:'Re: Dog Walking Enquiry';
+  composeEmail(to,subject,aiDraftText);
+  closeModal('modal-ai-draft');
+}
+
+function fillTemplate(body,e){
+  return (body||'')
+    .replace(/\{name\}/g,e?.name?.split(' ')[0]||e?.name||'there')
+    .replace(/\{dog_name\}/g,e?.dogName||'your dog')
+    .replace(/\{walker_name\}/g,getSetting('s-your-name','Jess'))
+    .replace(/\{business_name\}/g,getSetting('s-biz-name',"Chilly's Dog Adventures"));
+}
+
+// ── ENQUIRY CRUD ──
+function openAddEnquiry(){
+  editingId=null;
+  document.getElementById('modal-enq-title').textContent='New Enquiry';
+  document.getElementById('btn-del-enq').style.display='none';
+  ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('f-stage').value='new';
+  document.getElementById('f-channel').value='WhatsApp';
+  document.getElementById('f-source').value='Facebook Ad';
+  openModal('modal-enq');
+}
+
+function openEditEnquiry(id){
+  const e=enquiries.find(x=>x.id===id);if(!e)return;
+  editingId=id;
+  document.getElementById('modal-enq-title').textContent='Edit Enquiry — '+e.name;
+  document.getElementById('btn-del-enq').style.display='inline-flex';
+  document.getElementById('f-name').value=e.name||'';
+  document.getElementById('f-phone').value=e.phone||'';
+  document.getElementById('f-email').value=e.email||'';
+  document.getElementById('f-channel').value=e.channel||'WhatsApp';
+  document.getElementById('f-dogname').value=e.dogName||'';
+  document.getElementById('f-breed').value=e.dogBreed||'';
+  document.getElementById('f-services').value=e.services||'';
+  document.getElementById('f-stage').value=e.stage||'new';
+  document.getElementById('f-followup').value=e.followup||'';
+  document.getElementById('f-notes').value=e.notes||'';
+  document.getElementById('f-suburb').value=e.suburb||'';
+  document.getElementById('f-source').value=e.source||'Facebook Ad';
+  openModal('modal-enq');
+}
+
+function saveEnquiry(){
+  const name=document.getElementById('f-name').value.trim();
+  if(!name){document.getElementById('f-name').style.borderColor='var(--danger)';return;}
+  document.getElementById('f-name').style.borderColor='';
+  const oldEnq=editingId?enquiries.find(x=>x.id===editingId):null;
+  const data={
+    id:editingId||('e'+Date.now()),name,
+    phone:document.getElementById('f-phone').value.trim(),
+    email:document.getElementById('f-email').value.trim(),
+    channel:document.getElementById('f-channel').value,
+    dogName:document.getElementById('f-dogname').value.trim(),
+    dogBreed:document.getElementById('f-breed').value.trim(),
+    services:document.getElementById('f-services').value.trim(),
+    stage:document.getElementById('f-stage').value,
+    followup:document.getElementById('f-followup').value||null,
+    notes:document.getElementById('f-notes').value.trim(),
+    suburb:document.getElementById('f-suburb').value.trim(),
+    source:document.getElementById('f-source').value,
+    dateAdded:editingId?oldEnq?.dateAdded:today(),
+  };
+  if(editingId){
+    if(oldEnq&&oldEnq.stage!==data.stage){
+      logEvent('Stage changed',`${name}: ${STAGES.find(s=>s.id===oldEnq.stage)?.label} → ${STAGES.find(s=>s.id===data.stage)?.label}`);
+      if(data.stage==='qualified') fireWebhook('stage-onboarding',data);
+      if(data.stage==='closed-won') fireWebhook('client-converted',data)/*closed-won*/;
+    }
+    enquiries=enquiries.map(x=>x.id===editingId?data:x);
+    showToast('Enquiry updated');
+    // Sync to Notion
+    authFetch('/api/notion/enquiries/'+editingId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
+  }else{
+    logEvent('Enquiry added',`${name} → ${STAGES[0].label} (via ${data.channel})`,'success','📥');
+    // Create in Notion, use returned ID
+    authFetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+      .then(r=>r.ok?r.json():null).then(saved=>{if(saved){data.id=saved.id;save('cw_enq',enquiries);}}).catch(()=>{});
+    enquiries.push(data);
+    fireWebhook('new-enquiry',data);
+    showToast('Enquiry added to pipeline 🎉');
+  }
+  save('cw_enq',enquiries);
+  closeModal('modal-enq');
+  renderPipeline();updateBadges();
+}
+
+function deleteEnquiry(){
+  if(!editingId||!confirm('Delete this enquiry? This cannot be undone.'))return;
+  const delId=editingId;
+  enquiries=enquiries.filter(x=>x.id!==delId);
+  localStorage.removeItem('cw_ob_'+delId);
+  save('cw_enq',enquiries);
+  closeModal('modal-enq');renderPipeline();updateBadges();
+  showToast('Enquiry deleted','🗑️');
+  // Archive in Notion
+  authFetch('/api/notion/enquiries/'+delId,{method:'DELETE'}).catch(()=>{});
+}
+
+// ── MODAL ──
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(el=>closeModal(el.id));
+});
+
+// ── COVERAGE MAP ──
+const SUBURB_COORDS={
+  'Fitzroy':[-37.7988,144.9784],'Fitzroy North':[-37.7878,144.9784],
+  'Richmond':[-37.8183,144.9981],'Collingwood':[-37.7984,144.9874],
+  'South Yarra':[-37.8380,144.9930],'Northcote':[-37.7698,144.9973],
+  'Brunswick':[-37.7668,144.9600],'Carlton':[-37.7996,144.9671],
+  'St Kilda':[-37.8617,144.9803],'Prahran':[-37.8493,144.9917],
+};
+
+// Stored assigned pins: keyed by refId (c1, e1, etc.) to prevent duplicates
+// Format: { refId, refType:'client'|'lead', name, dog, suburb, addr, lat, lng, health?, stage? }
+let assignedPins=load('cw_map_pins',{});
+let covMap=null;
+let covMarkers=null;
+let covFilter='all'; // 'all','client','lead'
+
+// Seed default pins from dummy data (only if no saved data)
+let covDataLoaded=false;
+
+async function geocodeAddr(addr){
+  const cache=load('cw_geocache',{});
+  if(cache[addr]) return cache[addr];
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', VIC, Australia')}&countrycodes=au&limit=1`,{headers:{'Accept':'application/json'}});
+    const data=await res.json();
+    if(data.length){
+      const coords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
+      cache[addr]=coords;
+      save('cw_geocache',cache);
+      return coords;
+    }
+  }catch{}
+  return null;
+}
+
+async function loadCoverageData(){
+  if(covDataLoaded) return;
+  covDataLoaded=true;// Prevent duplicate calls
+
+  // Load client data from TTP (addresses, no geocoding yet)
+  const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
+  const allItems=[...(locRes||[])];
+
+  // Add enquiries with suburbs
+  enquiries.filter(e=>e.suburb).forEach(e=>{
+    allItems.push({
+      refId:'enq_'+e.id,refType:'lead',name:e.name,dog:e.dogName||'',
+      stage:e.stage,suburb:e.suburb,addr:e.suburb,service:'',
+    });
+  });
+
+  // Geocode progressively — add pins as they resolve
+  let count=0;
+  for(const item of allItems){
+    if(assignedPins[item.refId]&&assignedPins[item.refId].lat) continue;// Already geocoded
+    const searchAddr=item.addr||item.suburb;
+    if(!searchAddr) continue;
+    const coords=await geocodeAddr(searchAddr);
+    if(coords){
+      const jitter=item.refType==='lead'?(Math.random()-0.5)*0.003:0;
+      item.lat=coords.lat+jitter;
+      item.lng=coords.lng+(item.refType==='lead'?(Math.random()-0.5)*0.003:0);
+      assignedPins[item.refId]=item;
+      count++;
+      // Re-render every 5 pins to show progress
+      if(count%5===0){
+        save('cw_map_pins',assignedPins);
+        renderMapPins();
+        document.getElementById('cov-clients').textContent=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat).length;
+        document.getElementById('cov-leads').textContent=Object.values(assignedPins).filter(p=>p.refType==='lead'&&p.lat).length;
+      }
+      await new Promise(r=>setTimeout(r,250));// Nominatim rate limit
+    }
+  }
+  save('cw_map_pins',assignedPins);
+  renderCoverage();// Final render
+}
+
+function seedDefaultPins(){
+  // Load cached pins — real data loaded async via loadCoverageData()
+  const cached=load('cw_map_pins',{});
+  if(Object.keys(cached).length>0){
+    Object.assign(assignedPins,cached);
+  }
+}
+
+function setCovFilter(f){
+  covFilter=f;
+  document.querySelectorAll('#cov-filters .filter-pill').forEach(el=>{
+    const map={'All':'all','Active Clients':'active','Inactive Clients':'inactive','Enquiries':'lead'};
+    const label=el.textContent.replace(/[🐕💤📥]/g,'').trim();
+    el.classList.toggle('active',map[label]===f);
+  });
+  renderCoverage();
+}
+
+function buildAssignDropdown(){
+  const sel=document.getElementById('cov-assign-select');
+  const already=new Set(Object.keys(assignedPins));
+  let html='<option value="">📍 Assign address to a client or lead...</option>';
+  html+='<optgroup label="🐕 Clients">';
+  clients.forEach(c=>{
+    const on=already.has(c.id);
+    html+=`<option value="${c.id}" ${on?'disabled':''}>${c.owner} — ${c.dog}${on?' (already mapped)':''}</option>`;
+  });
+  html+='</optgroup><optgroup label="📥 Leads / Enquiries">';
+  enquiries.forEach(e=>{
+    const on=already.has(e.id);
+    html+=`<option value="${e.id}" ${on?'disabled':''}>${e.name} — ${e.dogName||'?'}${on?' (already mapped)':''}</option>`;
+  });
+  html+='</optgroup>';
+  sel.innerHTML=html;
+}
+
+function openAssignAddress(){
+  const sel=document.getElementById('cov-assign-select');
+  const refId=sel.value;
+  if(!refId){showToast('Select a client or lead first','⚠️');return;}
+  if(assignedPins[refId]){showToast('Already on the map — no duplicates','⚠️');return;}
+
+  // Find the record
+  const client=clients.find(c=>c.id===refId);
+  const lead=enquiries.find(e=>e.id===refId);
+  const record=client||lead;
+  if(!record)return;
+
+  const name=client?client.owner:lead.name;
+  const dog=client?client.dog:lead.dogName||'?';
+  const suburb=client?client.suburb:lead.suburb;
+  const refType=client?'client':'lead';
+
+  // Prompt for address
+  const addr=prompt(`Enter the street address for ${name} (${dog}):\ne.g. 42 Smith St, Fitzroy VIC`);
+  if(!addr||!addr.trim())return;
+
+  showToast('Geocoding address...','🔍');
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr.trim())}&countrycodes=au&limit=1`,{
+    headers:{'Accept':'application/json'}
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    if(!data.length){showToast('Address not found — try adding VIC or postcode','⚠️');return;}
+    const loc=data[0];
+    const lat=parseFloat(loc.lat);
+    const lng=parseFloat(loc.lon);
+    const pin={
+      refId,refType,name,dog,suburb:suburb||addr.split(',')[1]?.trim()||'Unknown',
+      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
+      lat,lng,
+    };
+    if(client)pin.health=client.health;
+    if(lead)pin.stage=lead.stage;
+    assignedPins[refId]=pin;
+    save('cw_map_pins',assignedPins);
+    renderCoverage();
+    covMap.setView([lat,lng],15,{animate:true});
+    showToast(`${name} plotted on map!`,'📍');
+  })
+  .catch(()=>showToast('Geocoding failed — check connection','⚠️'));
+}
+
+function renderCoverage(){
+  seedDefaultPins();
+
+  // Trigger async data load if not done
+  if(!covDataLoaded){
+    loadCoverageData().then(()=>renderCoverage());
+  }
+
+  const pins=Object.values(assignedPins);
+  let filteredPins=pins;
+  if(covFilter==='active') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='active');
+  else if(covFilter==='inactive') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='inactive');
+  else if(covFilter==='lead') filteredPins=pins.filter(p=>p.refType==='lead');
+
+  // Suburb stats from filtered pins
+  const allSuburbs={};
+  filteredPins.forEach(p=>{
+    if(!p.suburb)return;
+    if(!allSuburbs[p.suburb])allSuburbs[p.suburb]={clients:0,leads:0};
+    if(p.refType==='client')allSuburbs[p.suburb].clients++;
+    else allSuburbs[p.suburb].leads++;
+  });
+
+  const suburbArr=Object.entries(allSuburbs).sort((a,b)=>(b[1].clients+b[1].leads)-(a[1].clients+a[1].leads));
+  const clientCount=filteredPins.filter(p=>p.refType==='client').length;
+  const leadCount=filteredPins.filter(p=>p.refType==='lead').length;
+  const suburbCount=suburbArr.length;
+  const avg=suburbCount?((clientCount+leadCount)/suburbCount).toFixed(1):'0';
+
+  document.getElementById('cov-suburbs').textContent=suburbCount;
+  document.getElementById('cov-clients').textContent=clientCount;
+  document.getElementById('cov-leads').textContent=leadCount;
+  document.getElementById('cov-density').textContent=avg;
+
+  // Cluster analysis
+  const maxCount=suburbArr.length?(suburbArr[0][1].clients+suburbArr[0][1].leads):0;
+  document.getElementById('cluster-tags').innerHTML=suburbArr.map(([name,d])=>{
+    const total=d.clients+d.leads;
+    let cls='ct-new',label='New area';
+    if(total>=4){cls='ct-hot';label='🔥 Hotspot';}
+    else if(total>=3){cls='ct-growing';label='📈 Growing';}
+    else if(d.leads>d.clients){cls='ct-opportunity';label='💡 Opportunity';}
+    return `<span class="cluster-tag ${cls}">${name}: ${total} ${label}</span>`;
+  }).join('');
+
+  // Suburb list
+  document.getElementById('suburb-list').innerHTML=suburbArr.map(([name,d])=>{
+    const total=d.clients+d.leads;
+    const pct=maxCount?(total/maxCount)*100:0;
+    return `<div class="suburb-row" onclick="zoomToSuburb('${name}',this)">
+      <div class="suburb-dot" style="background:${total>=4?'var(--orange)':total>=3?'var(--warning)':'var(--info)'}"></div>
+      <div class="suburb-name">${name}</div>
+      <div style="font-size:10px;color:var(--ink-xlight);white-space:nowrap">${d.clients}C ${d.leads}L</div>
+      <div class="suburb-bar"><div class="suburb-bar-fill" style="width:${pct}%"></div></div>
+      <div class="suburb-count">${total}</div>
+    </div>`;
+  }).join('');
+
+  // Build dropdown (excluding already-assigned)
+  buildAssignDropdown();
+
+  // Init map
+  setTimeout(()=>{
+    if(!covMap){
+      covMap=L.map('coverage-map',{zoomControl:true}).setView([-37.8136,144.9631],13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'&copy; OpenStreetMap contributors',maxZoom:19
+      }).addTo(covMap);
+    }
+    renderMapPins(filteredPins);
+    covMap.invalidateSize();
+  },100);
+}
+
+function renderMapPins(pins){
+  if(!pins)pins=covFilter==='all'?Object.values(assignedPins):Object.values(assignedPins).filter(p=>p.refType===covFilter);
+  if(covMarkers)covMap.removeLayer(covMarkers);
+  covMarkers=L.markerClusterGroup({
+    maxClusterRadius:50,spiderfyOnMaxZoom:true,showCoverageOnHover:false,
+    iconCreateFunction:function(cluster){
+      const count=cluster.getChildCount();
+      let c='#3b82f6';
+      if(count>=5)c='#dc2626'; else if(count>=3)c='#F26B21';
+      const sz=count>=5?44:count>=3?38:32;
+      return L.divIcon({
+        html:`<div style="background:${c};color:#fff;border-radius:50%;width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center;font-weight:800;font-family:Readex Pro,sans-serif;font-size:${count>=5?14:12}px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)">${count}</div>`,
+        className:'',iconSize:[sz,sz]
+      });
+    }
+  });
+
+  pins.forEach(p=>{
+    let color='#F26B21';// Default: active client
+    if(p.refType==='client'&&p.status==='inactive')color='#9ca3af';
+    if(p.refType==='lead'){
+      color='#3b82f6';// Default lead
+      if(p.stage==='qualified')color='#06b6d4';
+      if(p.stage==='closed-won')color='#22c55e';
+      if(p.stage==='closed-lost'||p.stage==='not-suitable')color='#6b7280';
+    }
+
+    const icon=L.divIcon({
+      html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
+      className:'',iconSize:[14,14],iconAnchor:[7,7]
+    });
+
+    const marker=L.marker([p.lat,p.lng],{icon});
+    const badge=p.refType==='client'
+      ?`🏠 Client <span style="font-size:10px;font-weight:700;color:${p.status==='active'?'#16a34a':'#9ca3af'}">${p.status||''}${p.futureWalks?' · '+p.futureWalks+' upcoming walks':''}</span>`
+      :`📥 Enquiry <span style="font-size:10px;font-weight:700;color:${color}">${STAGES.find(s=>s.id===p.stage)?.label||p.stage||''}</span>`;
+    marker.bindPopup(`
+      <div style="font-family:Inter,sans-serif;min-width:180px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">${esc(p.name)}</div>
+        ${p.service?`<div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">${esc(p.service)}</div>`:''}
+        <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${esc(p.suburb||p.addr||'')}</div>
+        <div>${badge}</div>
+        <div style="margin-top:6px"><button onclick="showNearbyParks(${p.lat},${p.lng},'${esc(p.name).replace(/'/g,"\\'")}')" style="background:#dcfce7;border:1px solid #86efac;color:#16a34a;padding:3px 10px;border-radius:14px;font-size:10px;cursor:pointer;font-weight:600">🌳 Find off-leash parks nearby</button></div>
+      </div>`);
+    covMarkers.addLayer(marker);
+  });
+  covMap.addLayer(covMarkers);
+}
+
+function removePin(refId){
+  delete assignedPins[refId];
+  save('cw_map_pins',assignedPins);
+  renderCoverage();
+  showToast('Pin removed','🗑️');
+}
+
+function zoomToSuburb(name,el){
+  document.querySelectorAll('.suburb-row').forEach(r=>r.classList.remove('active'));
+  if(el)el.classList.add('active');
+  const coords=SUBURB_COORDS[name];
+  if(coords&&covMap)covMap.setView(coords,15,{animate:true});
+}
+
+function geocodeAddress(){
+  const input=document.getElementById('addr-input').value.trim();
+  const status=document.getElementById('geocode-status');
+  if(!input){status.textContent='Enter an address first.';status.style.color='var(--danger)';return;}
+  status.textContent='Geocoding...';status.style.color='var(--ink-light)';
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=au&limit=1`,{
+    headers:{'Accept':'application/json'}
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    if(!data.length){status.textContent='Address not found — try adding VIC or postcode.';status.style.color='var(--danger)';return;}
+    const loc=data[0];
+    const lat=parseFloat(loc.lat);
+    const lng=parseFloat(loc.lon);
+    const refId='manual_'+Date.now();
+    const pin={
+      refId,refType:'lead',name:'Manual Pin',dog:'—',stage:'new',
+      suburb:input.split(',')[1]?.trim()||'Unknown',
+      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
+      lat,lng
+    };
+    assignedPins[refId]=pin;
+    save('cw_map_pins',assignedPins);
+    renderCoverage();
+    covMap.setView([lat,lng],16,{animate:true});
+    status.innerHTML=`✅ Plotted! <span style="color:var(--orange);cursor:pointer;font-weight:600" onclick="document.getElementById('addr-input').value=''">Add another</span>`;
+    status.style.color='var(--success)';
+    document.getElementById('addr-input').value='';
+    showToast('Address plotted on map!','📍');
+  })
+  .catch(()=>{status.textContent='Geocoding failed — check connection.';status.style.color='var(--danger)';});
+}
+
+// ── OFF-LEASH PARKS PAGE ──
+let parksFilter='all';
+function getBaseLat(){return parseFloat(getSetting('s-base-lat',-37.8736))||-37.8736;}
+function getBaseLng(){return parseFloat(getSetting('s-base-lng',145.0292))||145.0292;}
+
+async function renderParksPage(){
+  const el=document.getElementById('parks-page-content');
+  const statsEl=document.getElementById('parks-stats');
+  if(!el) return;
+
+  if(!offLeashParks.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading off-leash parks...</div>';
+    try{
+      offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);
+      // Fill missing suburbs via reverse geocode (background, progressive)
+      fillParkSuburbs();
+    }catch{offLeashParks=[];}
+  }
+
+  const search=(document.getElementById('parks-search')?.value||'').toLowerCase().trim();
+
+  // Calculate distance from base for each park
+  let parks=offLeashParks.map(p=>({...p,dist:haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
+
+  // Apply filters
+  if(parksFilter==='nearby') parks=parks.filter(p=>p.dist<=5000);
+  if(parksFilter==='fenced') parks=parks.filter(p=>p.fenced);
+  if(search) parks=parks.filter(p=>(p.name||'').toLowerCase().includes(search));
+
+  // Find nearest client to each park
+  const clientPins=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat);
+  parks.forEach(p=>{
+    let nearestClient=null,nearestDist=Infinity;
+    clientPins.forEach(c=>{
+      const d=haversine(p.lat,p.lng,c.lat,c.lng);
+      if(d<nearestDist){nearestDist=d;nearestClient=c.name;}
+    });
+    p.nearestClient=nearestClient;
+    p.nearestClientDist=nearestDist;
+  });
+
+  // Stats
+  const total=offLeashParks.length;
+  const within5km=offLeashParks.filter(p=>haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)<=5000).length;
+  const fenced=offLeashParks.filter(p=>p.fenced).length;
+  const nearClients=offLeashParks.filter(p=>{
+    return clientPins.some(c=>haversine(p.lat,p.lng,c.lat,c.lng)<=2000);
+  }).length;
+
+  if(statsEl){
+    statsEl.innerHTML=`
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${total}</div><div class="rp-weekly-lbl">Total Parks Found</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${within5km}</div><div class="rp-weekly-lbl">Within 5km</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${fenced}</div><div class="rp-weekly-lbl">Fenced</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${nearClients}</div><div class="rp-weekly-lbl">Near Clients (&lt;2km)</div></div>
+    `;
+  }
+
+  // Update filter pill active states
+  document.querySelectorAll('#parks-filters .filter-pill').forEach(p=>{
+    const map={'All Parks':'all','Within 5km':'nearby','Fenced Only':'fenced'};
+    p.classList.toggle('active',map[p.textContent.trim()]===parksFilter);
+  });
+
+  if(!parks.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No parks found matching your filters.</div>';
+    return;
+  }
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">${parks.slice(0,60).map(p=>{
+    const distLabel=p.dist<1000?Math.round(p.dist)+'m from base':(p.dist/1000).toFixed(1)+'km from base';
+    const clientDistLabel=p.nearestClientDist<1000?Math.round(p.nearestClientDist)+'m':(p.nearestClientDist/1000).toFixed(1)+'km';
+    const isClose=p.nearestClientDist<=2000;
+
+    return `<div class="card" style="padding:16px;border-left:3px solid ${p.fenced?'var(--success)':'var(--info)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <strong style="font-size:13px">${esc(p.name)}</strong>
+          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">
+            ${p.type==='dog_park'?'Dog Park':'Off-Leash Area'}${p.suburb?' · '+esc(p.suburb):''}
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;font-weight:600;color:var(--orange)">${distLabel}</div>
+          ${p.fenced?'<span style="font-size:9px;background:var(--success-bg);color:var(--success);padding:2px 6px;border-radius:10px;font-weight:600">Fenced</span>':''}
+        </div>
+      </div>
+      ${p.note?`<div style="font-size:11px;color:var(--ink-light);margin-bottom:8px">${esc(p.note.substring(0,120))}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px">
+        <div style="color:${isClose?'var(--success)':'var(--ink-xlight)'}">
+          ${p.nearestClient?`${isClose?'Near':'Closest'} client: ${esc(p.nearestClient)} (${clientDistLabel})`:'No nearby clients'}
+        </div>
+        <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('coverage');setTimeout(()=>{if(covMap)covMap.setView([${p.lat},${p.lng}],16)},500)">View on map</button>
+      </div>
+    </div>`;
+  }).join('')}</div>
+  ${parks.length>60?`<div style="text-align:center;padding:16px;color:var(--ink-xlight);font-size:12px">Showing first 60 of ${parks.length} parks. Use search or filters to narrow down.</div>`:''}`;
+}
+
+function setParksFilter(f){
+  parksFilter=f;
+  renderParksPage();
+}
+
+async function fillParkSuburbs(){
+  const cache=load('cw_park_suburbs',{});
+  let updated=0;
+  for(const p of offLeashParks){
+    if(p.suburb) continue;
+    const key=`${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+    if(cache[key]){p.suburb=cache[key];continue;}
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lng}&zoom=14`,{headers:{'Accept':'application/json'}});
+      const data=await res.json();
+      const suburb=data.address?.suburb||data.address?.town||data.address?.city_district||data.address?.city||'';
+      if(suburb){
+        p.suburb=suburb;
+        cache[key]=suburb;
+        updated++;
+        if(updated%10===0){save('cw_park_suburbs',cache);renderParksPage();}
+      }
+      await new Promise(r=>setTimeout(r,300));// Rate limit
+    }catch{}
+    if(updated>=40) break;// Limit to 40 lookups per session
+  }
+  if(updated>0){save('cw_park_suburbs',cache);renderParksPage();}
+}
+
+// ── OFF-LEASH PARKS MAP LAYER ──
+let offLeashParks=[];
+let offLeashLayer=null;
+let offLeashVisible=false;
+let radiusCircle=null;
+
+async function toggleOffLeashParks(){
+  offLeashVisible=!offLeashVisible;
+  const btn=document.getElementById('cov-parks-toggle');
+  if(btn) btn.classList.toggle('active',offLeashVisible);
+  const sidebar=document.getElementById('parks-sidebar');
+  if(sidebar) sidebar.style.display=offLeashVisible?'block':'none';
+
+  if(offLeashVisible){
+    if(!offLeashParks.length){
+      showToast('Loading off-leash parks...','🌳');
+      try{
+        offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);
+        showToast(`Found ${offLeashParks.length} off-leash areas`,'🌳');
+      }catch{offLeashParks=[];}
+    }
+    renderParkMarkers();
+  }else{
+    if(offLeashLayer&&covMap){covMap.removeLayer(offLeashLayer);offLeashLayer=null;}
+    if(radiusCircle&&covMap){covMap.removeLayer(radiusCircle);radiusCircle=null;}
+  }
+}
+
+function renderParkMarkers(){
+  if(!covMap||!offLeashParks.length) return;
+  if(offLeashLayer) covMap.removeLayer(offLeashLayer);
+
+  offLeashLayer=L.layerGroup();
+  offLeashParks.forEach(p=>{
+    const icon=L.divIcon({
+      html:`<div style="background:#22c55e;width:12px;height:12px;border-radius:50%;border:2.5px solid #16a34a;box-shadow:0 1px 4px rgba(0,0,0,.25)"></div>`,
+      className:'',iconSize:[12,12],iconAnchor:[6,6]
+    });
+    const marker=L.marker([p.lat,p.lng],{icon});
+    marker.bindPopup(`
+      <div style="font-family:Inter,sans-serif;min-width:160px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">🌳 ${p.name}</div>
+        <div style="font-size:11px;color:#6b6b6b;margin-bottom:2px">${p.type==='dog_park'?'Designated Dog Park':'Off-Leash Area'}</div>
+        ${p.fenced?'<div style="font-size:11px;color:#16a34a">Fenced</div>':''}
+        ${p.note?`<div style="font-size:10px;color:#a0a0a0;margin-top:4px">${p.note.substring(0,100)}</div>`:''}
+      </div>
+    `);
+    offLeashLayer.addLayer(marker);
+  });
+  offLeashLayer.addTo(covMap);
+}
+
+function showNearbyParks(lat,lng,clientName){
+  if(!offLeashParks.length){
+    toggleOffLeashParks().then(()=>showNearbyParks(lat,lng,clientName));
+    return;
+  }
+  // Draw radius circle
+  if(radiusCircle&&covMap) covMap.removeLayer(radiusCircle);
+  radiusCircle=L.circle([lat,lng],{radius:2000,color:'#22c55e',fillColor:'#22c55e',fillOpacity:0.08,weight:2,dashArray:'6'}).addTo(covMap);
+
+  // Find parks within 2km
+  const nearby=offLeashParks.map(p=>{
+    const dist=haversine(lat,lng,p.lat,p.lng);
+    return {...p,dist};
+  }).filter(p=>p.dist<=2000).sort((a,b)=>a.dist-b.dist);
+
+  // Update sidebar
+  const el=document.getElementById('parks-list');
+  const sidebar=document.getElementById('parks-sidebar');
+  if(sidebar) sidebar.style.display='block';
+  if(el){
+    if(nearby.length){
+      el.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px">${nearby.length} parks within 2km of ${esc(clientName)}</div>`+
+        nearby.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--cream);border-radius:var(--radius-sm);cursor:pointer;font-size:12px" onclick="covMap.setView([${p.lat},${p.lng}],16)">
+          <span style="color:var(--success)">🌳</span>
+          <div style="flex:1"><strong>${esc(p.name)}</strong>${p.fenced?' <span style="font-size:9px;color:var(--success)">Fenced</span>':''}</div>
+          <span style="font-size:11px;color:var(--ink-xlight)">${p.dist<1000?Math.round(p.dist)+'m':(p.dist/1000).toFixed(1)+'km'}</span>
+        </div>`).join('');
+    }else{
+      el.innerHTML=`<div style="font-size:12px;color:var(--warning);padding:8px">No off-leash parks found within 2km of ${esc(clientName)}. Try the full parks layer.</div>`;
+    }
+  }
+  covMap.fitBounds(radiusCircle.getBounds(),{padding:[20,20]});
+}
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371000;
+  const dLat=(lat2-lat1)*Math.PI/180;
+  const dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ── FILTER PILLS ──
+document.querySelectorAll('.filter-pill').forEach(p=>{
+  p.addEventListener('click',function(){
+    this.closest('.pipeline-header,.view')?.querySelectorAll('.filter-pill').forEach(x=>x.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// ── WALKER CONFIG ──
+const DEFAULT_WALKERS=[
+  {name:'Jessica Lauritz',type:'founder',rate:0},
+  {name:'Alex',type:'contractor',rate:27},
+];
+let walkerConfig=load('cw_walkers',DEFAULT_WALKERS);
+
+function getWalkerConfig(walkerName){
+  if(!walkerName) return null;
+  const clean=walkerName.replace(/\\+$/g,'').trim().toLowerCase();
+  return walkerConfig.find(w=>clean.includes(w.name.toLowerCase())||w.name.toLowerCase().includes(clean.split(' ')[0]));
+}
+
+function renderWalkerConfig(){
+  const el=document.getElementById('walker-config-list');
+  if(!el) return;
+  el.innerHTML=walkerConfig.map((w,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px">
+      <div class="form-group"><label>${i===0?'Name':''}</label><input value="${esc(w.name)}" oninput="walkerConfig[${i}].name=this.value" placeholder="Walker name"></div>
+      <div class="form-group"><label>${i===0?'Type':''}</label><select onchange="walkerConfig[${i}].type=this.value;walkerConfig[${i}].rate=this.value==='founder'?0:walkerConfig[${i}].rate;renderWalkerConfig()">
+        <option value="founder" ${w.type==='founder'?'selected':''}>Founder</option>
+        <option value="employee" ${w.type==='employee'?'selected':''}>Employee</option>
+        <option value="contractor" ${w.type==='contractor'?'selected':''}>Contractor</option>
+      </select></div>
+      <div class="form-group">${w.type==='founder'?`<label>${i===0?'Cost':''}</label><input value="Fixed weekly" disabled style="color:var(--ink-light)">`:`<label>${i===0?'$/hr':''}</label><input type="number" value="${w.rate}" oninput="walkerConfig[${i}].rate=parseFloat(this.value)||0">`}</div>
+      <button style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:6px" onclick="walkerConfig.splice(${i},1);saveWalkerConfig();renderWalkerConfig()">×</button>
+    </div>
+  `).join('')+`<div style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveWalkerConfig()">Save Walkers</button></div>`;
+}
+
+function addWalkerConfig(){
+  walkerConfig.push({name:'',type:'employee',rate:30});
+  renderWalkerConfig();
+}
+
+function saveWalkerConfig(){
+  walkerConfig=walkerConfig.filter(w=>w.name.trim());
+  save('cw_walkers',walkerConfig);
+  showToast('Walker team saved','✅');
+  renderWalkerConfig();
+}
+
+// ── CLIENT PRICING ──
+// { "Client Name": { price45:X, price60:X, priceAdventure:X, dogs:1, multiDogDiscount:20, weeklyDiscount2:0, weeklyDiscount3:0 } }
+let clientPricing=load('cw_client_prices',{});
+
+function detectServiceType(service,durationMins){
+  const svc=(service||'').toLowerCase();
+  if(svc.includes('adventure')||svc.includes('2 hour')||durationMins>=100) return 'adventure';
+  if(svc.includes('60')||durationMins>=55) return '60min';
+  return '45min';
+}
+
+function getClientPrice(clientName,service,durationMins){
+  const clean=(clientName||'').replace(/\\+$/g,'').trim();
+  const entry=clientPricing[clean];
+  const type=detectServiceType(service,durationMins);
+  if(entry){
+    if(type==='adventure'&&entry.priceAdventure) return entry.priceAdventure;
+    if(type==='60min'&&entry.price60) return entry.price60;
+    if(type==='45min'&&entry.price45) return entry.price45;
+    // Fallback to any set price
+    if(entry.price60) return entry.price60;
+    if(entry.price45) return entry.price45;
+    if(entry.soloPrice) return entry.soloPrice;// Legacy
+    if(entry.priceAdventure) return entry.priceAdventure;
+  }
+  // Fallback to defaults
+  if(type==='adventure') return parseFloat(getSetting('s-price-adventure',75))||75;
+  return parseFloat(getSetting('s-price-solo',55))||55;
+}
+
+function isClientPriced(clientName){
+  const clean=(clientName||'').replace(/\\+$/g,'').trim();
+  const entry=clientPricing[clean];
+  return entry&&(entry.price45>0||entry.price60>0||entry.priceAdventure>0||entry.soloPrice>0);
+}
+
+function switchClientTab(tab){
+  document.getElementById('client-tab-overview').style.display=tab==='overview'?'block':'none';
+  document.getElementById('client-tab-pricing').style.display=tab==='pricing'?'block':'none';
+  document.querySelectorAll('#client-tabs .filter-pill').forEach(p=>{
+    p.classList.toggle('active',p.textContent.trim()===(tab==='overview'?'Overview':'Pricing'));
+  });
+  if(tab==='pricing') renderPricingTable();
+  if(tab==='overview') renderClients();
+}
+
+function renderPricingTable(){
+  const el=document.getElementById('pricing-table');
+  const alertEl=document.getElementById('pricing-alert');
+  if(!el) return;
+
+  const search=(document.getElementById('pricing-search')?.value||'').toLowerCase().trim();
+  const ttpClients=clients.filter(c=>c.name).map(c=>c.name.replace(/\\+$/g,'').trim()).filter(Boolean);
+  const allClientNames=[...new Set(ttpClients)].sort();
+  const unpriced=allClientNames.filter(n=>!isClientPriced(n));
+  const filtered=search?allClientNames.filter(n=>n.toLowerCase().includes(search)):allClientNames;
+  // Sort: active first, then unpriced first
+  const sorted=filtered.sort((a,b)=>{
+    const ca=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===a);
+    const cb=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===b);
+    const aa=ca?.status==='active'?0:1;
+    const ab=cb?.status==='active'?0:1;
+    if(aa!==ab) return aa-ab;
+    const pa=isClientPriced(a)?1:0;
+    const pb=isClientPriced(b)?1:0;
+    return pa-pb;
+  });
+
+  if(alertEl){
+    alertEl.innerHTML=unpriced.length>0
+      ?`<div style="padding:10px 14px;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">${unpriced.length} client${unpriced.length>1?'s':''} without pricing — using default rates. Set actual rates below.</div>`
+      :`<div style="padding:10px 14px;background:var(--success-bg);border:1px solid var(--success);border-radius:var(--radius-sm);font-size:12px;color:var(--success)">All clients have custom pricing set.</div>`;
+  }
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">${sorted.map(name=>{
+    const entry=clientPricing[name]||{};
+    const client=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===name);
+    const isActive=client?.status==='active';
+    const isPriced=isClientPriced(name);
+    const p45=entry.price45||entry.soloPrice||0;
+    const p60=entry.price60||entry.soloPrice||0;
+    const pAdv=entry.priceAdventure||entry.adventurePrice||0;
+    const dogs=entry.dogs||1;
+    const multiDisc=entry.multiDogDiscount??20;
+    const wkDisc2=entry.weeklyDiscount2||0;
+    const wkDisc3=entry.weeklyDiscount3||0;
+    const svc=client?.primaryService||'';
+
+    return `<div class="card" style="padding:14px;border-left:3px solid ${isPriced?'var(--success)':'var(--warning)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <strong style="font-size:13px">${esc(name)}</strong>
+          <span style="font-size:11px;color:${isActive?'var(--success)':'var(--ink-xlight)'};margin-left:6px">${isActive?'Active':'Inactive'}</span>
+        </div>
+        <span style="font-size:10px;color:var(--ink-xlight)">${isPriced?'Custom':'Default'}</span>
+      </div>
+      ${svc?`<div style="font-size:11px;color:var(--ink-light);margin-bottom:8px">${esc(svc)}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+        <div class="form-group"><label style="font-size:10px">45 min ($)</label><input type="number" data-client="${esc(name)}" data-field="price45" value="${p45||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:100%;padding:5px 6px;border:1px solid ${p45?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
+        <div class="form-group"><label style="font-size:10px">60 min ($)</label><input type="number" data-client="${esc(name)}" data-field="price60" value="${p60||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:100%;padding:5px 6px;border:1px solid ${p60?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
+        <div class="form-group"><label style="font-size:10px">Adventure ($)</label><input type="number" data-client="${esc(name)}" data-field="priceAdventure" value="${pAdv||''}" placeholder="${parseFloat(getSetting('s-price-adventure',75))||75}" style="width:100%;padding:5px 6px;border:1px solid ${pAdv?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <div class="form-group"><label style="font-size:10px">Dogs</label><input type="number" data-client="${esc(name)}" data-field="dogs" value="${dogs}" min="1" max="5" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center" onchange="saveClientPricing();renderPricingTable()"></div>
+        ${dogs>1?`<div class="form-group"><label style="font-size:10px">2nd dog disc %</label><input type="number" data-client="${esc(name)}" data-field="multiDogDiscount" value="${multiDisc}" min="0" max="100" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></div>`
+        :`<div class="form-group"><label style="font-size:10px">2nd dog disc</label><span style="font-size:11px;color:var(--ink-xlight);padding:5px 0;display:block">—</span></div>`}
+        <div class="form-group"><label style="font-size:10px">2nd walk/wk disc %</label><input type="number" data-client="${esc(name)}" data-field="weeklyDiscount2" value="${wkDisc2||''}" placeholder="0" min="0" max="100" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></div>
+      </div>
+    </div>`;
+  }).join('')}</div>
+  <div style="margin-top:14px;display:flex;justify-content:flex-end">
+    <button class="btn btn-primary btn-sm" onclick="saveClientPricing()">Save All Pricing</button>
+  </div>`;
+}
+
+function saveClientPricing(){
+  document.querySelectorAll('#pricing-table input[data-client]').forEach(input=>{
+    const name=input.dataset.client;
+    const field=input.dataset.field;
+    if(!name||!field) return;
+    if(!clientPricing[name]) clientPricing[name]={};
+    const val=field==='dogs'?parseInt(input.value)||1:parseFloat(input.value)||0;
+    clientPricing[name][field]=val;
+  });
+  save('cw_client_prices',clientPricing);
+  showToast('Pricing saved','');
+}
+
+// ── ROUTE PLANNER — UI ──
+let rpShifts=load('cw_shifts',[]);
+let rpActiveTab='dashboard';
+
+function renderRoutes(){
+  // Set default date to today
+  const dateInput=document.getElementById('rp-date');
+  if(dateInput&&!dateInput.value) dateInput.value=new Date().toISOString().split('T')[0];
+  rpTab(rpActiveTab);
+}
+
+function rpTab(tab){
+  rpActiveTab=tab;
+  ['dashboard','revenue','ltv','growth'].forEach(t=>{
+    const el=document.getElementById('rp-tab-'+t);
+    if(el) el.style.display=t===tab?'block':'none';
+  });
+  document.querySelectorAll('#rp-tabs .filter-pill').forEach(p=>{
+    const labels={Dashboard:'dashboard',Revenue:'revenue','Client Value':'ltv',Growth:'growth'};
+    p.classList.toggle('active',labels[p.textContent.trim()]===tab);
+  });
+  // Show/hide range pills (only for dashboard)
+  const rangePills=document.getElementById('rp-range-pills');
+  const dateInput=document.getElementById('rp-date');
+  if(rangePills) rangePills.style.display=tab==='dashboard'?'flex':'none';
+  if(dateInput) dateInput.style.display=tab==='dashboard'?'':'none';
+
+  if(tab==='dashboard') renderRpDashboard();
+  if(tab==='revenue') renderRevenueForecast();
+  if(tab==='ltv') renderClientLTV();
+  if(tab==='growth') renderGrowthSim();
+}
+
+// ── ROUTE DASHBOARD (auto from TTP) ──
+let rpDashRange='day';
+
+function setRpRange(range){
+  rpDashRange=range;
+  document.querySelectorAll('#rp-range-pills .filter-pill').forEach(p=>{
+    const map={Today:'day','Week Ahead':'week','Month Ahead':'month'};
+    p.classList.toggle('active',map[p.textContent.trim()]===range);
+  });
+  renderRpDashboard();
+}
+
+async function renderRpDashboard(){
+  const dateInput=document.getElementById('rp-date');
+  const startDate=dateInput?.value||new Date().toISOString().split('T')[0];
+  const cardsEl=document.getElementById('rp-shift-cards');
+  const summaryEl=document.getElementById('rp-weekly-summary');
+  if(!cardsEl) return;
+
+  cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data...</div>';
+
+  // Fetch all walks — filter on frontend for correct timezone handling
+  const walks=await fetch('/api/walks/today?range=all').then(r=>{
+    if(!r.ok) throw new Error('API error '+r.status);
+    return r.json();
+  }).catch(e=>{
+    console.warn('Route data fetch failed:',e);
+    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Failed to load route data. Try refreshing.</div>';
+    return [];
+  });
+  if(!walks.length&&cardsEl.innerHTML.includes('Failed')) return;
+
+  // Calculate date range using string math (avoids timezone issues)
+  function addDays(dateStr,days){
+    const [y,m,d]=dateStr.split('-').map(Number);
+    const dt=new Date(y,m-1,d+days);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  let endDate=startDate;
+  if(rpDashRange==='week') endDate=addDays(startDate,6);
+  else if(rpDashRange==='month') endDate=addDays(startDate,29);
+
+  const rangeWalks=walks.filter(w=>w.date>=startDate&&w.date<=endDate);
+  const todayWalks=rangeWalks;
+  const settings=getRouteSettings();
+
+  // Group walks by walker + date into routes
+  const walkerGroups={};
+  todayWalks.forEach(w=>{
+    const walker=w.walker||'Unknown';
+    const key=walker+'_'+w.date;
+    if(!walkerGroups[key]) walkerGroups[key]={walks:[],walker,date:w.date};
+    walkerGroups[key].walks.push(w);
+  });
+
+  // Convert each walker group into a shift — detect group walks (overlapping times)
+  const shifts=Object.values(walkerGroups).map(g=>{
+    const sorted=g.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+    const firstStart=sorted[0]?.time||'';
+    const lastEnd=sorted[sorted.length-1]?.endTime||'';
+
+    // Detect service slots: group overlapping walks into slots
+    const slots=[];
+    sorted.forEach(w=>{
+      const ws=new Date(w.start).getTime();
+      const we=new Date(w.end).getTime();
+      // Find existing slot that overlaps
+      const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+      if(existing){
+        existing.dogs.push(w);
+        existing.start=Math.min(existing.start,ws);
+        existing.end=Math.max(existing.end,we);
+      }else{
+        slots.push({start:ws,end:we,dogs:[w]});
+      }
+    });
+
+    // Actual occupied service time = sum of unique slot durations (not sum of all individual walks)
+    const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+    const groupSlots=slots.filter(sl=>sl.dogs.length>1);
+    const soloSlots=slots.filter(sl=>sl.dogs.length===1);
+    const maxGroupSize=Math.max(0,...slots.map(sl=>sl.dogs.length));
+
+    const bookings=g.walks.map(w=>{
+      const slot=slots.find(sl=>sl.dogs.includes(w));
+      const isGroup=slot&&slot.dogs.length>1;
+      const svc=(w.service||'').toLowerCase();
+      // Use client-specific pricing
+      let price=getClientPrice(w.client,w.service);
+      return {
+        dogName:w.client,client:w.client,suburb:'',
+        serviceType:w.service,price,
+        durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+        groupSuitable:isGroup,
+        _slotDogs:slot?slot.dogs.length:1
+      };
+    });
+
+    // Calculate realistic shift duration from service time + travel between slots
+    const estimatedTravelBetweenSlots=Math.max(0,(slots.length-1)*10);// ~10 mins travel between each slot
+    const totalShiftMins=actualServiceMins+estimatedTravelBetweenSlots;
+    // Estimate travel km based on number of stops
+    const estimatedKm=slots.length*5;// ~5km between each stop
+
+    // Auto-detect walker config
+    const wConfig=getWalkerConfig(g.walker);
+    const wType=wConfig?.type||'founder';
+    const wRate=wConfig?.rate||0;
+
+    const shift={
+      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+g.date,
+      date:g.date,walker:g.walker,walkerType:wType,
+      startTime:parseAmPmTo24(firstStart),
+      endTime:parseAmPmTo24(lastEnd),
+      breakMins:0,maxDogs:settings.maxDogsPerShift,
+      hourlyRate:wRate,
+      travelDistanceKm:estimatedKm,travelMins:estimatedTravelBetweenSlots,
+      variableCost:0,paymentFee:0,adminAlloc:0,
+      bookings,source:'ttp-auto',
+      _actualServiceMins:actualServiceMins,
+      _overrideShiftMins:totalShiftMins,// Use realistic duration, not full window
+    };
+
+    const metrics=calcShiftMetrics(shift,settings);
+    return {shift,metrics,walkCount:g.walks.length,slots:slots.length,groupSlots:groupSlots.length,soloSlots:soloSlots.length,maxGroupSize,actualServiceMins};
+  });
+
+  // Period summary
+  const periodRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const periodProfit=shifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+  const periodMargin=periodRevenue>0?(periodProfit/periodRevenue)*100:0;
+  const periodLabel=rpDashRange==='day'?'Today':rpDashRange==='week'?'This Week':'This Month';
+  const uniqueDays=[...new Set(rangeWalks.map(w=>w.date))].length;
+
+  summaryEl.innerHTML=`
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${rangeWalks.length}</div><div class="rp-weekly-lbl">Walks ${periodLabel}</div></div>
+    ${rpDashRange!=='day'?`<div class="rp-weekly-stat"><div class="rp-weekly-val">${uniqueDays}</div><div class="rp-weekly-lbl">Active Days</div></div>`:''}
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">${shifts.length}</div><div class="rp-weekly-lbl">Routes</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val">$${periodRevenue.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Revenue</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${periodProfit>=0?'var(--success)':'var(--danger)'}">$${periodProfit.toFixed(0)}</div><div class="rp-weekly-lbl">Est. Profit</div></div>
+    <div class="rp-weekly-stat"><div class="rp-weekly-val" style="color:${periodMargin>=40?'var(--success)':periodMargin>=20?'var(--warning)':'var(--danger)'}">${periodMargin.toFixed(0)}%</div><div class="rp-weekly-lbl">Avg Margin</div></div>
+  `;
+
+  if(!shifts.length){
+    cardsEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this period</div>';
+    return;
+  }
+
+  // Group shifts by date for week/month view
+  const shiftsByDate={};
+  shifts.forEach(s=>{
+    if(!shiftsByDate[s.shift.date]) shiftsByDate[s.shift.date]=[];
+    shiftsByDate[s.shift.date].push(s);
+  });
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const renderShiftCard=({shift,metrics,walkCount,slots,groupSlots,soloSlots,maxGroupSize,actualServiceMins})=>{
+    const band=getScoreBand(metrics.score);
+    const hi=getHealthInfo(metrics.health);
+    const flags=[];
+    if(metrics.grossMargin<getRouteSettings().marginThresholdYellow) flags.push('<span class="rp-flag rp-flag-low-margin">Low Margin</span>');
+    if(metrics.dogCount<metrics.maxDogs*0.5) flags.push('<span class="rp-flag rp-flag-underfilled">Underfilled</span>');
+    if(metrics.travelLoad>getRouteSettings().travelLoadThresholdWarn) flags.push('<span class="rp-flag rp-flag-travel-heavy">Travel Heavy</span>');
+
+    const groupInfo=groupSlots>0?`${groupSlots} group walk${groupSlots>1?'s':''} (up to ${maxGroupSize} dogs)`:'All solo walks';
+
+    return `<div class="rp-shift-card">
+      <div class="rp-shift-header">
+        <div>
+          <strong style="font-size:15px">${esc(shift.walker)}</strong>
+          <span style="font-size:12px;color:var(--ink-light);margin-left:8px">${shift.startTime} — ${shift.endTime}</span>
+          ${flags.join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>
+          <div style="text-align:center" title="Route Score: Profit ${metrics.grossMargin.toFixed(0)}% margin (35%) + ${metrics.utilisation.toFixed(0)}% utilised (25%) + ${(100-metrics.travelLoad).toFixed(0)}% travel efficiency (20%) + ${metrics.dogCount}/${metrics.maxDogs} capacity (20%)"><div class="rp-score-ring ${band.cls}">${metrics.score}</div><div style="font-size:9px;color:var(--ink-xlight);margin-top:2px">Route Score</div></div>
+        </div>
+      </div>
+      <div class="rp-shift-stats">
+        <div>🐕 <strong>${walkCount}</strong> dogs</div>
+        <div>🔗 <strong>${slots}</strong> service slots</div>
+        <div>💰 <strong>$${metrics.totalRevenue.toFixed(0)}</strong> revenue</div>
+        <div style="color:${metrics.grossProfit>=0?'var(--success)':'var(--danger)'}">📈 <strong>$${metrics.grossProfit.toFixed(0)}</strong> profit</div>
+        <div>📊 <strong>${metrics.grossMargin.toFixed(0)}%</strong> margin</div>
+        <div>⏱ <strong>${(metrics.shiftMins/60).toFixed(1)}h</strong> shift</div>
+        <div>⏳ <strong>${(actualServiceMins/60).toFixed(1)}h</strong> service time</div>
+        <div>📊 <strong>${metrics.utilisation.toFixed(0)}%</strong> utilised</div>
+        <div>💵 <strong>$${metrics.profitPerHr.toFixed(0)}/hr</strong> profit rate</div>
+      </div>
+      <div style="margin-top:8px;font-size:12px">
+        <span style="color:var(--info);font-weight:600">${groupInfo}</span>
+        ${soloSlots>0?` · <span style="color:var(--ink-light)">${soloSlots} solo walk${soloSlots>1?'s':''}</span>`:''}
+      </div>
+    </div>`;
+  };
+
+  if(rpDashRange==='day'){
+    cardsEl.innerHTML=shifts.map(renderShiftCard).join('');
+  }else if(rpDashRange==='week'){
+    // Week: collapsible day rows
+    cardsEl.innerHTML=Object.entries(shiftsByDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,dayShifts])=>{
+      const d=new Date(date+'T00:00:00');
+      const dayLabel=`${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
+      const dayRev=dayShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+      const dayProfit=dayShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+      const dayDogs=dayShifts.reduce((s,sh)=>s+sh.walkCount,0);
+      const dayMargin=dayRev>0?(dayProfit/dayRev)*100:0;
+      return `<div class="walk-day-collapse" onclick="this.classList.toggle('expanded')">
+        <div class="walk-day-summary">
+          <div style="display:flex;align-items:center;gap:10px">
+            <strong style="min-width:80px">${dayLabel}</strong>
+            <span class="walk-day-pill">${dayDogs} dogs</span>
+            <span class="walk-day-pill">${dayShifts.length} route${dayShifts.length>1?'s':''}</span>
+            <span class="walk-day-pill">$${dayRev.toFixed(0)} rev</span>
+            <span class="walk-day-pill" style="background:${dayProfit>=0?'var(--success-bg)':'#fee2e2'};color:${dayProfit>=0?'var(--success)':'var(--danger)'}">$${dayProfit.toFixed(0)} profit</span>
+            <span class="walk-day-pill" style="background:${dayMargin>=40?'var(--success-bg)':dayMargin>=20?'#fef3c7':'#fee2e2'};color:${dayMargin>=40?'var(--success)':dayMargin>=20?'var(--warning)':'var(--danger)'}">${dayMargin.toFixed(0)}%</span>
+          </div>
+          <span style="font-size:10px;color:var(--ink-xlight)">▼</span>
+        </div>
+        <div class="walk-day-detail">${dayShifts.map(renderShiftCard).join('')}</div>
+      </div>`;
+    }).join('');
+  }else{
+    // Month: calendar grid with profitability per day
+    const [sy,sm]=startDate.split('-').map(Number);
+    const firstOfMonth=new Date(sy,sm-1,1);
+    const daysInMonth=new Date(sy,sm,0).getDate();
+    const startDow=(firstOfMonth.getDay()+6)%7;// Monday=0
+    // Use Melbourne local date for "today" highlight
+    const nowLocal=new Date();
+    const todayStr=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+    const calDayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+    let calHtml=`<div class="walks-cal-grid">`;
+    calHtml+=calDayNames.map(d=>`<div class="walks-cal-header">${d}</div>`).join('');
+    for(let i=0;i<startDow;i++) calHtml+=`<div class="walks-cal-cell empty"></div>`;
+
+    for(let day=1;day<=daysInMonth;day++){
+      const dateStr=`${sy}-${String(sm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const dayShifts=shiftsByDate[dateStr]||[];
+      const dayRev=dayShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+      const dayProfit=dayShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+      const dayDogs=dayShifts.reduce((s,sh)=>s+sh.walkCount,0);
+      const dayMargin=dayRev>0?(dayProfit/dayRev)*100:0;
+      const isToday=dateStr===todayStr;
+      const hasWalks=dayShifts.length>0;
+
+      let bgColor='var(--white)';
+      if(hasWalks){
+        if(dayMargin>=60) bgColor='#dcfce7';
+        else if(dayMargin>=40) bgColor='#d1fae5';
+        else if(dayMargin>=20) bgColor='#fef3c7';
+        else if(dayProfit>0) bgColor='#fee2e2';
+        else bgColor='#fca5a5';
+      }
+
+      calHtml+=`<div class="walks-cal-cell${isToday?' cal-today':''}" style="background:${bgColor};cursor:${hasWalks?'pointer':'default'}" onclick="${hasWalks?`rpDashRange='day';document.getElementById('rp-date').value='${dateStr}';renderRpDashboard()`:''}" title="${hasWalks?dayDogs+' dogs · $'+dayRev.toFixed(0)+' rev · $'+dayProfit.toFixed(0)+' profit · '+dayMargin.toFixed(0)+'% margin':'No walks'}">
+        <div class="cal-day-num">${day}</div>
+        ${hasWalks?`
+          <div style="font-size:10px;font-weight:600;color:var(--ink)">${dayDogs} 🐕</div>
+          <div style="font-size:10px;color:${dayProfit>=0?'var(--success)':'var(--danger)'}">$${dayProfit.toFixed(0)}</div>
+          <div style="font-size:9px;color:var(--ink-xlight)">${dayMargin.toFixed(0)}%</div>
+        `:`<div style="font-size:10px;color:var(--ink-xlight)">—</div>`}
+      </div>`;
+    }
+    calHtml+=`</div>`;
+    cardsEl.innerHTML=calHtml;
+  }
+}
+
+function parseAmPmTo24(t){
+  if(!t) return '08:00';
+  const m=t.match(/(\d+):(\d+)\s*(am|pm)?/i);
+  if(!m) return '08:00';
+  let h=parseInt(m[1]),min=m[2];
+  if(m[3]&&m[3].toLowerCase()==='pm'&&h!==12) h+=12;
+  if(m[3]&&m[3].toLowerCase()==='am'&&h===12) h=0;
+  return `${String(h).padStart(2,'0')}:${min}`;
+}
+
+// ── QUICK ASSESS ──
+function recalcQuickAssess(){
+  const type=document.getElementById('qa-type')?.value||'employee';
+  const rate=parseFloat(document.getElementById('qa-rate')?.value)||30;
+  const hours=parseFloat(document.getElementById('qa-hours')?.value)||4;
+  const dogs=parseInt(document.getElementById('qa-dogs')?.value)||5;
+  const price=parseFloat(document.getElementById('qa-price')?.value)||45;
+  const km=parseFloat(document.getElementById('qa-km')?.value)||15;
+  const settings=getRouteSettings();
+  const shiftMins=hours*60;
+  const revenue=dogs*price;
+  const labour=calcLabourCost(type,rate,shiftMins,settings.superRate,settings.casualLoading);
+  const travel=calcTravelCost(km,settings.costPerKm);
+  const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(revenue,labour,travel,0);
+  const profitPerHr=hours>0?grossProfit/hours:0;
+  const health=calcRouteHealth(grossMargin,20,80,settings);
+  const hi=getHealthInfo(health);
+  const el=document.getElementById('qa-results');
+  if(!el) return;
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <span class="rp-health ${hi.cls}" style="font-size:13px;padding:6px 14px">${hi.icon} ${hi.label}</span>
+      <span style="font-size:13px;color:var(--ink-light)">Gross Margin: <strong style="color:${grossMargin>=40?'var(--success)':grossMargin>=20?'var(--warning)':'var(--danger)'}">${grossMargin.toFixed(1)}%</strong></span>
+    </div>
+    <div class="rp-metric-grid">
+      <div class="rp-metric"><div class="rp-metric-label">Revenue</div><div class="rp-metric-value">$${revenue.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Labour Cost</div><div class="rp-metric-value">$${labour.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Travel Cost</div><div class="rp-metric-value">$${travel.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${totalDirectCost.toFixed(0)}</div></div>
+      <div class="rp-metric ${grossProfit>0?'good':'bad'}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${grossProfit.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${profitPerHr.toFixed(0)}</div></div>
+    </div>
+  `;
+}
+
+// ── REVENUE & TARGETS ──
+
+async function renderRevenueForecast(){
+  const el=document.getElementById('revenue-forecast-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading revenue data...</div>';
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  // Load targets
+  const targets=load('cw_rev_targets',{});
+  const annualGoal=parseFloat(targets.annualGoal)||100000;
+  const momGrowthTarget=parseFloat(targets.momGrowth)||10;
+
+  function walkRevenue(w){return getClientPrice(w.client,w.service);}
+  function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
+  function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
+
+  // Build monthly data for last 6 months + current + next 6 months (13 months)
+  const monthlyData=[];
+  for(let i=-6;i<=6;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
+    const ms=monthStr(d.getFullYear(),d.getMonth());
+    const mWalks=walks.filter(w=>w.date.startsWith(ms));
+    const rev=mWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const daysInM=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    const isPast=i<0;
+    const isCurrent=i===0;
+    const isFuture=i>0;
+    const dayOfM=isCurrent?now.getDate():isPast?daysInM:0;
+    const completedWalks=isCurrent?mWalks.filter(w=>w.date<=nowStr):mWalks;
+    const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const bookedRev=isCurrent?rev-completedRev:0;
+
+    // Target: use custom target if set, otherwise calculate from annual goal or growth
+    let target=targets[ms]||0;
+    if(!target){
+      if(i===0) target=annualGoal/12;// Default: equal monthly share
+      else if(i>0){
+        // Future: apply MoM growth from current month
+        const prevMonth=monthlyData[monthlyData.length-1];
+        target=prevMonth?prevMonth.target*(1+momGrowthTarget/100):annualGoal/12;
+      }else{
+        target=annualGoal/12;
+      }
+    }
+
+    monthlyData.push({ms,rev,target,walks:mWalks.length,isPast,isCurrent,isFuture,completedRev,bookedRev,daysInM,dayOfM});
+  }
+
+  const currentMonth=monthlyData.find(m=>m.isCurrent);
+  const cm=currentMonth;
+  const progressPct=cm.target>0?Math.min(100,(cm.rev/cm.target)*100):0;
+  const gapToTarget=Math.max(0,cm.target-cm.rev);
+  const avgRevPerWalk=cm.walks>0?cm.rev/cm.walks:55;
+  const walksNeeded=avgRevPerWalk>0?Math.ceil(gapToTarget/avgRevPerWalk):0;
+  const daysLeft=cm.daysInM-cm.dayOfM;
+
+  // Past months for trend
+  const pastMonths=monthlyData.filter(m=>m.isPast&&m.walks>0);
+  const lastMonth=pastMonths[pastMonths.length-1];
+  const momActual=lastMonth&&lastMonth.rev>0?((cm.rev-lastMonth.rev)/lastMonth.rev)*100:0;
+
+  // Year-to-date
+  const ytdMonths=monthlyData.filter(m=>(m.isPast||m.isCurrent)&&m.ms.startsWith(String(now.getFullYear())));
+  const ytdRev=ytdMonths.reduce((s,m)=>s+m.rev,0);
+  const ytdTarget=ytdMonths.reduce((s,m)=>s+m.target,0);
+  const annualPace=ytdRev/(now.getMonth()+1)*12;
+
+  // Weekly run rate
+  const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  const fwStr=`${fourWeeksAgo.getFullYear()}-${String(fourWeeksAgo.getMonth()+1).padStart(2,'0')}-${String(fourWeeksAgo.getDate()).padStart(2,'0')}`;
+  const recentWalks=walks.filter(w=>w.date>=fwStr&&w.date<=nowStr);
+  const weeklyRunRate=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
+
+  el.innerHTML=`
+    <!-- HERO: Annual Goal + Settings -->
+    <div style="display:flex;gap:16px;margin-bottom:20px;align-items:stretch">
+      <div class="card" style="flex:2;border-top:4px solid var(--orange)">
+        <div class="card-body" style="text-align:center;padding:24px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Annual Revenue Goal</div>
+          <div style="font-size:42px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--ink)">$${(annualGoal/1000).toFixed(0)}k</div>
+          <div style="font-size:13px;color:var(--ink-light);margin-top:4px">= $${(annualGoal/12).toFixed(0)}/month avg</div>
+          <div style="margin-top:12px;font-size:12px">
+            YTD: <strong style="color:${ytdRev>=ytdTarget?'var(--success)':'var(--warning)'}">$${(ytdRev/1000).toFixed(1)}k</strong> of $${(ytdTarget/1000).toFixed(1)}k target
+            · Annual pace: <strong style="color:${annualPace>=annualGoal?'var(--success)':'var(--warning)'}">$${(annualPace/1000).toFixed(0)}k</strong>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Growth Settings</h4>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+            <div class="form-group"><label>Annual Goal ($)</label><input type="number" value="${annualGoal}" onchange="saveRevTargets('annualGoal',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
+            <div class="form-group"><label>MoM Growth Target (%)</label><input type="number" value="${momGrowthTarget}" step="1" onchange="saveRevTargets('momGrowth',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CURRENT MONTH HERO -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid ${cm.rev>=cm.target?'var(--success)':'var(--orange)'}">
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="font-size:18px;font-weight:800">${monthName(cm.ms)}</h3>
+          <div style="font-size:12px;color:var(--ink-light)">${daysLeft} days left · ${cm.walks} walks booked</div>
+        </div>
+        <div style="background:var(--cream);border-radius:20px;height:32px;overflow:hidden;margin-bottom:12px;position:relative">
+          <div style="background:var(--success);height:100%;width:${Math.min(100,(cm.completedRev/cm.target)*100)}%;border-radius:20px;transition:width .3s"></div>
+          <div style="background:var(--orange);height:100%;width:${Math.min(100-(cm.completedRev/cm.target)*100,(cm.bookedRev/cm.target)*100)}%;position:absolute;top:0;left:${(cm.completedRev/cm.target)*100}%;border-radius:0 20px 20px 0;opacity:0.5"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;color:var(--ink)">${progressPct.toFixed(0)}% — $${cm.rev.toFixed(0)} of $${cm.target.toFixed(0)}</div>
+        </div>
+        <div style="display:flex;gap:20px;font-size:12px">
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:4px"></span>Delivered: <strong>$${cm.completedRev.toFixed(0)}</strong></div>
+          <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--orange);opacity:.5;margin-right:4px"></span>Booked: <strong>$${cm.bookedRev.toFixed(0)}</strong></div>
+          <div>Run rate: <strong>$${weeklyRunRate.toFixed(0)}/wk</strong></div>
+          ${lastMonth?`<div>vs ${monthName(lastMonth.ms)}: <strong style="color:${momActual>=0?'var(--success)':'var(--danger)'}"> ${momActual>=0?'+':''}${momActual.toFixed(0)}%</strong></div>`:''}
+        </div>
+        ${gapToTarget>0?`<div style="margin-top:10px;padding:8px 12px;background:var(--warning-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)"><strong>$${gapToTarget.toFixed(0)} to go</strong> — need ~${walksNeeded} more walks in ${daysLeft} days</div>`
+        :`<div style="margin-top:10px;padding:8px 12px;background:var(--success-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--success)"><strong>On track!</strong> Exceeding target by $${(cm.rev-cm.target).toFixed(0)}</div>`}
+      </div>
+    </div>
+
+    <!-- MONTHLY ROADMAP: Past + Current + Future -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body">
+        <h4 style="font-size:14px;font-weight:700;margin-bottom:14px">📅 Monthly Roadmap</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>Month</th><th>Target</th><th>Actual / Booked</th><th>vs Target</th><th>MoM Growth</th><th>Status</th></tr></thead>
+            <tbody>${monthlyData.map((m,i)=>{
+              const prev=i>0?monthlyData[i-1]:null;
+              const mom=prev&&prev.rev>0?((m.rev-prev.rev)/prev.rev)*100:0;
+              const vsTarget=m.target>0?((m.rev-m.target)/m.target)*100:0;
+              const status=m.isCurrent?'current':m.isPast?(m.rev>=m.target?'hit':'missed'):(m.rev>0?'booked':'planned');
+              const statusLabel={current:'In Progress',hit:'✅ Hit',missed:'❌ Missed',booked:'Booked',planned:'Planned'}[status];
+              const statusColor={current:'var(--orange)',hit:'var(--success)',missed:'var(--danger)',booked:'var(--info)',planned:'var(--ink-xlight)'}[status];
+              return `<tr style="${m.isCurrent?'background:var(--orange-xlight);font-weight:600':''}">
+                <td><strong>${monthName(m.ms)}</strong></td>
+                <td>$${m.target.toFixed(0)}</td>
+                <td>$${m.rev.toFixed(0)}${m.isCurrent?` <span style="font-size:10px;color:var(--ink-light)">(${m.walks} walks)</span>`:m.walks>0?` <span style="font-size:10px;color:var(--ink-xlight)">(${m.walks})</span>`:''}</td>
+                <td style="color:${vsTarget>=0?'var(--success)':'var(--danger)'}; font-weight:700">${m.rev>0||m.isPast?(vsTarget>=0?'+':'')+vsTarget.toFixed(0)+'%':'—'}</td>
+                <td style="color:${mom>=0?'var(--success)':'var(--danger)'}">${prev&&(m.rev>0||m.isPast)?(mom>=0?'+':'')+mom.toFixed(0)+'%':'—'}</td>
+                <td><span style="color:${statusColor};font-size:11px;font-weight:600">${statusLabel}</span></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Future targets auto-calculated at ${momGrowthTarget}% MoM growth. Override any month by setting a custom target in settings.</div>
+      </div>
+    </div>
+
+    <!-- KPI Summary -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+      <div class="rp-metric"><div class="rp-metric-label">Weekly Run Rate</div><div class="rp-metric-value">$${weeklyRunRate.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Monthly Run Rate</div><div class="rp-metric-value">$${(weeklyRunRate*4.3).toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Walk</div><div class="rp-metric-value">$${avgRevPerWalk.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">YTD Revenue</div><div class="rp-metric-value">$${(ytdRev/1000).toFixed(1)}k</div></div>
+      <div class="rp-metric ${annualPace>=annualGoal?'good':'warn'}"><div class="rp-metric-label">Annual Pace</div><div class="rp-metric-value">$${(annualPace/1000).toFixed(0)}k</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">MoM Target</div><div class="rp-metric-value">${momGrowthTarget}%</div></div>
+    </div>
+  `;
+}
+
+function saveRevTargets(key,value){
+  const t=load('cw_rev_targets',{});
+  t[key]=parseFloat(value)||0;
+  save('cw_rev_targets',t);
+  renderRevenueForecast();
+}
+
+// ── CLIENT LIFETIME VALUE ──
+async function renderClientLTV(){
+  const el=document.getElementById('client-ltv-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Calculating client values...</div>';
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  function walkRevenue(w){return getClientPrice(w.client,w.service);}
+
+  // Build client value map
+  const clientMap={};
+  walks.forEach(w=>{
+    const name=(w.client||'').replace(/\\+$/g,'').trim();
+    if(!name||name==='Potential Client (general)') return;
+    if(!clientMap[name]) clientMap[name]={name,walks:0,revenue:0,firstWalk:null,lastWalk:null,months:new Set(),futureWalks:0};
+    const c=clientMap[name];
+    const rev=walkRevenue(w);
+    c.walks++;
+    c.revenue+=rev;
+    if(w.date<=nowStr) {
+      if(!c.firstWalk||w.date<c.firstWalk) c.firstWalk=w.date;
+      if(!c.lastWalk||w.date>c.lastWalk) c.lastWalk=w.date;
+    } else {
+      c.futureWalks++;
+    }
+    c.months.add(w.date.substring(0,7));
+  });
+
+  const clientList=Object.values(clientMap).map(c=>{
+    const monthsActive=c.months.size;
+    const firstDate=c.firstWalk?new Date(c.firstWalk+'T00:00:00'):null;
+    const tenureMonths=firstDate?Math.max(1,Math.round((now-firstDate)/(30.44*86400000))):0;
+    const avgPerMonth=tenureMonths>0?c.revenue/tenureMonths:c.revenue;
+    const walksPerWeek=tenureMonths>0?c.walks/(tenureMonths*4.3):0;
+    const isActive=c.futureWalks>0||c.lastWalk>=nowStr.substring(0,7);
+    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive};
+  }).sort((a,b)=>b.revenue-a.revenue);
+
+  const activeClients=clientList.filter(c=>c.isActive);
+  const totalClients=clientList.length;
+  const totalRev=clientList.reduce((s,c)=>s+c.revenue,0);
+  const avgLTV=totalClients>0?totalRev/totalClients:0;
+  const avgTenure=clientList.reduce((s,c)=>s+c.tenureMonths,0)/Math.max(1,totalClients);
+  const avgMonthlyPerClient=clientList.reduce((s,c)=>s+c.avgPerMonth,0)/Math.max(1,totalClients);
+
+  // Revenue concentration
+  const top5Rev=clientList.slice(0,5).reduce((s,c)=>s+c.revenue,0);
+  const top5Pct=totalRev>0?(top5Rev/totalRev)*100:0;
+  const topClient=clientList[0];
+  const topClientMonthly=topClient?topClient.avgPerMonth:0;
+
+  // Acquisition value (first 3 months revenue average)
+  const first3MonthRev=clientList.filter(c=>c.tenureMonths>=3).map(c=>{
+    // Approximate first 3 month revenue
+    return Math.min(c.revenue,c.avgPerMonth*3);
+  });
+  const avgFirst3=first3MonthRev.length>0?first3MonthRev.reduce((s,v)=>s+v,0)/first3MonthRev.length:avgLTV*0.3;
+
+  // Cohort data (by start month)
+  const cohorts={};
+  clientList.forEach(c=>{
+    if(!c.firstWalk) return;
+    const cohort=c.firstWalk.substring(0,7);
+    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0};
+    cohorts[cohort].started++;
+    if(c.isActive) cohorts[cohort].active++;
+    cohorts[cohort].totalRev+=c.revenue;
+  });
+
+  el.innerHTML=`
+    <!-- Overview -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+      <div class="rp-metric"><div class="rp-metric-label">Total Clients Ever</div><div class="rp-metric-value">${totalClients}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Currently Active</div><div class="rp-metric-value">${activeClients.length}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Client LTV</div><div class="rp-metric-value">$${avgLTV.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Tenure</div><div class="rp-metric-value">${avgTenure.toFixed(1)}mo</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Client/Month</div><div class="rp-metric-value">$${avgMonthlyPerClient.toFixed(0)}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Total Revenue (All Time)</div><div class="rp-metric-value">$${totalRev.toFixed(0)}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- Revenue Concentration -->
+      <div class="card" style="border-left:4px solid ${top5Pct>50?'var(--danger)':top5Pct>35?'var(--warning)':'var(--success)'}">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">⚠️ Revenue Concentration</h4>
+          <div style="font-size:24px;font-weight:800;color:${top5Pct>50?'var(--danger)':top5Pct>35?'var(--warning)':'var(--success)'}">${top5Pct.toFixed(0)}%</div>
+          <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">of revenue from your top 5 clients</div>
+          ${top5Pct>50?`<div style="font-size:12px;color:var(--danger)">⚠️ High risk — losing 1-2 top clients would significantly impact revenue</div>`
+          :top5Pct>35?`<div style="font-size:12px;color:var(--warning)">Moderate concentration — keep diversifying your client base</div>`
+          :`<div style="font-size:12px;color:var(--success)">✅ Well diversified — no single client dominates revenue</div>`}
+          ${topClient?`<div style="margin-top:8px;font-size:11px;color:var(--ink-light)">Biggest client: <strong>${esc(topClient.name)}</strong> — $${topClient.revenue.toFixed(0)} total ($${topClientMonthly.toFixed(0)}/mo)</div>`:''}
+        </div>
+      </div>
+
+      <!-- Acquisition Value -->
+      <div class="card" style="border-left:4px solid var(--info)">
+        <div class="card-body">
+          <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">💡 Client Acquisition Value</h4>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+            <div style="display:flex;justify-content:space-between"><span>Avg first 3 months revenue</span><strong>$${avgFirst3.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Avg lifetime revenue</span><strong>$${avgLTV.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Avg monthly value</span><strong>$${avgMonthlyPerClient.toFixed(0)}/mo</strong></div>
+            <div style="border-top:1px solid var(--border);padding-top:8px">
+              <strong>Max acquisition spend:</strong> You can afford up to <strong style="color:var(--success)">$${(avgFirst3*0.3).toFixed(0)}</strong> to acquire a new client (30% of first 3-month value) and still be profitable.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Client Cohorts -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">📊 Client Cohorts</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>Cohort</th><th>Started</th><th>Still Active</th><th>Retention</th><th>Total Revenue</th><th>Avg LTV</th></tr></thead>
+            <tbody>${Object.entries(cohorts).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12).map(([month,d])=>{
+              const ret=d.started>0?(d.active/d.started)*100:0;
+              return `<tr>
+                <td><strong>${month}</strong></td>
+                <td>${d.started}</td>
+                <td>${d.active}</td>
+                <td style="color:${ret>=70?'var(--success)':ret>=40?'var(--warning)':'var(--danger)'}">${ret.toFixed(0)}%</td>
+                <td>$${d.totalRev.toFixed(0)}</td>
+                <td>$${d.started>0?(d.totalRev/d.started).toFixed(0):0}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Client Rankings -->
+    <div class="card">
+      <div class="card-body">
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Client Rankings by Lifetime Value</h4>
+        <div style="overflow-x:auto">
+          <table class="enq-list-table">
+            <thead><tr><th>#</th><th>Client</th><th>Status</th><th>Tenure</th><th>Total Walks</th><th>Walks/Week</th><th>Lifetime Revenue</th><th>Monthly Avg</th></tr></thead>
+            <tbody>${clientList.slice(0,20).map((c,i)=>`<tr>
+              <td><strong>${i+1}</strong></td>
+              <td><strong>${esc(c.name)}</strong></td>
+              <td><span style="color:${c.isActive?'var(--success)':'var(--danger)'};font-size:11px">${c.isActive?'● Active':'○ Inactive'}</span></td>
+              <td>${c.tenureMonths}mo</td>
+              <td>${c.walks}</td>
+              <td>${c.walksPerWeek.toFixed(1)}</td>
+              <td style="font-weight:700">$${c.revenue.toFixed(0)}</td>
+              <td>$${c.avgPerMonth.toFixed(0)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── GROWTH SIMULATOR ──
+async function renderGrowthSim(){
+  const el=document.getElementById('growth-sim-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Analysing your business data...</div>';
+
+  // Fetch real walk data
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const settings=getRouteSettings();
+
+  // Calculate current week baseline from actual data
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  // Get last 4 complete weeks for averages
+  const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  const fourWeeksStr=`${fourWeeksAgo.getFullYear()}-${String(fourWeeksAgo.getMonth()+1).padStart(2,'0')}-${String(fourWeeksAgo.getDate()).padStart(2,'0')}`;
+  const recentWalks=walks.filter(w=>w.date>=fourWeeksStr&&w.date<=nowStr);
+
+  // Weekly averages
+  const weeklyWalks=Math.round(recentWalks.length/4);
+  const uniqueWeekDays=[...new Set(recentWalks.map(w=>w.date))].length;
+  const avgDaysPerWeek=Math.round(uniqueWeekDays/4*10)/10;
+
+  // Revenue estimate
+  const weeklyRevenue=recentWalks.reduce((s,w)=>s+getClientPrice(w.client,w.service),0)/4;
+
+  // Walk hours
+  const totalHrs=recentWalks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0)/4;
+  const founderWeeklyCost=settings.founderWeeklyCost||850;
+  const travelCostWeek=avgDaysPerWeek*5*settings.costPerKm;// ~5km per day
+  const weeklyProfit=weeklyRevenue-founderWeeklyCost-travelCostWeek;
+  const weeklyMargin=weeklyRevenue>0?(weeklyProfit/weeklyRevenue)*100:0;
+  const effectiveHourly=totalHrs>0?weeklyProfit/totalHrs:0;
+
+  // Pipeline data
+  const qualifiedLeads=enquiries.filter(e=>e.stage==='qualified'||e.stage==='new'||e.stage==='contacted').length;
+
+  // Average revenue per dog
+  const avgRevPerDog=weeklyWalks>0?weeklyRevenue/weeklyWalks:55;
+
+  el.innerHTML=`
+    <!-- SECTION 1: Your Business Right Now -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--orange)">
+      <div class="card-body">
+        <h3 style="font-size:16px;font-weight:800;margin-bottom:4px">📊 Your Business Right Now</h3>
+        <p style="font-size:12px;color:var(--ink-light);margin-bottom:14px">Based on the last 4 weeks of actual walk data</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+          <div class="rp-metric"><div class="rp-metric-label">Walks/Week</div><div class="rp-metric-value">${weeklyWalks}</div></div>
+          <div class="rp-metric"><div class="rp-metric-label">Active Days/Week</div><div class="rp-metric-value">${avgDaysPerWeek}</div></div>
+          <div class="rp-metric"><div class="rp-metric-label">Walk Hours/Week</div><div class="rp-metric-value">${totalHrs.toFixed(1)}h</div></div>
+          <div class="rp-metric"><div class="rp-metric-label">Weekly Revenue</div><div class="rp-metric-value">$${weeklyRevenue.toFixed(0)}</div></div>
+          <div class="rp-metric"><div class="rp-metric-label">Your Cost (Weekly)</div><div class="rp-metric-value">$${founderWeeklyCost}</div></div>
+          <div class="rp-metric ${weeklyProfit>0?'good':'bad'}"><div class="rp-metric-label">Weekly Profit</div><div class="rp-metric-value">$${weeklyProfit.toFixed(0)}</div></div>
+          <div class="rp-metric ${weeklyMargin>=40?'good':weeklyMargin>=20?'warn':'bad'}"><div class="rp-metric-label">Margin</div><div class="rp-metric-value">${weeklyMargin.toFixed(0)}%</div></div>
+          <div class="rp-metric"><div class="rp-metric-label">Your Effective $/hr</div><div class="rp-metric-value">$${effectiveHourly.toFixed(0)}</div></div>
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:var(--cream);border-radius:var(--radius-sm);font-size:12px">
+          <strong>Pipeline:</strong> You have <strong style="color:var(--info)">${qualifiedLeads} active leads</strong> in your enquiry pipeline right now.
+          ${totalHrs>25?`<span style="color:var(--warning)"> You're spending ${totalHrs.toFixed(0)}h/week walking — that's limited time for follow-ups and growth.</span>`:''}
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Growth Scenarios -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--info)">
+      <div class="card-body">
+        <h3 style="font-size:16px;font-weight:800;margin-bottom:4px">🚀 Growth Scenarios</h3>
+        <p style="font-size:12px;color:var(--ink-light);margin-bottom:14px">What happens when you hire? Adjust the inputs below.</p>
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="form-group"><label>New Walker Hourly Rate ($)</label><input id="gs-rate" type="number" value="27" oninput="recalcGrowthSim()"></div>
+          <div class="form-group"><label>Days Per Week</label><input id="gs-days" type="number" value="3" oninput="recalcGrowthSim()"></div>
+          <div class="form-group"><label>Hours Per Day</label><input id="gs-hours" type="number" value="5" step="0.5" oninput="recalcGrowthSim()"></div>
+          <div class="form-group"><label>Dogs They'd Walk/Day</label><input id="gs-dogs" type="number" value="6" oninput="recalcGrowthSim()"></div>
+        </div>
+        <div id="gs-scenarios"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: Break-Even -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--success)">
+      <div class="card-body">
+        <h3 style="font-size:16px;font-weight:800;margin-bottom:4px">📈 Break-Even & Tipping Point</h3>
+        <div id="gs-breakeven"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: Time ROI -->
+    <div class="card" style="border-left:4px solid var(--purple)">
+      <div class="card-body">
+        <h3 style="font-size:16px;font-weight:800;margin-bottom:4px">⏰ The Real ROI — Your Time</h3>
+        <div id="gs-time-roi"></div>
+      </div>
+    </div>
+  `;
+
+  // Store baseline for recalc
+  window._gsBaseline={weeklyWalks,weeklyRevenue,weeklyProfit,weeklyMargin,totalHrs,founderWeeklyCost,travelCostWeek,avgRevPerDog,qualifiedLeads,effectiveHourly,avgDaysPerWeek};
+  recalcGrowthSim();
+}
+
+function recalcGrowthSim(){
+  const b=window._gsBaseline;
+  if(!b) return;
+  const settings=getRouteSettings();
+
+  const hireRate=parseFloat(document.getElementById('gs-rate')?.value)||27;
+  const hireDays=parseFloat(document.getElementById('gs-days')?.value)||3;
+  const hireHrsPerDay=parseFloat(document.getElementById('gs-hours')?.value)||5;
+  const hireDogsPerDay=parseFloat(document.getElementById('gs-dogs')?.value)||6;
+
+  // Scenario A: Just you (current)
+  const aRev=b.weeklyRevenue;
+  const aCost=b.founderWeeklyCost+b.travelCostWeek;
+  const aProfit=aRev-aCost;
+  const aHrs=b.totalHrs;
+
+  // Scenario B: You + 1 walker
+  const hireWeeklyHrs=hireDays*hireHrsPerDay;
+  const hireCostLoaded=hireRate*(1+settings.superRate)*hireWeeklyHrs;
+  const hireTravel=hireDays*5*settings.costPerKm;
+  const hireDogsWeek=hireDays*hireDogsPerDay;
+  const hireRevenue=hireDogsWeek*b.avgRevPerDog;
+  // Founder still does their walks, but could reduce
+  const bRev=aRev+hireRevenue;
+  const bCost=b.founderWeeklyCost+b.travelCostWeek+hireCostLoaded+hireTravel;
+  const bProfit=bRev-bCost;
+  const bMargin=bRev>0?(bProfit/bRev)*100:0;
+  const founderFreedHrs=hireWeeklyHrs*0.7;// Not 1:1 — some overlap
+  const founderNewHrs=Math.max(0,b.totalHrs-founderFreedHrs);
+
+  // Scenario C: You + 2 walkers
+  const cHireCost=hireCostLoaded*2;
+  const cHireTravel=hireTravel*2;
+  const cHireRev=hireRevenue*2;
+  const cRev=aRev+cHireRev;
+  const cCost=b.founderWeeklyCost+b.travelCostWeek+cHireCost+cHireTravel;
+  const cProfit=cRev-cCost;
+  const cMargin=cRev>0?(cProfit/cRev)*100:0;
+
+  // Break-even
+  const breakEvenDogsPerDay=hireCostLoaded>0?Math.ceil((hireCostLoaded+hireTravel)/(hireDays*b.avgRevPerDog)):0;
+  const breakEvenWeeklyRev=hireCostLoaded+hireTravel;
+  const breakEvenClients=Math.ceil(breakEvenDogsPerDay*1.2);// Not every client walks every day
+
+  // Time ROI
+  const targetHourly=settings.founderTargetHourly||80;
+  const freedTimeValue=founderFreedHrs*targetHourly;
+  const leadsPerHr=2;// Assume founder can follow up ~2 leads per hour
+  const potentialLeadsContacted=Math.round(founderFreedHrs*leadsPerHr);
+  const conversionRate=0.15;// 15% lead→client conversion
+  const potentialNewClients=Math.round(potentialLeadsContacted*conversionRate);
+  const clientLifetimeWeeklyRev=b.avgRevPerDog*2;// 2 walks/week avg
+
+  document.getElementById('gs-scenarios').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div style="background:var(--cream);border-radius:var(--radius);padding:16px;border:2px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">A: Just You (Current)</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>Weekly Revenue</span><strong>$${aRev.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Weekly Costs</span><strong>$${aCost.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px"><span style="font-weight:700">Weekly Profit</span><strong style="color:${aProfit>=0?'var(--success)':'var(--danger)'}">$${aProfit.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Your Walk Hours</span><strong>${aHrs.toFixed(1)}h</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Dogs/Week</span><strong>${b.weeklyWalks}</strong></div>
+        </div>
+      </div>
+      <div style="background:var(--white);border-radius:var(--radius);padding:16px;border:2px solid var(--info)">
+        <div style="font-size:13px;font-weight:700;color:var(--info);margin-bottom:10px">B: You + 1 Walker</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>Weekly Revenue</span><strong>$${bRev.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Your Cost</span><strong>$${(b.founderWeeklyCost+b.travelCostWeek).toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Staff Cost (${hireDays}d × ${hireHrsPerDay}h × $${hireRate}+super)</span><strong style="color:var(--danger)">$${(hireCostLoaded+hireTravel).toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px"><span style="font-weight:700">Weekly Profit</span><strong style="color:${bProfit>=0?'var(--success)':'var(--danger)'}">$${bProfit.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Dogs/Week</span><strong>${b.weeklyWalks+hireDogsWeek}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Your Walk Hours</span><strong>${founderNewHrs.toFixed(1)}h</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--success)">Hours Freed Up</span><strong style="color:var(--success)">${founderFreedHrs.toFixed(1)}h</strong></div>
+        </div>
+      </div>
+      <div style="background:var(--white);border-radius:var(--radius);padding:16px;border:2px solid var(--purple)">
+        <div style="font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">C: You + 2 Walkers</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>Weekly Revenue</span><strong>$${cRev.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Total Costs</span><strong>$${cCost.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px"><span style="font-weight:700">Weekly Profit</span><strong style="color:${cProfit>=0?'var(--success)':'var(--danger)'}">$${cProfit.toFixed(0)}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Margin</span><strong>${cMargin.toFixed(0)}%</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Total Dogs/Week</span><strong>${b.weeklyWalks+hireDogsWeek*2}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--success)">Your Walk Hours</span><strong style="color:var(--success)">${Math.max(0,b.totalHrs-founderFreedHrs*2).toFixed(1)}h</strong></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:var(--cream);border-radius:var(--radius-sm);font-size:12px;color:var(--ink-light)">
+      ${bProfit>aProfit?`<strong style="color:var(--success)">Hiring 1 walker increases weekly profit by $${(bProfit-aProfit).toFixed(0)}</strong> while freeing up ${founderFreedHrs.toFixed(1)} hours of your week.`
+      :`<strong style="color:var(--warning)">Hiring 1 walker reduces weekly profit by $${(aProfit-bProfit).toFixed(0)}</strong> — but frees up ${founderFreedHrs.toFixed(1)} hours. Worth it if you use that time for growth.`}
+    </div>
+  `;
+
+  document.getElementById('gs-breakeven').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:12px">
+      <div class="rp-metric" style="text-align:center"><div class="rp-metric-label">Break-Even Dogs/Day</div><div class="rp-metric-value">${breakEvenDogsPerDay}</div><div style="font-size:10px;color:var(--ink-xlight)">for the new walker to cover their cost</div></div>
+      <div class="rp-metric" style="text-align:center"><div class="rp-metric-label">Break-Even Weekly Revenue</div><div class="rp-metric-value">$${breakEvenWeeklyRev.toFixed(0)}</div><div style="font-size:10px;color:var(--ink-xlight)">new walker needs to generate this</div></div>
+      <div class="rp-metric" style="text-align:center"><div class="rp-metric-label">Clients Needed</div><div class="rp-metric-value">~${breakEvenClients}</div><div style="font-size:10px;color:var(--ink-xlight)">regular clients to sustain the hire</div></div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:var(--cream);border-radius:var(--radius-sm);font-size:12px">
+      ${hireDogsPerDay>=breakEvenDogsPerDay
+        ?`<strong style="color:var(--success)">At ${hireDogsPerDay} dogs/day, the new walker is profitable from day one.</strong> They generate $${hireRevenue.toFixed(0)}/week against a cost of $${(hireCostLoaded+hireTravel).toFixed(0)}/week.`
+        :`<strong style="color:var(--warning)">At ${hireDogsPerDay} dogs/day, the new walker isn't covering their cost yet.</strong> You need to get them to ${breakEvenDogsPerDay} dogs/day to break even. Focus on filling their schedule from your ${b.qualifiedLeads} pipeline leads.`}
+    </div>
+  `;
+
+  document.getElementById('gs-time-roi').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Hours You Get Back</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>Walk hours freed/week</span><strong style="color:var(--success)">${founderFreedHrs.toFixed(1)}h</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Your time value at $${targetHourly}/hr</span><strong style="color:var(--success)">$${freedTimeValue.toFixed(0)}/week</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Monthly time value</span><strong style="color:var(--success)">$${(freedTimeValue*4.3).toFixed(0)}/month</strong></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">What You Could Do With That Time</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span>Leads you could follow up</span><strong>${potentialLeadsContacted}/week</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Potential new clients (at 15% conversion)</span><strong style="color:var(--success)">${potentialNewClients}/week</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>Revenue from new clients</span><strong style="color:var(--success)">$${(potentialNewClients*clientLifetimeWeeklyRev).toFixed(0)}/week</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>You have ${b.qualifiedLeads} leads in pipeline</span><strong style="color:var(--info)">Ready to convert</strong></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:14px;background:var(--orange-xlight);border:1px solid var(--orange-light);border-radius:var(--radius-sm);font-size:13px">
+      <strong>💡 Bottom Line:</strong> Hiring a walker at $${hireRate}/hr for ${hireDays} days/week costs <strong>$${(hireCostLoaded+hireTravel).toFixed(0)}/week</strong>.
+      It frees up <strong>${founderFreedHrs.toFixed(1)} hours</strong> worth <strong>$${freedTimeValue.toFixed(0)}</strong> at your target rate.
+      ${freedTimeValue>(hireCostLoaded+hireTravel)?`<span style="color:var(--success);font-weight:700"> The time you get back is worth more than the hire costs. This is a growth-positive move.</span>`
+      :`<span style="color:var(--warning);font-weight:700"> The hire cost exceeds the time value — make sure you use the freed hours productively on sales and growth.</span>`}
+    </div>
+  `;
+}
+
+// ── FOUNDER VS STAFF COMPARISON ──
+async function renderRpCompare(){
+  const el=document.getElementById('rp-compare-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading route data for the next month...</div>';
+
+  // Fetch upcoming walks (today + 30 days)
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const futureWalks=walks;// Already filtered by API
+  const settings=getRouteSettings();
+
+  // Group by date + walker
+  const routeMap={};
+  futureWalks.forEach(w=>{
+    const key=w.date+'|'+(w.walker||'Unknown');
+    if(!routeMap[key]) routeMap[key]={date:w.date,walker:w.walker||'Unknown',walks:[]};
+    routeMap[key].walks.push(w);
+  });
+
+  const routes=Object.values(routeMap).sort((a,b)=>a.date.localeCompare(b.date));
+
+  if(!routes.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No upcoming walks found in Time to Pet.</div>';
+    return;
+  }
+
+  // Build selector from actual routes
+  const selectHtml=`<div style="margin-bottom:16px;display:flex;gap:12px;align-items:center">
+    <label style="font-size:12px;font-weight:600">Select route:</label>
+    <select id="rp-compare-select" onchange="renderCompareShift()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;min-width:300px">`+
+    routes.map((r,i)=>{
+      const wConfig=getWalkerConfig(r.walker);
+      const typeLabel=wConfig?` (${wConfig.type})`:'';
+      return `<option value="${i}">${r.date} — ${esc(r.walker.replace(/\\+$/g,''))}${typeLabel} — ${r.walks.length} walks</option>`;
+    }).join('')+
+    `</select></div><div id="rp-compare-result"></div>`;
+  el.innerHTML=selectHtml;
+
+  // Store routes for the compare function to use
+  window._compareRoutes=routes;
+  renderCompareShift();
+}
+
+function renderCompareShift(){
+  const sel=document.getElementById('rp-compare-select');
+  const resultEl=document.getElementById('rp-compare-result');
+  if(!sel||!resultEl) return;
+
+  const routes=window._compareRoutes||[];
+  const routeData=routes[parseInt(sel.value)];
+  if(!routeData){resultEl.innerHTML='';return;}
+
+  const settings=getRouteSettings();
+  const wConfig=getWalkerConfig(routeData.walker);
+
+  // Build a shift object from this route's walks
+  const sorted=routeData.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  const slots=[];
+  sorted.forEach(w=>{
+    if(!w.start||!w.end) return;
+    const ws=new Date(w.start).getTime(),we=new Date(w.end).getTime();
+    const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+    if(existing){existing.start=Math.min(existing.start,ws);existing.end=Math.max(existing.end,we);}
+    else slots.push({start:ws,end:we});
+  });
+  const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+  const travelMins=Math.max(0,(slots.length-1)*10);
+  const totalMins=actualServiceMins+travelMins;
+
+  const bookings=routeData.walks.map(w=>{
+    const svc=(w.service||'').toLowerCase();
+    const isAdventure=svc.includes('adventure')||svc.includes('2 hour');
+    return {
+      dogName:w.client,client:w.client,
+      serviceType:isAdventure?'adventure':'group',
+      price:isAdventure?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55),
+      durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+    };
+  });
+
+  const shift={
+    walker:routeData.walker.replace(/\\+$/g,''),
+    walkerType:wConfig?.type||'founder',
+    hourlyRate:wConfig?.rate||0,
+    startTime:'08:00',endTime:'12:00',
+    breakMins:0,maxDogs:settings.maxDogsPerShift,
+    travelDistanceKm:slots.length*5,travelMins,
+    variableCost:0,bookings,
+    _actualServiceMins:actualServiceMins,
+    _overrideShiftMins:totalMins,
+  };
+
+  const metrics=calcShiftMetrics(shift,settings);
+  const comp=calcFounderComparison(metrics,settings);
+  const f=comp.founder,st=comp.staff;
+  const rev=metrics.totalRevenue;
+  const betterLabel=comp.profitDiff>0?'Hiring staff':'Founder doing it';
+  const betterColor=comp.profitDiff>0?'var(--info)':'var(--orange)';
+
+  resultEl.innerHTML=`
+    <!-- The Question -->
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--orange)">
+      <div class="card-body">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">Should you do this route yourself, or hire someone?</div>
+        <div style="font-size:12px;color:var(--ink-light)">Route: <strong>${esc(shift.walker)}</strong> · ${shift.date} · ${metrics.dogCount} dogs · $${rev.toFixed(0)} revenue</div>
+      </div>
+    </div>
+
+    <!-- Side by Side -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- Founder -->
+      <div class="card" style="border-top:3px solid var(--orange)">
+        <div class="card-body">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px">👤 If YOU do this route</div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+            <div style="display:flex;justify-content:space-between"><span>Revenue</span><strong>$${rev.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Your cost (fixed daily)</span><strong style="color:var(--danger)">-$${f.labour.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Travel + variable costs</span><strong style="color:var(--danger)">-$${(metrics.travelCost+metrics.variableCost).toFixed(0)}</strong></div>
+            <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:14px"><span style="font-weight:700">Cash you keep</span><strong style="color:${f.profit>=0?'var(--success)':'var(--danger)'}">$${f.profit.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;color:var(--ink-light);font-size:11px"><span>Margin</span><span>${f.margin.toFixed(0)}%</span></div>
+          </div>
+          <div style="margin-top:14px;padding:10px;background:var(--cream);border-radius:var(--radius-sm);font-size:11px;color:var(--ink-light)">
+            <strong>But consider:</strong> Your time is worth $${settings.founderTargetHourly}/hr on growth, sales, and strategy. This route uses ${(metrics.shiftMins/60).toFixed(1)} hours of your day = <strong style="color:var(--danger)">$${f.opportunityCost.toFixed(0)} opportunity cost</strong>.
+            ${f.netValue<0?`<div style="margin-top:6px;color:var(--danger);font-weight:600">Net value after opportunity cost: -$${Math.abs(f.netValue).toFixed(0)}. You're losing money in the bigger picture.</div>`:`<div style="margin-top:6px;color:var(--success);font-weight:600">Net value after opportunity cost: +$${f.netValue.toFixed(0)}. Still worth your time.</div>`}
+          </div>
+        </div>
+      </div>
+
+      <!-- Staff -->
+      <div class="card" style="border-top:3px solid var(--info)">
+        <div class="card-body">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px">🧑‍💼 If you HIRE for this route</div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+            <div style="display:flex;justify-content:space-between"><span>Revenue</span><strong>$${rev.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Staff labour (${(metrics.shiftMins/60).toFixed(1)}h × $${settings.defaultRates.employee}/hr + super)</span><strong style="color:var(--danger)">-$${st.labour.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Travel + variable costs</span><strong style="color:var(--danger)">-$${(metrics.travelCost+metrics.variableCost).toFixed(0)}</strong></div>
+            <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:14px"><span style="font-weight:700">Profit to business</span><strong style="color:${st.profit>=0?'var(--success)':'var(--danger)'}">$${st.profit.toFixed(0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;color:var(--ink-light);font-size:11px"><span>Margin</span><span>${st.margin.toFixed(0)}%</span></div>
+          </div>
+          <div style="margin-top:14px;padding:10px;background:var(--cream);border-radius:var(--radius-sm);font-size:11px;color:var(--ink-light)">
+            <strong>What you gain:</strong> ${(metrics.shiftMins/60).toFixed(1)} hours freed up for business growth. At your target rate of $${settings.founderTargetHourly}/hr, that time is worth <strong style="color:var(--success)">$${f.opportunityCost.toFixed(0)}</strong> if spent on sales/growth.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Line -->
+    <div class="card" style="border-left:4px solid ${betterColor}">
+      <div class="card-body" style="display:flex;align-items:center;gap:16px">
+        <div style="font-size:36px">${comp.profitDiff>0?'🧑‍💼':'👤'}</div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:${betterColor}">${betterLabel} is the better option</div>
+          <div style="font-size:13px;color:var(--ink-light);margin-top:4px">${comp.recommendation}</div>
+          <div style="font-size:12px;margin-top:6px">
+            ${comp.profitDiff>0
+              ?`Hiring saves you <strong>$${f.opportunityCost.toFixed(0)}</strong> in opportunity cost while still generating <strong>$${st.profit.toFixed(0)}</strong> profit.`
+              :`Doing it yourself nets <strong>$${Math.abs(comp.profitDiff).toFixed(0)}</strong> more profit, and your time value on this route exceeds the opportunity cost.`}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── SHIFT BUILDER ──
+let editingShiftId=null;
+let shiftBookings=[];
+
+function openShiftBuilder(id){
+  editingShiftId=null;
+  shiftBookings=[];
+  const settings=getRouteSettings();
+
+  // Populate walker preset dropdown from config
+  const presetEl=document.getElementById('sh-walker-preset');
+  if(presetEl){
+    presetEl.innerHTML='<option value="">Select walker...</option>'+
+      walkerConfig.map(w=>`<option value="${esc(w.name)}|${w.type}${w.type!=='founder'?'|'+w.rate:''}">${esc(w.name)} (${w.type}${w.type!=='founder'?' - $'+w.rate+'/hr':''})</option>`).join('')+
+      '<option value="_custom">+ Custom walker</option>';
+  }
+
+  if(id){
+    // Edit existing shift
+    const shift=rpShifts.find(s=>s.id===id);
+    if(!shift){showToast('Shift not found','⚠️');return;}
+    editingShiftId=id;
+    shiftBookings=[...(shift.bookings||[])];
+    document.getElementById('modal-shift-title').textContent='🛣️ Edit Shift — '+shift.walker;
+    document.getElementById('sh-date').value=shift.date||'';
+    document.getElementById('sh-walker').value=shift.walker||'';
+    document.getElementById('sh-type').value=shift.walkerType||'employee';
+    document.getElementById('sh-rate').value=shift.hourlyRate||30;
+    document.getElementById('sh-start').value=shift.startTime||'08:00';
+    document.getElementById('sh-end').value=shift.endTime||'12:00';
+    document.getElementById('sh-break').value=shift.breakMins||0;
+    document.getElementById('sh-maxdogs').value=shift.maxDogs||6;
+    document.getElementById('sh-km').value=shift.travelDistanceKm||15;
+    document.getElementById('sh-travel-mins').value=shift.travelMins||30;
+    document.getElementById('sh-variable').value=shift.variableCost||0;
+    document.getElementById('sh-fee').value=shift.paymentFee||0;
+    document.getElementById('sh-btn-delete').style.display='inline-flex';
+  }else{
+    // New shift
+    document.getElementById('modal-shift-title').textContent='🛣️ New Route';
+    document.getElementById('sh-date').value=new Date().toISOString().split('T')[0];
+    document.getElementById('sh-walker').value='';
+    document.getElementById('sh-type').value='founder';
+    document.getElementById('sh-rate').value=0;// Founder uses fixed daily cost
+    document.getElementById('sh-start').value='08:00';
+    document.getElementById('sh-end').value='12:00';
+    document.getElementById('sh-break').value=0;
+    document.getElementById('sh-maxdogs').value=settings.maxDogsPerShift;
+    document.getElementById('sh-km').value=15;
+    document.getElementById('sh-travel-mins').value=30;
+    document.getElementById('sh-variable').value=0;
+    document.getElementById('sh-fee').value=0;
+    document.getElementById('sh-btn-delete').style.display='none';
+  }
+  updateShiftRate();// Show/hide hourly rate based on walker type
+  renderBookingRows();
+  recalcShiftLive();
+  openModal('modal-shift');
+}
+
+function updateShiftRate(){
+  const type=document.getElementById('sh-type').value;
+  const settings=getRouteSettings();
+  const rateEl=document.getElementById('sh-rate');
+  const rateGroup=rateEl?.closest('.form-group');
+  if(type==='founder'){
+    rateEl.value=0;
+    if(rateGroup) rateGroup.style.display='none';
+  }else{
+    rateEl.value=settings.defaultRates[type]||30;
+    if(rateGroup) rateGroup.style.display='';
+  }
+}
+
+function applyWalkerPreset(){
+  const preset=document.getElementById('sh-walker-preset')?.value||'';
+  const customGroup=document.getElementById('sh-walker-custom-group');
+  const typeGroup=document.getElementById('sh-type-group');
+  if(preset==='_custom'){
+    customGroup.style.display='';
+    typeGroup.style.display='';
+    document.getElementById('sh-walker').value='';
+    document.getElementById('sh-type').value='employee';
+    updateShiftRate();
+    return;
+  }
+  if(!preset){return;}
+  const parts=preset.split('|');
+  const name=parts[0];
+  const type=parts[1]||'founder';
+  const rate=parts[2]?parseFloat(parts[2]):null;
+  document.getElementById('sh-walker').value=name;
+  document.getElementById('sh-type').value=type;
+  customGroup.style.display='none';
+  if(type==='founder'){
+    typeGroup.style.display='none';
+  }else{
+    typeGroup.style.display='none';// Hide type too since preset sets it
+  }
+  if(rate!==null) document.getElementById('sh-rate').value=rate;
+  updateShiftRate();
+}
+
+function addBookingRow(data){
+  shiftBookings.push(data||{id:'bk_'+Date.now(),dogName:'',client:'',suburb:'',serviceType:'group',price:55,durationMins:45,groupSuitable:true,notes:''});
+  renderBookingRows();
+  recalcShiftLive();
+}
+
+function removeBooking(idx){
+  shiftBookings.splice(idx,1);
+  renderBookingRows();
+  recalcShiftLive();
+}
+
+function renderBookingRows(){
+  const el=document.getElementById('sh-bookings');
+  const empty=document.getElementById('sh-bookings-empty');
+  if(!shiftBookings.length){
+    el.innerHTML='';
+    empty.style.display='block';
+    return;
+  }
+  empty.style.display='none';
+  el.innerHTML=shiftBookings.map((b,i)=>`
+    <div class="sh-booking">
+      <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr auto;gap:6px;align-items:end">
+        <div class="form-group"><label>Client / Dog</label><input value="${esc(b.client||b.dogName||'')}" oninput="shiftBookings[${i}].client=this.value;shiftBookings[${i}].dogName=this.value;recalcShiftLive()" placeholder="Name"></div>
+        <div class="form-group"><label>Service</label><select onchange="shiftBookings[${i}].serviceType=this.value;autoPrice(${i});recalcShiftLive()">
+          <option value="group" ${b.serviceType==='group'?'selected':''}>Solo/Group Walk</option>
+          <option value="adventure" ${b.serviceType==='adventure'?'selected':''}>2hr Adventure</option>
+          <option value="puppy" ${b.serviceType==='puppy'?'selected':''}>Puppy Visit</option>
+          <option value="other" ${b.serviceType==='other'?'selected':''}>Other</option>
+        </select></div>
+        <div class="form-group"><label>Price ($)</label><input type="number" value="${b.price||0}" oninput="shiftBookings[${i}].price=parseFloat(this.value)||0;recalcShiftLive()"></div>
+        <div class="form-group"><label>Mins</label><input type="number" value="${b.durationMins||45}" oninput="shiftBookings[${i}].durationMins=parseInt(this.value)||0;recalcShiftLive()"></div>
+        <button class="sh-remove" onclick="removeBooking(${i})" title="Remove">×</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function autoPrice(idx){
+  const b=shiftBookings[idx];
+  const svc=b.serviceType;
+  if(svc==='adventure') b.price=parseFloat(getSetting('s-price-adventure',75))||75;
+  else b.price=parseFloat(getSetting('s-price-solo',55))||55;
+  renderBookingRows();
+}
+
+async function importTTPBookings(){
+  const date=document.getElementById('sh-date').value;
+  const walker=document.getElementById('sh-walker').value.trim();
+  if(!date){showToast('Set a date first','⚠️');return;}
+
+  showToast('Importing walks from TTP...','📥');
+  // Fetch upcoming walks
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const dayWalks=walks.filter(w=>w.date===date);
+
+  // Filter by walker name if provided
+  let filtered=dayWalks;
+  if(walker) filtered=dayWalks.filter(w=>(w.walker||'').toLowerCase().includes(walker.toLowerCase()));
+  if(!filtered.length&&walker) filtered=dayWalks;// Fallback to all if no match
+
+  if(!filtered.length){showToast('No walks found for this date','⚠️');return;}
+
+  // Set walker from first walk if empty
+  if(!walker&&filtered[0]?.walker){
+    document.getElementById('sh-walker').value=filtered[0].walker.replace(/\\+$/g,'');
+  }
+
+  const sorted=filtered.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+
+  // Detect service slots (group overlapping walks) to get actual service time
+  const slots=[];
+  sorted.forEach(w=>{
+    if(!w.start||!w.end) return;
+    const ws=new Date(w.start).getTime();
+    const we=new Date(w.end).getTime();
+    const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+    if(existing){existing.start=Math.min(existing.start,ws);existing.end=Math.max(existing.end,we);}
+    else slots.push({start:ws,end:we});
+  });
+
+  // Actual working time = service time + travel between slots
+  const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+  const travelBetween=Math.max(0,(slots.length-1)*10);// ~10 mins between stops
+  const totalWorkingMins=actualServiceMins+travelBetween;
+  const workingHrs=totalWorkingMins/60;
+
+  // Set shift times as actual working duration (not the full day window)
+  // Use first walk start, and calculate end from actual working time
+  const firstStartTime=parseAmPmTo24(sorted[0]?.time||'08:00');
+  const startMins=timeToMins(firstStartTime);
+  const endMins=startMins+Math.round(totalWorkingMins);
+  const endH=Math.floor(endMins/60);
+  const endM=endMins%60;
+  const calcEndTime=`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+
+  document.getElementById('sh-start').value=firstStartTime;
+  document.getElementById('sh-end').value=calcEndTime;
+  document.getElementById('sh-travel-mins').value=travelBetween;
+  document.getElementById('sh-km').value=slots.length*5;// ~5km per stop
+
+  // Add bookings
+  filtered.forEach(w=>{
+    const svc=(w.service||'').toLowerCase();
+    const isAdventure=svc.includes('adventure')||svc.includes('2 hour');
+    const price=isAdventure?(parseFloat(getSetting('s-price-adventure',75))||75):(parseFloat(getSetting('s-price-solo',55))||55);
+    const dur=w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45;
+    shiftBookings.push({
+      id:'bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      dogName:w.client?.replace(/\\+$/g,'')||'',
+      client:w.client?.replace(/\\+$/g,'')||'',
+      suburb:'',serviceType:isAdventure?'adventure':'group',
+      price,durationMins:dur,groupSuitable:true,notes:w.service||''
+    });
+  });
+
+  renderBookingRows();
+  recalcShiftLive();
+  showToast(`Imported ${filtered.length} walks · ${workingHrs.toFixed(1)}h actual working time`,'✅');
+}
+
+function recalcShiftLive(){
+  const shift=buildShiftFromForm();
+  const settings=getRouteSettings();
+  const metrics=calcShiftMetrics(shift,settings);
+  renderLiveSummary(metrics,settings);
+  renderScheduleSummary(metrics);
+}
+
+function buildShiftFromForm(){
+  const travelMins=parseFloat(document.getElementById('sh-travel-mins')?.value)||0;
+  // Calculate total walk time from bookings (detect group walks — overlapping durations count once)
+  const totalWalkMins=shiftBookings.reduce((s,b)=>s+(parseFloat(b.durationMins)||0),0);
+  // For grouped walks, use a simple heuristic: if multiple bookings share the same duration, they're likely grouped
+  // Actual service time = unique walk blocks. For now use total as approximation, dashboard handles grouping from TTP
+  const billableMins=totalWalkMins+travelMins;
+  // Set hidden fields for calcShiftMetrics compatibility
+  const startEl=document.getElementById('sh-start');
+  const endEl=document.getElementById('sh-end');
+  if(startEl) startEl.value='08:00';
+  if(endEl){
+    const endMins=480+Math.round(billableMins);
+    endEl.value=`${String(Math.floor(endMins/60)).padStart(2,'0')}:${String(endMins%60).padStart(2,'0')}`;
+  }
+
+  return {
+    id:editingShiftId||('sh_'+Date.now()),
+    date:document.getElementById('sh-date')?.value||'',
+    walker:document.getElementById('sh-walker')?.value||'',
+    walkerType:document.getElementById('sh-type')?.value||'employee',
+    startTime:startEl?.value||'08:00',
+    endTime:endEl?.value||'12:00',
+    breakMins:0,
+    maxDogs:parseInt(document.getElementById('sh-maxdogs')?.value)||6,
+    hourlyRate:parseFloat(document.getElementById('sh-rate')?.value)||30,
+    travelDistanceKm:parseFloat(document.getElementById('sh-km')?.value)||0,
+    travelMins,
+    variableCost:parseFloat(document.getElementById('sh-variable')?.value)||0,
+    paymentFee:0,adminAlloc:0,
+    bookings:shiftBookings,
+    createdAt:new Date().toISOString(),
+    source:'manual',
+  };
+}
+
+function renderScheduleSummary(m){
+  const el=document.getElementById('sh-schedule-summary');
+  if(!el||!shiftBookings.length) {if(el)el.innerHTML='';return;}
+  const walkHrs=(m.totalServiceMins/60).toFixed(1);
+  const travelHrs=(m.travelMins/60).toFixed(1);
+  const billableHrs=(m.shiftMins/60).toFixed(1);
+  el.innerHTML=`
+    <div style="display:flex;gap:12px;padding:10px 14px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px">
+      <div>🐕 <strong>${m.dogCount}</strong> dogs</div>
+      <div>⏱ <strong>${walkHrs}h</strong> walking</div>
+      <div>🚗 <strong>${travelHrs}h</strong> travel</div>
+      <div>📊 <strong>${billableHrs}h</strong> billable time</div>
+      <div>💰 Labour: <strong>$${m.labourCost.toFixed(0)}</strong> ${m.walkerType==='founder'?'(fixed daily)':'('+billableHrs+'h × $'+m.hourlyRate+'/hr)'}</div>
+    </div>`;
+}
+
+function renderLiveSummary(m,settings){
+  const hi=getHealthInfo(m.health);
+  const band=getScoreBand(m.score);
+
+  document.getElementById('sh-health-badge').innerHTML=`<span class="rp-health ${hi.cls}">${hi.icon} ${hi.label}</span>`;
+
+  document.getElementById('sh-score-display').innerHTML=`
+    <div class="rp-score-ring ${band.cls}" style="margin:0 auto">${m.score}</div>
+    <div style="font-size:10px;color:var(--ink-xlight);margin-top:4px">Route Score</div>
+  `;
+
+  const mClass=(val,good,bad)=>val>=good?'good':val<=bad?'bad':'warn';
+  document.getElementById('sh-metrics').innerHTML=`
+    <div class="rp-metric"><div class="rp-metric-label">Revenue</div><div class="rp-metric-value">$${m.totalRevenue.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Labour Cost</div><div class="rp-metric-value">$${m.labourCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Travel Cost</div><div class="rp-metric-value">$${m.travelCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Variable Cost</div><div class="rp-metric-value">$${m.variableCost.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Total Cost</div><div class="rp-metric-value">$${m.totalDirectCost.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.grossProfit,1,-1)}"><div class="rp-metric-label">Gross Profit</div><div class="rp-metric-value">$${m.grossProfit.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.grossMargin,40,20)}"><div class="rp-metric-label">Gross Margin</div><div class="rp-metric-value">${m.grossMargin.toFixed(1)}%</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Billable Hours</div><div class="rp-metric-value">${(m.shiftMins/60).toFixed(1)}h</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Walk Hours</div><div class="rp-metric-value">${(m.totalServiceMins/60).toFixed(1)}h</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Revenue/Hr</div><div class="rp-metric-value">$${m.revenuePerHr.toFixed(0)}</div></div>
+    <div class="rp-metric ${mClass(m.profitPerHr,settings.targetProfitPerHr,10)}"><div class="rp-metric-label">Profit/Hr</div><div class="rp-metric-value">$${m.profitPerHr.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Dogs/Hr</div><div class="rp-metric-value">${m.dogsPerHr.toFixed(1)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Break-Even Rev</div><div class="rp-metric-value">$${m.breakEvenRevenue.toFixed(0)}</div></div>
+    <div class="rp-metric"><div class="rp-metric-label">Break-Even Dogs</div><div class="rp-metric-value">${m.breakEvenDogs}</div></div>
+  `;
+
+  // Recommendations
+  const recs=getRecommendations(m,settings);
+  document.getElementById('sh-recs').innerHTML=recs.length?
+    '<h4 style="font-size:12px;font-weight:700;margin-bottom:8px">Recommendations</h4>'+
+    recs.map(r=>`<div class="rp-rec-item">${r.icon} ${r.text}</div>`).join(''):'';
+}
+
+function saveShift(){
+  const shift=buildShiftFromForm();
+  // Validation
+  if(!shift.walker){showToast('Enter a walker name','⚠️');return;}
+  if(timeToMins(shift.endTime)<=timeToMins(shift.startTime)){showToast('Shift end must be after start','⚠️');return;}
+
+  if(editingShiftId){
+    rpShifts=rpShifts.map(s=>s.id===editingShiftId?shift:s);
+    showToast('Shift updated','✅');
+  }else{
+    rpShifts.push(shift);
+    showToast('Shift saved','✅');
+  }
+  save('cw_shifts',rpShifts);
+  closeModal('modal-shift');
+  renderSavedShifts();
+}
+
+function deleteShift(){
+  if(!editingShiftId||!confirm('Delete this route?')) return;
+  rpShifts=rpShifts.filter(s=>s.id!==editingShiftId);
+  save('cw_shifts',rpShifts);
+  closeModal('modal-shift');
+  renderSavedShifts();
+  showToast('Route deleted','🗑️');
+}
+
+function quickDeleteShift(id){
+  if(!confirm('Delete this route?')) return;
+  rpShifts=rpShifts.filter(s=>s.id!==id);
+  save('cw_shifts',rpShifts);
+  renderSavedShifts();
+  showToast('Route deleted','🗑️');
+}
+
+// ── ROUTE PLANNER — CALCULATION ENGINE ──
+
+function getRouteSettings(){
+  return {
+    costPerKm: parseFloat(getSetting('s-cost-km',0.78))||0.78,
+    superRate: (parseFloat(getSetting('s-super-rate',11.5))||11.5)/100,
+    casualLoading: (parseFloat(getSetting('s-casual-load',25))||25)/100,
+    marginThresholdGreen: parseFloat(getSetting('s-margin-green',40))||40,
+    marginThresholdYellow: parseFloat(getSetting('s-margin-yellow',20))||20,
+    travelLoadThresholdWarn: parseFloat(getSetting('s-travel-warn',30))||30,
+    travelLoadThresholdDanger: parseFloat(getSetting('s-travel-danger',45))||45,
+    targetProfitPerHr: parseFloat(getSetting('s-target-profit',30))||30,
+    founderWeeklyCost: parseFloat(getSetting('s-founder-weekly',850))||850,
+    founderDaysPerWeek: parseFloat(getSetting('s-founder-days',5))||5,
+    founderDailyCost: (parseFloat(getSetting('s-founder-weekly',850))||850)/(parseFloat(getSetting('s-founder-days',5))||5),
+    founderTargetHourly: parseFloat(getSetting('s-founder-target',80))||80,
+    defaultBufferMins: parseFloat(getSetting('s-buffer-mins',15))||15,
+    maxDogsPerShift: parseFloat(getSetting('s-max-dogs',6))||6,
+    defaultRates:{
+      founder: 0,// Founder uses fixed daily cost, not hourly
+      employee: parseFloat(getSetting('s-rate-employee',30))||30,
+      contractor: parseFloat(getSetting('s-rate-contractor',40))||40,
+    }
+  };
+}
+
+function calcLabourCost(walkerType, hourlyRate, shiftMins, superRate, casualLoading, settings, shiftDate){
+  const s=settings||getRouteSettings();
+  const hours=shiftMins/60;
+  if(walkerType==='founder'){
+    // Weekends = $0 labour (already covered by weekly salary)
+    if(shiftDate){
+      const [y,m,d]=(shiftDate+'').split('-').map(Number);
+      const dow=new Date(y,m-1,d).getDay();// 0=Sun, 6=Sat
+      if(dow===0||dow===6) return 0;
+    }
+    return s.founderDailyCost;// Weekday fixed daily cost
+  }
+  if(walkerType==='contractor') return hours*hourlyRate;// Raw rate, no loadings
+  // Employee/casual: base + super + casual loading
+  const loaded=hourlyRate*(1+superRate+(walkerType==='casual'?casualLoading:0));
+  return hours*loaded;
+}
+
+function calcTravelCost(distanceKm, costPerKm){
+  return Math.max(0,distanceKm*costPerKm);
+}
+
+function calcProfitability(revenue, labourCost, travelCost, variableCost){
+  const totalDirectCost=labourCost+travelCost+variableCost;
+  const grossProfit=revenue-totalDirectCost;
+  const grossMargin=revenue>0?(grossProfit/revenue)*100:0;
+  return {totalDirectCost, grossProfit, grossMargin};
+}
+
+function calcUtilisation(serviceMins, travelMins, bufferMins, shiftMins){
+  if(shiftMins<=0) return 0;
+  return ((serviceMins+travelMins+bufferMins)/shiftMins)*100;
+}
+
+function calcRouteHealth(margin, travelLoad, utilisation, settings){
+  const s=settings||getRouteSettings();
+  // Loss-making
+  if(margin<=0) return 'loss';
+  // Not Viable: very low margin or impossible to deliver
+  if(margin<s.marginThresholdYellow||utilisation>120||travelLoad>s.travelLoadThresholdDanger) return 'not-viable';
+  // Needs Work: below target but not terrible
+  if(margin<s.marginThresholdGreen||travelLoad>s.travelLoadThresholdWarn) return 'needs-work';
+  // Strong: great margin and healthy metrics
+  if(margin>=60) return 'strong';
+  // Viable: meets thresholds
+  return 'viable';
+}
+
+function calcRouteScore(margin, travelLoad, utilisation, dogCount, maxDogs){
+  let score=0;
+  // Profitability (35%)
+  if(margin>=60) score+=35; else if(margin>=40) score+=28; else if(margin>=20) score+=18; else if(margin>=0) score+=8;
+  // Travel efficiency (20%)
+  if(travelLoad<=15) score+=20; else if(travelLoad<=30) score+=16; else if(travelLoad<=45) score+=8; else score+=2;
+  // Utilisation (25%) — optimal around 80%
+  const utilDiff=Math.abs(utilisation-80);
+  if(utilDiff<=10) score+=25; else if(utilDiff<=20) score+=18; else if(utilDiff<=35) score+=10; else score+=3;
+  // Capacity fill (20%)
+  const fill=maxDogs>0?(dogCount/maxDogs):0;
+  if(fill>=0.8) score+=20; else if(fill>=0.6) score+=15; else if(fill>=0.4) score+=8; else score+=3;
+  return Math.min(100,Math.max(0,Math.round(score)));
+}
+
+const HEALTH_MAP={
+  'strong':{cls:'rp-health-strong',label:'Strong',icon:'🟢'},
+  'viable':{cls:'rp-health-viable',label:'Viable',icon:'✅'},
+  'needs-work':{cls:'rp-health-needs-work',label:'Needs Work',icon:'🟡'},
+  'not-viable':{cls:'rp-health-not-viable',label:'Not Viable',icon:'🔴'},
+  'loss':{cls:'rp-health-loss',label:'Loss Making',icon:'⛔'},
+};
+function getHealthInfo(h){return HEALTH_MAP[h]||HEALTH_MAP['needs-work'];}
+
+function getScoreBand(score){
+  if(score>=80) return {label:'Excellent',cls:'rp-score-excellent'};
+  if(score>=60) return {label:'Workable',cls:'rp-score-workable'};
+  if(score>=40) return {label:'Weak',cls:'rp-score-weak'};
+  return {label:'Poor',cls:'rp-score-poor'};
+}
+
+function getRecommendations(m, settings){
+  const s=settings||getRouteSettings();
+  const recs=[];
+  if(m.grossProfit<=0) recs.push({p:1,icon:'🔴',text:'Route is currently unprofitable. Reduce travel or add more bookings.'});
+  if(m.grossMargin>0&&m.grossMargin<s.marginThresholdYellow) recs.push({p:2,icon:'⚠️',text:`Margin is below ${s.marginThresholdYellow}% target. Consider adding another dog or raising prices.`});
+  if(m.travelLoad>s.travelLoadThresholdDanger) recs.push({p:2,icon:'🚗',text:'Travel time is too high relative to route value. Cluster bookings closer together.'});
+  if(m.travelLoad>s.travelLoadThresholdWarn&&m.travelLoad<=s.travelLoadThresholdDanger) recs.push({p:3,icon:'📍',text:'Travel load is elevated. Consider tighter geographic grouping.'});
+  if(m.utilisation>100) recs.push({p:1,icon:'❌',text:'Route is not feasible within current shift length. Reduce bookings or extend shift.'});
+  if(m.utilisation<60) recs.push({p:3,icon:'📉',text:'Shift appears underfilled. There\'s capacity for more bookings.'});
+  if(m.dogCount<m.maxDogs&&m.grossMargin<s.marginThresholdGreen) recs.push({p:3,icon:'🐕',text:`Capacity for ${m.maxDogs-m.dogCount} more dogs. Adding one could significantly improve margin.`});
+  if(m.profitPerHr<s.targetProfitPerHr&&m.grossProfit>0) recs.push({p:3,icon:'💰',text:`Profit/hr ($${m.profitPerHr.toFixed(0)}) is below target ($${s.targetProfitPerHr}). Optimise route density.`});
+  if(m.walkerType==='founder'&&m.grossMargin>0&&m.grossMargin<50) recs.push({p:2,icon:'👤',text:'This route may be better assigned to a staff walker to free up founder time.'});
+  if(m.grossMargin>=60&&m.utilisation>=70) recs.push({p:4,icon:'✅',text:'Route is performing well. Good profitability and utilisation.'});
+  return recs.sort((a,b)=>a.p-b.p).slice(0,5);
+}
+
+function calcFounderComparison(metrics, settings){
+  const s=settings||getRouteSettings();
+  const shiftHrs=metrics.shiftMins/60;
+  // Founder view — fixed daily cost
+  const founderLabour=s.founderDailyCost;
+  const founderProfit=metrics.totalRevenue-(founderLabour+metrics.travelCost+metrics.variableCost);
+  const founderMargin=metrics.totalRevenue>0?(founderProfit/metrics.totalRevenue)*100:0;
+  const founderOpportunityCost=shiftHrs*s.founderTargetHourly;
+  const founderNetValue=founderProfit-founderOpportunityCost;
+  // Staff view
+  const staffRate=s.defaultRates.employee;
+  const staffLabour=calcLabourCost('employee',staffRate,metrics.shiftMins,s.superRate,s.casualLoading);
+  const staffProfit=metrics.totalRevenue-(staffLabour+metrics.travelCost+metrics.variableCost);
+  const staffMargin=metrics.totalRevenue>0?(staffProfit/metrics.totalRevenue)*100:0;
+  const staffProfitPerHr=shiftHrs>0?staffProfit/shiftHrs:0;
+  // Comparison
+  const profitDiff=staffProfit-founderProfit;
+  let recommendation='';
+  if(founderNetValue<0&&staffProfit>0) recommendation='This route should be assigned to staff. Founder time is more valuable elsewhere.';
+  else if(founderMargin>=60) recommendation='Founder should keep this route — strong margin justifies the time.';
+  else if(staffProfit>founderProfit) recommendation=`Staff route is $${Math.abs(profitDiff).toFixed(0)} more profitable due to lower notional cost.`;
+  else recommendation='Route economics are similar. Consider strategic priorities.';
+  return {
+    founder:{labour:founderLabour,profit:founderProfit,margin:founderMargin,opportunityCost:founderOpportunityCost,netValue:founderNetValue},
+    staff:{labour:staffLabour,profit:staffProfit,margin:staffMargin,profitPerHr:staffProfitPerHr},
+    profitDiff,recommendation
+  };
+}
+
+function calcShiftMetrics(shift, settings){
+  const s=settings||getRouteSettings();
+  const startMins=timeToMins(shift.startTime);
+  const endMins=timeToMins(shift.endTime);
+  const shiftMins=shift._overrideShiftMins||(endMins-startMins);
+  const breakMins=shift.breakMins||0;
+  const availableMins=shiftMins-breakMins;
+  const bookings=shift.bookings||[];
+  const totalRevenue=bookings.reduce((sum,b)=>sum+(parseFloat(b.price)||0),0);
+  // Use actual occupied service time if available (accounts for grouped/overlapping walks)
+  const totalServiceMins=shift._actualServiceMins||bookings.reduce((sum,b)=>sum+(parseFloat(b.durationMins)||0),0);
+  const dogCount=bookings.length;
+  const maxDogs=shift.maxDogs||s.maxDogsPerShift;
+  const travelMins=parseFloat(shift.travelMins)||0;
+  const travelKm=parseFloat(shift.travelDistanceKm)||0;
+  const bufferMins=parseFloat(shift.bufferMins)||s.defaultBufferMins;
+  const hourlyRate=parseFloat(shift.hourlyRate)||(s.defaultRates[shift.walkerType]||0);
+  const variableCost=(parseFloat(shift.variableCost)||0)+(parseFloat(shift.paymentFee)||0)+(parseFloat(shift.adminAlloc)||0);
+  const labourCost=calcLabourCost(shift.walkerType||'employee',hourlyRate,shiftMins,s.superRate,s.casualLoading,s,shift.date);
+  const travelCost=calcTravelCost(travelKm,s.costPerKm);
+  const {totalDirectCost,grossProfit,grossMargin}=calcProfitability(totalRevenue,labourCost,travelCost,variableCost);
+  const shiftHrs=shiftMins/60;
+  const revenuePerHr=shiftHrs>0?totalRevenue/shiftHrs:0;
+  const profitPerHr=shiftHrs>0?grossProfit/shiftHrs:0;
+  const dogsPerHr=shiftHrs>0?dogCount/shiftHrs:0;
+  const travelLoad=shiftMins>0?(travelMins/shiftMins)*100:0;
+  const utilisation=calcUtilisation(totalServiceMins,travelMins,bufferMins,shiftMins);
+  const avgRevenuePerDog=dogCount>0?totalRevenue/dogCount:0;
+  const breakEvenRevenue=totalDirectCost;
+  const breakEvenDogs=avgRevenuePerDog>0?Math.ceil(totalDirectCost/avgRevenuePerDog):0;
+  const health=calcRouteHealth(grossMargin,travelLoad,utilisation,s);
+  const score=calcRouteScore(grossMargin,travelLoad,utilisation,dogCount,maxDogs);
+  return {
+    shiftMins,availableMins,breakMins,totalRevenue,totalServiceMins,dogCount,maxDogs,
+    travelMins,travelKm,labourCost,travelCost,variableCost,totalDirectCost,
+    grossProfit,grossMargin,revenuePerHr,profitPerHr,dogsPerHr,
+    travelLoad,utilisation,breakEvenRevenue,breakEvenDogs,
+    health,score,walkerType:shift.walkerType||'employee',hourlyRate
+  };
+}
+
+function timeToMins(t){
+  if(!t) return 0;
+  const [h,m]=(t+'').split(':').map(Number);
+  return (h||0)*60+(m||0);
+}
+
+// ── INIT ──
+renderDashboard();
+updateBadges();
