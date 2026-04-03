@@ -723,6 +723,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
       <div class="nav-label">Tools</div>
       <div class="nav-item" data-view="routes"><span class="ni">📊</span><span class="nl">Profitability</span></div>
       <div class="nav-item" data-view="coverage"><span class="ni">🗺️</span><span class="nl">Coverage Map</span></div>
+      <div class="nav-item" data-view="parks"><span class="ni">🌳</span><span class="nl">Off-Leash Parks</span></div>
       <div class="nav-item" data-view="templates"><span class="ni">💬</span><span class="nl">Templates</span></div>
       <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
     </div>
@@ -909,6 +910,22 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
         </div>
         <p style="color:var(--ink-xlight);font-size:11px;margin-top:12px">Tip: Keep each inbox open in a separate browser tab for quick switching</p>
       </div>
+    </div>
+
+    <!-- ── OFF-LEASH PARKS ── -->
+    <div class="view" id="view-parks">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" id="parks-filters">
+          <div class="filter-pill active" onclick="setParksFilter('all')">All Parks</div>
+          <div class="filter-pill" onclick="setParksFilter('nearby')">Within 5km</div>
+          <div class="filter-pill" onclick="setParksFilter('fenced')">Fenced Only</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="enq-search-wrap"><input type="text" id="parks-search" placeholder="Search parks..." oninput="renderParksPage()"></div>
+        </div>
+      </div>
+      <div id="parks-stats" style="display:flex;gap:12px;margin-bottom:16px"></div>
+      <div id="parks-page-content"></div>
     </div>
 
     <!-- ── TEMPLATES ── -->
@@ -1626,7 +1643,7 @@ function getObNextAction(e){
 // ── NAV ──
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
-  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',templates:'Message Templates',
+  clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
   reports:'Reports & KPIs',settings:'Settings',
 };
 
@@ -1651,6 +1668,7 @@ function navigate(v){
   if(v==='routes')renderRoutes();
   if(v==='inbox')renderInbox();
   if(v==='coverage')renderCoverage();
+  if(v==='parks')renderParksPage();
   if(v==='templates')renderTemplates();
   if(v==='reports')renderReports();
   if(v==='settings')renderSettings();
@@ -3420,7 +3438,107 @@ function geocodeAddress(){
   .catch(()=>{status.textContent='Geocoding failed — check connection.';status.style.color='var(--danger)';});
 }
 
-// ── OFF-LEASH PARKS ──
+// ── OFF-LEASH PARKS PAGE ──
+let parksFilter='all';
+const BASE_LAT=-37.8736;// Approximate business base (south-east Melbourne)
+const BASE_LNG=145.0292;
+
+async function renderParksPage(){
+  const el=document.getElementById('parks-page-content');
+  const statsEl=document.getElementById('parks-stats');
+  if(!el) return;
+
+  if(!offLeashParks.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading off-leash parks...</div>';
+    try{
+      offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);
+    }catch{offLeashParks=[];}
+  }
+
+  const search=(document.getElementById('parks-search')?.value||'').toLowerCase().trim();
+
+  // Calculate distance from base for each park
+  let parks=offLeashParks.map(p=>({...p,dist:haversine(BASE_LAT,BASE_LNG,p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
+
+  // Apply filters
+  if(parksFilter==='nearby') parks=parks.filter(p=>p.dist<=5000);
+  if(parksFilter==='fenced') parks=parks.filter(p=>p.fenced);
+  if(search) parks=parks.filter(p=>(p.name||'').toLowerCase().includes(search));
+
+  // Find nearest client to each park
+  const clientPins=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat);
+  parks.forEach(p=>{
+    let nearestClient=null,nearestDist=Infinity;
+    clientPins.forEach(c=>{
+      const d=haversine(p.lat,p.lng,c.lat,c.lng);
+      if(d<nearestDist){nearestDist=d;nearestClient=c.name;}
+    });
+    p.nearestClient=nearestClient;
+    p.nearestClientDist=nearestDist;
+  });
+
+  // Stats
+  const total=offLeashParks.length;
+  const within5km=offLeashParks.filter(p=>haversine(BASE_LAT,BASE_LNG,p.lat,p.lng)<=5000).length;
+  const fenced=offLeashParks.filter(p=>p.fenced).length;
+  const nearClients=offLeashParks.filter(p=>{
+    return clientPins.some(c=>haversine(p.lat,p.lng,c.lat,c.lng)<=2000);
+  }).length;
+
+  if(statsEl){
+    statsEl.innerHTML=`
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${total}</div><div class="rp-weekly-lbl">Total Parks Found</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${within5km}</div><div class="rp-weekly-lbl">Within 5km</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${fenced}</div><div class="rp-weekly-lbl">Fenced</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${nearClients}</div><div class="rp-weekly-lbl">Near Clients (&lt;2km)</div></div>
+    `;
+  }
+
+  // Update filter pill active states
+  document.querySelectorAll('#parks-filters .filter-pill').forEach(p=>{
+    const map={'All Parks':'all','Within 5km':'nearby','Fenced Only':'fenced'};
+    p.classList.toggle('active',map[p.textContent.trim()]===parksFilter);
+  });
+
+  if(!parks.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No parks found matching your filters.</div>';
+    return;
+  }
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">${parks.slice(0,60).map(p=>{
+    const distLabel=p.dist<1000?Math.round(p.dist)+'m from base':(p.dist/1000).toFixed(1)+'km from base';
+    const clientDistLabel=p.nearestClientDist<1000?Math.round(p.nearestClientDist)+'m':(p.nearestClientDist/1000).toFixed(1)+'km';
+    const isClose=p.nearestClientDist<=2000;
+
+    return `<div class="card" style="padding:16px;border-left:3px solid ${p.fenced?'var(--success)':'var(--info)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <strong style="font-size:13px">${esc(p.name)}</strong>
+          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">${p.type==='dog_park'?'Designated Dog Park':'Off-Leash Area'}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;font-weight:600;color:var(--orange)">${distLabel}</div>
+          ${p.fenced?'<span style="font-size:9px;background:var(--success-bg);color:var(--success);padding:2px 6px;border-radius:10px;font-weight:600">Fenced</span>':''}
+        </div>
+      </div>
+      ${p.note?`<div style="font-size:11px;color:var(--ink-light);margin-bottom:8px">${esc(p.note.substring(0,120))}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px">
+        <div style="color:${isClose?'var(--success)':'var(--ink-xlight)'}">
+          ${p.nearestClient?`${isClose?'Near':'Closest'} client: ${esc(p.nearestClient)} (${clientDistLabel})`:'No nearby clients'}
+        </div>
+        <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('coverage');setTimeout(()=>{if(covMap)covMap.setView([${p.lat},${p.lng}],16)},500)">View on map</button>
+      </div>
+    </div>`;
+  }).join('')}</div>
+  ${parks.length>60?`<div style="text-align:center;padding:16px;color:var(--ink-xlight);font-size:12px">Showing first 60 of ${parks.length} parks. Use search or filters to narrow down.</div>`:''}`;
+}
+
+function setParksFilter(f){
+  parksFilter=f;
+  renderParksPage();
+}
+
+// ── OFF-LEASH PARKS MAP LAYER ──
 let offLeashParks=[];
 let offLeashLayer=null;
 let offLeashVisible=false;
