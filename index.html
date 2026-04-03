@@ -1027,6 +1027,16 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
         </div>
         <div class="settings-card">
+          <h3>📍 Business Base Location</h3>
+          <p>Used to calculate distances on the Off-Leash Parks page.</p>
+          <div class="form-grid" style="margin-top:12px;margin-bottom:20px">
+            <div class="form-group"><label>Base Latitude</label><input id="s-base-lat" type="number" step="0.0001" value="-37.8736"></div>
+            <div class="form-group"><label>Base Longitude</label><input id="s-base-lng" type="number" step="0.0001" value="145.0292"></div>
+          </div>
+          <div style="font-size:11px;color:var(--ink-xlight);margin-bottom:16px">Tip: Find your coordinates at <a href="https://www.latlong.net/" target="_blank" style="color:var(--info)">latlong.net</a> — enter your business address.</div>
+          <div style="margin-bottom:20px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('base')">Save Location</button></div>
+        </div>
+        <div class="settings-card">
           <h3>🐕 Walker Team</h3>
           <p>Configure your walkers — names are matched to Time to Pet calendar automatically.</p>
           <div id="walker-config-list" style="margin-top:12px"></div>
@@ -2644,6 +2654,7 @@ const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
+  base:['s-base-lat','s-base-lng'],
   routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
 };
 function saveSettings(section){
@@ -3440,8 +3451,8 @@ function geocodeAddress(){
 
 // ── OFF-LEASH PARKS PAGE ──
 let parksFilter='all';
-const BASE_LAT=-37.8736;// Approximate business base (south-east Melbourne)
-const BASE_LNG=145.0292;
+function getBaseLat(){return parseFloat(getSetting('s-base-lat',-37.8736))||-37.8736;}
+function getBaseLng(){return parseFloat(getSetting('s-base-lng',145.0292))||145.0292;}
 
 async function renderParksPage(){
   const el=document.getElementById('parks-page-content');
@@ -3452,13 +3463,15 @@ async function renderParksPage(){
     el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading off-leash parks...</div>';
     try{
       offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);
+      // Fill missing suburbs via reverse geocode (background, progressive)
+      fillParkSuburbs();
     }catch{offLeashParks=[];}
   }
 
   const search=(document.getElementById('parks-search')?.value||'').toLowerCase().trim();
 
   // Calculate distance from base for each park
-  let parks=offLeashParks.map(p=>({...p,dist:haversine(BASE_LAT,BASE_LNG,p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
+  let parks=offLeashParks.map(p=>({...p,dist:haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
 
   // Apply filters
   if(parksFilter==='nearby') parks=parks.filter(p=>p.dist<=5000);
@@ -3479,7 +3492,7 @@ async function renderParksPage(){
 
   // Stats
   const total=offLeashParks.length;
-  const within5km=offLeashParks.filter(p=>haversine(BASE_LAT,BASE_LNG,p.lat,p.lng)<=5000).length;
+  const within5km=offLeashParks.filter(p=>haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)<=5000).length;
   const fenced=offLeashParks.filter(p=>p.fenced).length;
   const nearClients=offLeashParks.filter(p=>{
     return clientPins.some(c=>haversine(p.lat,p.lng,c.lat,c.lng)<=2000);
@@ -3514,7 +3527,9 @@ async function renderParksPage(){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div>
           <strong style="font-size:13px">${esc(p.name)}</strong>
-          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">${p.type==='dog_park'?'Designated Dog Park':'Off-Leash Area'}</div>
+          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">
+            ${p.type==='dog_park'?'Dog Park':'Off-Leash Area'}${p.suburb?' · '+esc(p.suburb):''}
+          </div>
         </div>
         <div style="text-align:right">
           <div style="font-size:11px;font-weight:600;color:var(--orange)">${distLabel}</div>
@@ -3536,6 +3551,30 @@ async function renderParksPage(){
 function setParksFilter(f){
   parksFilter=f;
   renderParksPage();
+}
+
+async function fillParkSuburbs(){
+  const cache=load('cw_park_suburbs',{});
+  let updated=0;
+  for(const p of offLeashParks){
+    if(p.suburb) continue;
+    const key=`${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+    if(cache[key]){p.suburb=cache[key];continue;}
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lng}&zoom=14`,{headers:{'Accept':'application/json'}});
+      const data=await res.json();
+      const suburb=data.address?.suburb||data.address?.town||data.address?.city_district||data.address?.city||'';
+      if(suburb){
+        p.suburb=suburb;
+        cache[key]=suburb;
+        updated++;
+        if(updated%10===0){save('cw_park_suburbs',cache);renderParksPage();}
+      }
+      await new Promise(r=>setTimeout(r,300));// Rate limit
+    }catch{}
+    if(updated>=40) break;// Limit to 40 lookups per session
+  }
+  if(updated>0){save('cw_park_suburbs',cache);renderParksPage();}
 }
 
 // ── OFF-LEASH PARKS MAP LAYER ──
