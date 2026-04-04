@@ -103,16 +103,7 @@ const DUMMY_ENQ=[
   {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
 ];
 
-const DUMMY_CLIENTS=[
-  {id:'c1',owner:'Amy Foster',dog:'Biscuit',breed:'Spoodle',emoji:'🐶',walks:5,nextWalk:'Today 9:00am',status:'active',health:'active',tags:[],suburb:'Fitzroy',monthWalks:22,joined:'Feb 2026',phone:'0412 345 670',email:'amy.foster@gmail.com',ltv:'$880'},
-  {id:'c2',owner:'Jessica Lee',dog:'Pepper',breed:'Cavoodle',emoji:'🐾',walks:3,nextWalk:'Today 10:30am',status:'active',health:'active',tags:['vip'],suburb:'Richmond',monthWalks:13,joined:'Nov 2025',phone:'0423 456 781',email:'jessica.lee@gmail.com',ltv:'$1,560'},
-  {id:'c3',owner:'Connor Hayes',dog:'Banjo',breed:'Aust. Shepherd',emoji:'🦮',walks:5,nextWalk:'Tomorrow 8:00am',status:'active',health:'active',tags:['vip','review-due'],suburb:'Collingwood',monthWalks:21,joined:'Sep 2025',phone:'0434 567 892',email:'connor.hayes@gmail.com',ltv:'$2,100'},
-  {id:'c4',owner:'Olivia Martin',dog:'Noodle',breed:'Labradoodle',emoji:'🐕',walks:2,nextWalk:'Wed 9:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'South Yarra',monthWalks:8,joined:'Jan 2026',phone:'0445 678 903',email:'olivia.martin@gmail.com',ltv:'$640'},
-  {id:'c5',owner:'Ryan Chang',dog:'Scout',breed:'Kelpie',emoji:'🐕‍🦺',walks:5,nextWalk:'Today 2:00pm',status:'active',health:'active',tags:['vip','review-due'],suburb:'Northcote',monthWalks:20,joined:'Aug 2025',phone:'0456 789 014',email:'ryan.chang@gmail.com',ltv:'$2,600'},
-  {id:'c6',owner:'Hannah Brown',dog:'Maple',breed:'Border Collie',emoji:'🐾',walks:4,nextWalk:'Tomorrow 7:30am',status:'active',health:'active',tags:[],suburb:'Brunswick',monthWalks:17,joined:'Oct 2025',phone:'0467 890 125',email:'hannah.brown@gmail.com',ltv:'$1,980'},
-  {id:'c7',owner:'Daniel Nguyen',dog:'Bear',breed:'Samoyed',emoji:'🐶',walks:3,nextWalk:'Wed 11:00am',status:'active',health:'at-risk',tags:['low-frequency'],suburb:'Carlton',monthWalks:12,joined:'Dec 2025',phone:'0478 901 236',email:'daniel.nguyen@gmail.com',ltv:'$960'},
-  {id:'c8',owner:'Sophie Turner',dog:'Lola',breed:'Dachshund',emoji:'🦴',walks:1,nextWalk:'—',status:'inactive',health:'win-back',tags:['reactivation'],suburb:'St Kilda',monthWalks:2,joined:'Jul 2025',phone:'0489 012 347',email:'sophie.turner@gmail.com',ltv:'$1,740'},
-];
+const DUMMY_CLIENTS=[];
 
 let TODAY_WALKS=[
   {time:'7:00am',dogs:'Biscuit (Amy F.)',type:'Solo Walk',walker:'Jake',status:'completed'},
@@ -205,6 +196,8 @@ async function loadFromNotion(){
     }
     dataLoaded=true;
     renderDashboard();
+    // Re-render clients page if user is already viewing it
+    if(document.getElementById('view-clients')?.classList.contains('active'))renderClients();
     logEvent('Data sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients from TTP','success','📔');
   }catch(e){
     console.warn('Notion sync failed, using cached data:',e.message);
