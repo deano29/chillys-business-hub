@@ -1289,13 +1289,18 @@ async function renderReports(){
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
-  // Current month walks
+  // Current month walks (full month including future scheduled walks)
   const monthStart=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
-  const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=nowStr);
+  const monthEndDate=new Date(now.getFullYear(),now.getMonth()+1,0);
+  const monthEnd=`${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth()+1).padStart(2,'0')}-${String(monthEndDate.getDate()).padStart(2,'0')}`;
+  const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=monthEnd);
   const thisMonthShifts=buildShiftsFromWalks(thisMonthWalks,settings);
   const monthRevenue=thisMonthShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
   const monthWalkCount=thisMonthWalks.length;
   const avgPerWalk=monthWalkCount>0?monthRevenue/monthWalkCount:0;
+
+  // Month names for labels
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   // Conversion rate from enquiries
   const totalEnq=enquiries.length;
@@ -1305,13 +1310,12 @@ async function renderReports(){
   // ── KPI CARDS (real data) ──
   document.getElementById('report-kpis').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">${conversionRate}%</div><div class="kpi-change">${closedWon} of ${totalEnq} enquiries converted</div></div>
-    <div class="kpi-card"><div class="kpi-label">Est. Monthly Revenue</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">${monthWalkCount} walks this month</div></div>
-    <div class="kpi-card"><div class="kpi-label">Walks This Month</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${thisMonthShifts.length} routes across ${[...new Set(thisMonthWalks.map(w=>w.walker))].length} walkers</div></div>
+    <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">${monthWalkCount} walks · ${thisMonthShifts.length} routes</div></div>
+    <div class="kpi-card"><div class="kpi-label">Walks (${monthNames[now.getMonth()]})</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${[...new Set(thisMonthWalks.map(w=>w.walker))].length} walkers · includes scheduled</div></div>
     <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">Based on current client pricing</div></div>
   `;
 
   // ── REVENUE TREND (last 6 months from real walk data) ──
-  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const revenueData=[];
   for(let i=5;i>=0;i--){
     const d=new Date(now.getFullYear(),now.getMonth()-i,1);
