@@ -1,5 +1,7 @@
 const https = require('https');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
 
 function fetchURL(url) {
   return new Promise((resolve, reject) => {
@@ -43,15 +45,18 @@ module.exports = async function handler(req, res) {
     const range = validRanges.includes(req.query.range) ? req.query.range : 'today';
     const now = new Date();
 
-    // Debug mode: return feed stats
+    // Debug mode: return feed stats (includes merged history)
     if (range === 'debug') {
-      const dates = events.map(e => e.date).filter(Boolean).sort();
-      const walkers = [...new Set(events.map(e => e.walker).filter(Boolean))];
-      const clients = [...new Set(events.map(e => e.client).filter(Boolean))];
+      const merged = mergeWithHistory(events);
+      const dates = merged.map(e => e.date).filter(Boolean).sort();
+      const walkers = [...new Set(merged.map(e => e.walker).filter(Boolean))];
+      const clients = [...new Set(merged.map(e => e.client).filter(Boolean))];
       const byMonth = {};
       dates.forEach(d => { const m = d.substring(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
       return res.json({
-        totalEvents: events.length,
+        totalEvents: merged.length,
+        icsEvents: events.length,
+        historyEvents: merged.length - events.length,
         earliestDate: dates[0] || null,
         latestDate: dates[dates.length - 1] || null,
         dateRange: dates.length ? `${dates[0]} to ${dates[dates.length - 1]}` : 'No events',
@@ -62,7 +67,9 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const filtered = filterByRange(events, now, range);
+    // For 'all' range, merge with historical data
+    const source = range === 'all' ? mergeWithHistory(events) : events;
+    const filtered = filterByRange(source, now, range);
 
     // Sort by start time
     filtered.sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -218,4 +225,41 @@ function filterByRange(events, now, range) {
     return events;
   }
   return events;
+}
+
+// ── MERGE WITH HISTORICAL CSV DATA ──
+function mergeWithHistory(icsEvents) {
+  const historyPath = path.join(__dirname, '..', '_data', 'walks-history.json');
+  let history = [];
+  try {
+    if (fs.existsSync(historyPath)) {
+      history = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
+    }
+  } catch (e) {
+    console.warn('Could not load walks history:', e.message);
+    return icsEvents;
+  }
+
+  if (!history.length) return icsEvents;
+
+  // Build a set of ICS event keys for deduplication
+  // Key = client + date + start time (normalized)
+  const icsKeys = new Set();
+  icsEvents.forEach(e => {
+    const key = `${(e.client || '').trim().toLowerCase()}|${e.date}|${e.time}`;
+    icsKeys.add(key);
+  });
+
+  // Add historical walks that aren't in the ICS feed
+  const merged = [...icsEvents];
+  let added = 0;
+  for (const h of history) {
+    const key = `${(h.client || '').trim().toLowerCase()}|${h.date}|${h.time}`;
+    if (!icsKeys.has(key)) {
+      merged.push(h);
+      added++;
+    }
+  }
+
+  return merged;
 }

@@ -2,3 +2,9 @@ node_modules/
 .env.local
 .env
 .vercel/
+
+# Raw CSV exports — sensitive, never push
+/data/
+
+# Sensitive client profiles — never push
+/api/_data/clients-enriched.json

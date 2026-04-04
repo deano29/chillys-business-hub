@@ -1283,11 +1283,18 @@ function copyTmpl(id){
 
 // ── REPORTS ──
 async function renderReports(){
-  // Fetch all walks for revenue calculations
-  const allWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Fetch all walks (merged: ICS live + CSV history) and TTP summary data
+  const [allWalks,summary]=await Promise.all([
+    fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
+  ]);
   const settings=getRouteSettings();
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Helper: get real revenue from a walk (uses TTP invoiced amount if available, else estimates)
+  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service)}
 
   // Current month walks (full month including future scheduled walks)
   const monthStart=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
@@ -1296,27 +1303,20 @@ async function renderReports(){
   const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=monthEnd);
   const monthWalkCount=thisMonthWalks.length;
 
-  // MTD vs Scheduled split
+  // MTD vs Scheduled split (using real revenue where available)
   const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
   const scheduledWalks=thisMonthWalks.filter(w=>w.date>nowStr);
-  const completedShifts=buildShiftsFromWalks(completedWalks,settings);
-  const scheduledShifts=buildShiftsFromWalks(scheduledWalks,settings);
-  const mtdRevenue=completedShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
-  const scheduledRevenue=scheduledShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const mtdRevenue=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const scheduledRevenue=scheduledWalks.reduce((s,w)=>s+walkRevenue(w),0);
   const monthRevenue=mtdRevenue+scheduledRevenue;
   const avgPerWalk=monthWalkCount>0?monthRevenue/monthWalkCount:0;
 
-  // Month names for labels
-  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
   // Previous month revenue for growth %
   const prevMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const prevStart=`${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth()+1).padStart(2,'0')}-01`;
-  const prevEndDate=new Date(prevMonthDate.getFullYear(),prevMonthDate.getMonth()+1,0);
-  const prevEnd=`${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth()+1).padStart(2,'0')}-${String(prevEndDate.getDate()).padStart(2,'0')}`;
-  const prevMonthWalks=allWalks.filter(w=>w.date>=prevStart&&w.date<=prevEnd);
-  const prevShifts=buildShiftsFromWalks(prevMonthWalks,settings);
-  const prevRevenue=prevShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const prevMonthKey=`${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth()+1).padStart(2,'0')}`;
+  // Use TTP summary if available (exact invoiced totals), else calculate from walks
+  const ttpPrev=summary?.revenueMonthly?.find(m=>m.month===prevMonthKey);
+  const prevRevenue=ttpPrev?ttpPrev.revenue:allWalks.filter(w=>w.date>=prevMonthKey+'-01'&&w.date<=prevMonthKey+'-31').reduce((s,w)=>s+walkRevenue(w),0);
   const growthPct=prevRevenue>0?Math.round(((monthRevenue-prevRevenue)/prevRevenue)*100):0;
   const growthLabel=prevRevenue>0?(growthPct>=0?`<span style="color:var(--success)">↑ ${growthPct}% vs ${monthNames[prevMonthDate.getMonth()]}</span>`:`<span style="color:var(--danger)">↓ ${Math.abs(growthPct)}% vs ${monthNames[prevMonthDate.getMonth()]}</span>`):'';
 
@@ -1330,20 +1330,26 @@ async function renderReports(){
     <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">${conversionRate}%</div><div class="kpi-change">${closedWon} of ${totalEnq} enquiries converted</div></div>
     <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">$${mtdRevenue.toFixed(0)} earned · $${scheduledRevenue.toFixed(0)} booked ${growthLabel?' · '+growthLabel:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">Walks (${monthNames[now.getMonth()]})</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${completedWalks.length} completed · ${scheduledWalks.length} scheduled</div></div>
-    <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">Based on current client pricing</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">${thisMonthWalks.some(w=>w.totalRevenue>0)?'Based on TTP invoiced amounts':'Based on client pricing'}</div></div>
   `;
 
-  // ── REVENUE TREND (last 6 months from real walk data) ──
+  // ── REVENUE TREND (use TTP monthly totals where available, else calculate from walks) ──
+  const ttpMonthly=summary?.revenueMonthly||[];
   const revenueData=[];
   for(let i=5;i>=0;i--){
     const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    const mStart=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
-    const mEndDate=new Date(d.getFullYear(),d.getMonth()+1,0);
-    const mEnd=`${mEndDate.getFullYear()}-${String(mEndDate.getMonth()+1).padStart(2,'0')}-${String(mEndDate.getDate()).padStart(2,'0')}`;
-    const mWalks=allWalks.filter(w=>w.date>=mStart&&w.date<=mEnd);
-    const mShifts=buildShiftsFromWalks(mWalks,settings);
-    const mRev=mShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
-    revenueData.push({month:monthNames[d.getMonth()],val:Math.round(mRev)});
+    const mKey=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const ttpMonth=ttpMonthly.find(m=>m.month===mKey);
+    if(ttpMonth&&ttpMonth.revenue>0){
+      revenueData.push({month:monthNames[d.getMonth()],val:Math.round(ttpMonth.revenue)});
+    }else{
+      // Fall back to calculating from walk data
+      const mStart=mKey+'-01';
+      const mEndD=new Date(d.getFullYear(),d.getMonth()+1,0);
+      const mEnd=`${mEndD.getFullYear()}-${String(mEndD.getMonth()+1).padStart(2,'0')}-${String(mEndD.getDate()).padStart(2,'0')}`;
+      const mRev=allWalks.filter(w=>w.date>=mStart&&w.date<=mEnd).reduce((s,w)=>s+walkRevenue(w),0);
+      revenueData.push({month:monthNames[d.getMonth()],val:Math.round(mRev)});
+    }
   }
   const chartLabel=document.getElementById('report-chart-label');
   if(chartLabel) chartLabel.textContent=revenueData.length?`${revenueData[0].month} — ${revenueData[revenueData.length-1].month}`:'6 months';

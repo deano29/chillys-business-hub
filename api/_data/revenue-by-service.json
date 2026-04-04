@@ -1,0 +1,67 @@
+[
+  {
+    "service": "Dog Walking - 45 Minutes",
+    "revenue": 10414,
+    "count": 231
+  },
+  {
+    "service": "Dog Walking - 60 Minutes",
+    "revenue": 8607.5,
+    "count": 165
+  },
+  {
+    "service": "2 Hour Dog Adventure",
+    "revenue": 5202.5,
+    "count": 72
+  },
+  {
+    "service": "Dog Walking - 3 hrs",
+    "revenue": 1675,
+    "count": 14
+  },
+  {
+    "service": "Dog Walking - 30 Mins",
+    "revenue": 1555,
+    "count": 39
+  },
+  {
+    "service": "in Home Day Care",
+    "revenue": 1000,
+    "count": 4
+  },
+  {
+    "service": "20 Minute Home Visit",
+    "revenue": 990,
+    "count": 35
+  },
+  {
+    "service": "Dog Adventure Day",
+    "revenue": 597.5,
+    "count": 6
+  },
+  {
+    "service": "Dog Walking - 20 Mins",
+    "revenue": 105,
+    "count": 3
+  },
+  {
+    "service": "Dog walking / Pet Visit - 2 hrs",
+    "revenue": 0,
+    "count": 1
+  },
+  {
+    "service": "Meet & Greet",
+    "revenue": 0,
+    "count": 34
+  },
+  {
+    "service": "Call Potential Cient",
+    "revenue": 0,
+    "count": 15
+  },
+  {
+    "service": "Service Request (Please pop in your date request and description)",
+    "revenue": 0,
+    "count": 1
+  }
+]
