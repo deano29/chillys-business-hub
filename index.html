@@ -274,19 +274,14 @@
         <div class="report-tab" data-rtab="by-suburb" onclick="reportTab('by-suburb')">By Suburb</div>
       </div>
       <div class="report-panel active" id="rp-overview">
-        <div class="kpi-grid">
-          <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">72%</div><div class="kpi-change up">↑ 8% vs last month</div></div>
-          <div class="kpi-card"><div class="kpi-label">Avg LTV</div><div class="kpi-value">$2,400</div><div class="kpi-change up">↑ $320 vs last month</div></div>
-          <div class="kpi-card"><div class="kpi-label">NPS Score</div><div class="kpi-value">87</div><div class="kpi-change up">↑ 4 pts</div></div>
-          <div class="kpi-card"><div class="kpi-label">Avg Response Time</div><div class="kpi-value">4 min</div><div class="kpi-change up">↓ 18 min (AI)</div></div>
-        </div>
+        <div class="kpi-grid" id="report-kpis"></div>
         <div class="reports-grid">
           <div class="card">
-            <div class="card-header"><h3>Revenue Trend</h3><span style="font-size:11px;color:var(--ink-xlight)">6 months</span></div>
+            <div class="card-header"><h3>Revenue Trend</h3><span style="font-size:11px;color:var(--ink-xlight)" id="report-chart-label">6 months</span></div>
             <div class="card-body" style="padding-bottom:10px"><div id="reports-chart"></div><div id="reports-labels" class="chart-labels"></div></div>
           </div>
           <div class="card">
-            <div class="card-header"><h3>Enquiry Sources</h3><span style="font-size:11px;color:var(--ink-xlight)">This month</span></div>
+            <div class="card-header"><h3>Enquiry Sources</h3><span style="font-size:11px;color:var(--ink-xlight)">All enquiries</span></div>
             <div class="card-body"><div class="source-list" id="source-list"></div></div>
           </div>
           <div class="card">
@@ -294,7 +289,7 @@
             <div class="card-body"><div style="display:flex;flex-direction:column;gap:8px" id="conversion-funnel"></div></div>
           </div>
           <div class="card">
-            <div class="card-header"><h3>Walker Utilisation</h3><span style="font-size:11px;background:var(--success-bg);color:var(--success);padding:2px 7px;border-radius:20px;font-weight:700">85% avg</span></div>
+            <div class="card-header"><h3>Walker Utilisation</h3><span style="font-size:11px;color:var(--ink-xlight)" id="walker-util-label">This month</span></div>
             <div class="card-body"><div style="display:flex;flex-direction:column;gap:12px" id="walker-util"></div></div>
           </div>
         </div>

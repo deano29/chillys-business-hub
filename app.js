@@ -123,11 +123,6 @@ let TODAY_WALKS=[
   {time:'4:00pm',dogs:'Lola + Maple',type:'Group Walk',walker:'Chris',status:'upcoming'},
 ];
 
-const REVENUE=[
-  {month:'Oct',val:3200},{month:'Nov',val:3850},{month:'Dec',val:4100},
-  {month:'Jan',val:3620},{month:'Feb',val:4280},{month:'Mar',val:4850},
-];
-
 const EMAILS=[
   {id:'m1',from:'Sarah Mitchell',email:'sarah.mitchell@gmail.com',subject:"Dog walking enquiry for Buddy 🐶",preview:"Hi! I saw your Instagram and would love to find out more...",time:'9:23am',read:false,tag:'enquiry',body:`Hi Chilly's team!\n\nI came across your Instagram and honestly your service looks amazing — Buddy would absolutely love it! 🐶\n\nHe's a 3-year-old Golden Retriever, super friendly and loves other dogs. I'm looking for someone to walk him 5 days a week while I'm at work. We're based in Fitzroy.\n\nCould you let me know your pricing and availability? Happy to arrange a meet and greet whenever suits.\n\nThanks so much!\nSarah 😊`},
   {id:'m2',from:'Emma Chen',email:'emma.chen@gmail.com',subject:"Re: Chilly's Dog Walking - Info Pack",preview:"Thanks so much for sending through all the info! Max and I would love...",time:'8:45am',read:false,tag:'reply',body:`Hi there!\n\nThanks so much for sending through all the info — Max and I would absolutely love to get started! The group walks sound perfect for his energy levels 😄\n\nI've had a look at the pricing and we'd like to go ahead with 5 group walks per week. Is next Monday too soon to start?\n\nAlso is there a form I need to fill in? Happy to get it done today.\n\nEmma & Max 🐾`},
@@ -389,6 +384,63 @@ function buildChart(containerId,labelId,data,h=110){
   document.getElementById(labelId).innerHTML=data.map(d=>`<span>${d.month}</span>`).join('');
 }
 
+// ── SHARED: Build shifts from walk data (used by Dashboard + Profitability) ──
+function buildShiftsFromWalks(walks,settings){
+  const walkerGroups={};
+  walks.forEach(w=>{
+    const walker=w.walker||'Unknown';
+    const key=walker+'_'+w.date;
+    if(!walkerGroups[key]) walkerGroups[key]={walks:[],walker,date:w.date};
+    walkerGroups[key].walks.push(w);
+  });
+  return Object.values(walkerGroups).map(g=>{
+    const sorted=g.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+    const firstStart=sorted[0]?.time||'';
+    const lastEnd=sorted[sorted.length-1]?.endTime||'';
+    const slots=[];
+    sorted.forEach(w=>{
+      const ws=new Date(w.start).getTime();
+      const we=new Date(w.end).getTime();
+      const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
+      if(existing){existing.dogs.push(w);existing.start=Math.min(existing.start,ws);existing.end=Math.max(existing.end,we)}
+      else slots.push({start:ws,end:we,dogs:[w]});
+    });
+    const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
+    const groupSlots=slots.filter(sl=>sl.dogs.length>1);
+    const soloSlots=slots.filter(sl=>sl.dogs.length===1);
+    const maxGroupSize=Math.max(0,...slots.map(sl=>sl.dogs.length));
+    const bookings=g.walks.map(w=>{
+      const slot=slots.find(sl=>sl.dogs.includes(w));
+      const isGroup=slot&&slot.dogs.length>1;
+      let price=getClientPrice(w.client,w.service);
+      return {dogName:w.client,client:w.client,suburb:'',serviceType:w.service,price,
+        durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
+        groupSuitable:isGroup,_slotDogs:slot?slot.dogs.length:1};
+    });
+    const estimatedTravelBetweenSlots=Math.max(0,(slots.length-1)*10);
+    const totalShiftMins=actualServiceMins+estimatedTravelBetweenSlots;
+    const estimatedKm=slots.length*5;
+    const wConfig=getWalkerConfig(g.walker);
+    const wType=wConfig?.type||'founder';
+    const wRate=wConfig?.rate||0;
+    const shift={
+      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+g.date,
+      date:g.date,walker:g.walker,walkerType:wType,
+      startTime:parseAmPmTo24(firstStart),endTime:parseAmPmTo24(lastEnd),
+      breakMins:0,maxDogs:settings.maxDogsPerShift,hourlyRate:wRate,
+      travelDistanceKm:estimatedKm,travelMins:estimatedTravelBetweenSlots,
+      variableCost:0,paymentFee:0,adminAlloc:0,
+      bookings,source:'ttp-auto',
+      _actualServiceMins:actualServiceMins,_overrideShiftMins:totalShiftMins,
+    };
+    const metrics=calcShiftMetrics(shift,settings);
+    return {shift,metrics,walkCount:g.walks.length,slots:slots.length,groupSlots:groupSlots.length,soloSlots:soloSlots.length,maxGroupSize,actualServiceMins};
+  });
+}
+
+// Shared revenue cache — keeps dashboard + profitability in sync
+let _weeklyRevenueCache={revenue:0,profit:0,margin:0,walks:0};
+
 // ── DASHBOARD ──
 async function renderDashboard(){
   // Fetch today's walks for real data
@@ -413,9 +465,13 @@ async function renderDashboard(){
   const todayWalkCount=TODAY_WALKS.length;
   const weekWalkCount=thisWeekWalks.length;
 
-  // Estimated weekly revenue
+  // Estimated weekly revenue + profit (using same engine as Profitability page)
   const settings=getRouteSettings();
-  const weekRev=thisWeekWalks.reduce((s,w)=>s+getClientPrice(w.client,w.service),0);
+  const weekShifts=buildShiftsFromWalks(thisWeekWalks,settings);
+  const weekRev=weekShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const weekProfit=weekShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
+  const weekMargin=weekRev>0?(weekProfit/weekRev)*100:0;
+  _weeklyRevenueCache={revenue:weekRev,profit:weekProfit,margin:weekMargin,walks:weekWalkCount};
 
   // Follow-ups
   const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>(a.followup||'').localeCompare(b.followup||''));
@@ -446,7 +502,7 @@ async function renderDashboard(){
     <div class="stat-card purple" onclick="navigate('routes')" style="cursor:pointer">
       <div class="stat-icon">💰</div><div class="stat-label">Est. Weekly Revenue</div>
       <div class="stat-value">$${weekRev.toFixed(0)}</div>
-      <div class="stat-sub">${unpricedClients>0?`<span style="color:var(--warning)">${unpricedClients} clients need pricing</span>`:'Based on current bookings'}</div>
+      <div class="stat-sub">${unpricedClients>0?`<span style="color:var(--warning)">${unpricedClients} clients need pricing</span>`:`<span style="color:${weekProfit>=0?'var(--success)':'var(--danger)'}">$${weekProfit.toFixed(0)} profit</span> · ${weekMargin.toFixed(0)}% margin`}</div>
     </div>
   `;
 
@@ -1226,35 +1282,114 @@ function copyTmpl(id){
 }
 
 // ── REPORTS ──
-function renderReports(){
-  buildChart('reports-chart','reports-labels',REVENUE,100);
-  const sources=[
-    {label:'Facebook Ads',pct:45,color:'#3b82f6'},{label:'Instagram',pct:22,color:'#ec4899'},
-    {label:'Referral',pct:18,color:'#22c55e'},{label:'Website / SEO',pct:10,color:'#8b5cf6'},{label:'Other',pct:5,color:'#a0a0a0'},
+async function renderReports(){
+  // Fetch all walks for revenue calculations
+  const allWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const settings=getRouteSettings();
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  // Current month walks
+  const monthStart=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=nowStr);
+  const thisMonthShifts=buildShiftsFromWalks(thisMonthWalks,settings);
+  const monthRevenue=thisMonthShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const monthWalkCount=thisMonthWalks.length;
+  const avgPerWalk=monthWalkCount>0?monthRevenue/monthWalkCount:0;
+
+  // Conversion rate from enquiries
+  const totalEnq=enquiries.length;
+  const closedWon=enquiries.filter(e=>e.stage==='closed-won').length;
+  const conversionRate=totalEnq>0?Math.round((closedWon/totalEnq)*100):0;
+
+  // ── KPI CARDS (real data) ──
+  document.getElementById('report-kpis').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">${conversionRate}%</div><div class="kpi-change">${closedWon} of ${totalEnq} enquiries converted</div></div>
+    <div class="kpi-card"><div class="kpi-label">Est. Monthly Revenue</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">${monthWalkCount} walks this month</div></div>
+    <div class="kpi-card"><div class="kpi-label">Walks This Month</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${thisMonthShifts.length} routes across ${[...new Set(thisMonthWalks.map(w=>w.walker))].length} walkers</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">Based on current client pricing</div></div>
+  `;
+
+  // ── REVENUE TREND (last 6 months from real walk data) ──
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const revenueData=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const mStart=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    const mEndDate=new Date(d.getFullYear(),d.getMonth()+1,0);
+    const mEnd=`${mEndDate.getFullYear()}-${String(mEndDate.getMonth()+1).padStart(2,'0')}-${String(mEndDate.getDate()).padStart(2,'0')}`;
+    const mWalks=allWalks.filter(w=>w.date>=mStart&&w.date<=mEnd);
+    const mShifts=buildShiftsFromWalks(mWalks,settings);
+    const mRev=mShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+    revenueData.push({month:monthNames[d.getMonth()],val:Math.round(mRev)});
+  }
+  const chartLabel=document.getElementById('report-chart-label');
+  if(chartLabel) chartLabel.textContent=revenueData.length?`${revenueData[0].month} — ${revenueData[revenueData.length-1].month}`:'6 months';
+  buildChart('reports-chart','reports-labels',revenueData,100);
+
+  // ── ENQUIRY SOURCES (real data) ──
+  const sourceMap={};
+  enquiries.forEach(e=>{const s=e.source||'Unknown';sourceMap[s]=(sourceMap[s]||0)+1});
+  const sourceTotal=Math.max(1,enquiries.length);
+  const sourceColors=['#3b82f6','#ec4899','#22c55e','#8b5cf6','#f59e0b','#06b6d4','#a0a0a0'];
+  const sources=Object.entries(sourceMap).sort((a,b)=>b[1]-a[1]).map(([label,count],i)=>({
+    label,pct:Math.round((count/sourceTotal)*100),count,color:sourceColors[i%sourceColors.length]
+  }));
+  document.getElementById('source-list').innerHTML=sources.length?sources.map(s=>`
+    <div class="source-row"><div class="source-label">${s.label}</div><div class="source-bar-bg"><div class="source-bar" style="width:${s.pct}%;background:${s.color}"></div></div><div class="source-pct">${s.count} (${s.pct}%)</div></div>`).join('')
+    :'<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">No enquiry data yet</div>';
+
+  // ── PIPELINE FUNNEL (real stage counts) ──
+  const stageOrder=[
+    {id:'new',label:'New Enquiries',color:'#3b82f6'},
+    {id:'contacted',label:'Contacted',color:'#f59e0b'},
+    {id:'qualified',label:'Qualified',color:'#8b5cf6'},
+    {id:'closed-won',label:'Converted to Client',color:'#22c55e'},
   ];
-  document.getElementById('source-list').innerHTML=sources.map(s=>`
-    <div class="source-row"><div class="source-label">${s.label}</div><div class="source-bar-bg"><div class="source-bar" style="width:${s.pct}%;background:${s.color}"></div></div><div class="source-pct">${s.pct}%</div></div>`).join('');
-  const funnel=[
-    {label:'Enquiries received',val:48,pct:100,color:'#3b82f6'},{label:'Contacted',val:42,pct:88,color:'#f59e0b'},
-    {label:'Info sent',val:35,pct:73,color:'#8b5cf6'},{label:'Meet & greet',val:28,pct:58,color:'#ec4899'},{label:'Converted to client',val:22,pct:46,color:'#22c55e'},
+  const stageCounts=stageOrder.map(s=>({...s,val:enquiries.filter(e=>e.stage===s.id).length}));
+  // Also count people who passed through each stage (contacted includes qualified + closed-won, etc.)
+  const cumulativeCounts=[
+    {label:'Total Enquiries',val:totalEnq,color:'#3b82f6'},
+    {label:'Contacted',val:enquiries.filter(e=>['contacted','qualified','closed-won'].includes(e.stage)).length,color:'#f59e0b'},
+    {label:'Qualified',val:enquiries.filter(e=>['qualified','closed-won'].includes(e.stage)).length,color:'#8b5cf6'},
+    {label:'Converted',val:closedWon,color:'#22c55e'},
   ];
-  document.getElementById('conversion-funnel').innerHTML=funnel.map(f=>`
+  const funnelMax=Math.max(1,cumulativeCounts[0].val);
+  document.getElementById('conversion-funnel').innerHTML=cumulativeCounts.map(f=>`
     <div style="display:flex;align-items:center;gap:10px">
       <div style="font-size:12px;color:var(--ink-mid);width:150px;flex-shrink:0">${f.label}</div>
-      <div style="flex:1;background:var(--cream-dark);border-radius:4px;height:10px;overflow:hidden"><div style="width:${f.pct}%;height:100%;background:${f.color};border-radius:4px"></div></div>
-      <div style="font-size:12px;font-weight:700;color:var(--ink-mid);width:30px;text-align:right">${f.val}</div>
+      <div style="flex:1;background:var(--cream-dark);border-radius:4px;height:10px;overflow:hidden"><div style="width:${(f.val/funnelMax)*100}%;height:100%;background:${f.color};border-radius:4px"></div></div>
+      <div style="font-size:12px;font-weight:700;color:var(--ink-mid);width:50px;text-align:right">${f.val} (${Math.round((f.val/funnelMax)*100)}%)</div>
     </div>`).join('');
-  const walkers=[{name:'Jake',util:92,walks:18,color:'#F26B21'},{name:'Sarah',util:88,walks:16,color:'#3b82f6'},{name:'Chris',util:75,walks:14,color:'#22c55e'}];
-  document.getElementById('walker-util').innerHTML=walkers.map(w=>`
+
+  // ── WALKER UTILISATION (real TTP data, this month) ──
+  const walkerMap={};
+  thisMonthWalks.forEach(w=>{
+    const name=w.walker||'Unknown';
+    if(!walkerMap[name]) walkerMap[name]={walks:0,hours:0,revenue:0};
+    walkerMap[name].walks++;
+    if(w.start&&w.end) walkerMap[name].hours+=(new Date(w.end)-new Date(w.start))/3600000;
+    walkerMap[name].revenue+=getClientPrice(w.client,w.service);
+  });
+  const walkerColors=['#F26B21','#3b82f6','#22c55e','#8b5cf6','#ec4899','#f59e0b'];
+  const walkerData=Object.entries(walkerMap).sort((a,b)=>b[1].walks-a[1].walks).map(([name,d],i)=>({
+    name,walks:d.walks,hours:d.hours,revenue:d.revenue,color:walkerColors[i%walkerColors.length]
+  }));
+  const maxWalkerWalks=Math.max(1,...walkerData.map(w=>w.walks));
+  const utilLabel=document.getElementById('walker-util-label');
+  if(utilLabel) utilLabel.textContent=walkerData.length?`${walkerData.length} walker${walkerData.length>1?'s':''} this month`:'This month';
+  document.getElementById('walker-util').innerHTML=walkerData.length?walkerData.map(w=>`
     <div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">${w.name}</span><span style="font-size:12px;color:var(--ink-light)">${w.walks} walks/wk · <strong>${w.util}%</strong> utilised</span></div>
-      <div style="background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden"><div style="width:${w.util}%;height:100%;background:${w.color};border-radius:4px"></div></div>
-    </div>`).join('');
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">${esc(w.name)}</span><span style="font-size:12px;color:var(--ink-light)">${w.walks} walks · ${w.hours.toFixed(1)}h · <strong>$${w.revenue.toFixed(0)}</strong></span></div>
+      <div style="background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden"><div style="width:${(w.walks/maxWalkerWalks)*100}%;height:100%;background:${w.color};border-radius:4px"></div></div>
+    </div>`).join('')
+    :'<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">No walk data this month</div>';
 }
 
 function reportTab(tab){
   document.querySelectorAll('.report-tab').forEach(t=>t.classList.toggle('active',t.dataset.rtab===tab));
   document.querySelectorAll('.report-panel').forEach(p=>p.classList.toggle('active',p.id==='rp-'+tab));
+  if(tab==='overview')renderReports();
   if(tab==='by-source')renderBySource();
   if(tab==='by-service')renderByService();
   if(tab==='by-suburb')renderBySuburb();
@@ -1339,6 +1474,8 @@ function saveSettings(section){
   save('cw_settings',s);
   showToast('Settings saved!','✅');
   logEvent('Settings updated',section||'all','info','⚙️');
+  // Refresh dashboard revenue when route/pricing settings change
+  if(section==='routes'||section==='base') renderDashboard();
 }
 function loadSettings(){
   const s=load('cw_settings',{});
@@ -2519,6 +2656,8 @@ function saveClientPricing(){
   });
   save('cw_client_prices',clientPricing);
   showToast('Pricing saved','');
+  // Refresh dashboard revenue to stay in sync
+  renderDashboard();
 }
 
 // ── ROUTE PLANNER — UI ──
@@ -2597,89 +2736,10 @@ async function renderRpDashboard(){
   else if(rpDashRange==='month') endDate=addDays(startDate,29);
 
   const rangeWalks=walks.filter(w=>w.date>=startDate&&w.date<=endDate);
-  const todayWalks=rangeWalks;
   const settings=getRouteSettings();
 
-  // Group walks by walker + date into routes
-  const walkerGroups={};
-  todayWalks.forEach(w=>{
-    const walker=w.walker||'Unknown';
-    const key=walker+'_'+w.date;
-    if(!walkerGroups[key]) walkerGroups[key]={walks:[],walker,date:w.date};
-    walkerGroups[key].walks.push(w);
-  });
-
-  // Convert each walker group into a shift — detect group walks (overlapping times)
-  const shifts=Object.values(walkerGroups).map(g=>{
-    const sorted=g.walks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
-    const firstStart=sorted[0]?.time||'';
-    const lastEnd=sorted[sorted.length-1]?.endTime||'';
-
-    // Detect service slots: group overlapping walks into slots
-    const slots=[];
-    sorted.forEach(w=>{
-      const ws=new Date(w.start).getTime();
-      const we=new Date(w.end).getTime();
-      // Find existing slot that overlaps
-      const existing=slots.find(sl=>ws<sl.end&&we>sl.start);
-      if(existing){
-        existing.dogs.push(w);
-        existing.start=Math.min(existing.start,ws);
-        existing.end=Math.max(existing.end,we);
-      }else{
-        slots.push({start:ws,end:we,dogs:[w]});
-      }
-    });
-
-    // Actual occupied service time = sum of unique slot durations (not sum of all individual walks)
-    const actualServiceMins=slots.reduce((s,sl)=>s+((sl.end-sl.start)/60000),0);
-    const groupSlots=slots.filter(sl=>sl.dogs.length>1);
-    const soloSlots=slots.filter(sl=>sl.dogs.length===1);
-    const maxGroupSize=Math.max(0,...slots.map(sl=>sl.dogs.length));
-
-    const bookings=g.walks.map(w=>{
-      const slot=slots.find(sl=>sl.dogs.includes(w));
-      const isGroup=slot&&slot.dogs.length>1;
-      const svc=(w.service||'').toLowerCase();
-      // Use client-specific pricing
-      let price=getClientPrice(w.client,w.service);
-      return {
-        dogName:w.client,client:w.client,suburb:'',
-        serviceType:w.service,price,
-        durationMins:w.start&&w.end?Math.round((new Date(w.end)-new Date(w.start))/60000):45,
-        groupSuitable:isGroup,
-        _slotDogs:slot?slot.dogs.length:1
-      };
-    });
-
-    // Calculate realistic shift duration from service time + travel between slots
-    const estimatedTravelBetweenSlots=Math.max(0,(slots.length-1)*10);// ~10 mins travel between each slot
-    const totalShiftMins=actualServiceMins+estimatedTravelBetweenSlots;
-    // Estimate travel km based on number of stops
-    const estimatedKm=slots.length*5;// ~5km between each stop
-
-    // Auto-detect walker config
-    const wConfig=getWalkerConfig(g.walker);
-    const wType=wConfig?.type||'founder';
-    const wRate=wConfig?.rate||0;
-
-    const shift={
-      id:'ttp_'+g.walker.replace(/\s+/g,'_')+'_'+g.date,
-      date:g.date,walker:g.walker,walkerType:wType,
-      startTime:parseAmPmTo24(firstStart),
-      endTime:parseAmPmTo24(lastEnd),
-      breakMins:0,maxDogs:settings.maxDogsPerShift,
-      hourlyRate:wRate,
-      travelDistanceKm:estimatedKm,travelMins:estimatedTravelBetweenSlots,
-      variableCost:0,paymentFee:0,adminAlloc:0,
-      bookings,source:'ttp-auto',
-      _actualServiceMins:actualServiceMins,
-      _overrideShiftMins:totalShiftMins,// Use realistic duration, not full window
-    };
-
-    const metrics=calcShiftMetrics(shift,settings);
-    return {shift,metrics,walkCount:g.walks.length,slots:slots.length,groupSlots:groupSlots.length,soloSlots:soloSlots.length,maxGroupSize,actualServiceMins};
-  });
+  // Build shifts using shared engine (same as Dashboard)
+  const shifts=buildShiftsFromWalks(rangeWalks,settings);
 
   // Period summary
   const periodRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
