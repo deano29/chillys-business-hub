@@ -206,6 +206,8 @@ async function loadFromNotion(){
 // Data load is triggered after Clerk auth completes (see initClerk)
 // Fallback: if Clerk fails, load anyway after 3 seconds
 setTimeout(()=>{if(!dataLoaded) loadFromNotion();},3000);
+// Load TTP pricing data (non-blocking)
+loadTTPPricing();
 
 // ── UTILS ──
 function today(){return new Date().toISOString().slice(0,10)}
@@ -2702,38 +2704,74 @@ function saveWalkerConfig(){
   renderWalkerConfig();
 }
 
-// ── CLIENT PRICING ──
-// { "Client Name": { price45:X, price60:X, priceAdventure:X, dogs:1, multiDogDiscount:20, weeklyDiscount2:0, weeklyDiscount3:0 } }
+// ── CLIENT PRICING (from TTP data, synced across devices) ──
 let clientPricing=load('cw_client_prices',{});
+let ttpPricing={}; // Loaded from /api/data/summary
+
+// Load TTP pricing on startup
+async function loadTTPPricing(){
+  try{
+    const res=await fetch('/api/data/summary');
+    if(!res.ok) return;
+    const data=await res.json();
+    if(data.pricingByClient&&Object.keys(data.pricingByClient).length>0){
+      ttpPricing=data.pricingByClient;
+    }
+  }catch(e){/* silent — fall back to localStorage pricing */}
+}
 
 function detectServiceType(service,durationMins){
   const svc=(service||'').toLowerCase();
-  if(svc.includes('adventure')||svc.includes('2 hour')||durationMins>=100) return 'adventure';
+  if(svc.includes('adventure')||svc.includes('2 hour')||svc.includes('day care')||durationMins>=100) return 'adventure';
   if(svc.includes('60')||durationMins>=55) return '60min';
   return '45min';
 }
 
 function getClientPrice(clientName,service,durationMins){
   const clean=(clientName||'').replace(/\\+$/g,'').trim();
+  const svc=(service||'').trim();
+
+  // 1. Try TTP pricing (exact service match)
+  const ttp=ttpPricing[clean];
+  if(ttp&&ttp[svc]){
+    return ttp[svc].recentPrice||ttp[svc].avgPrice;
+  }
+  // Try TTP pricing (fuzzy match by service type)
+  if(ttp){
+    const type=detectServiceType(service,durationMins);
+    for(const[k,v]of Object.entries(ttp)){
+      if(k==='_summary') continue;
+      if(type==='adventure'&&(k.toLowerCase().includes('adventure')||k.toLowerCase().includes('2 hour')||k.toLowerCase().includes('day care'))) return v.recentPrice||v.avgPrice;
+      if(type==='60min'&&k.includes('60')) return v.recentPrice||v.avgPrice;
+      if(type==='45min'&&k.includes('45')) return v.recentPrice||v.avgPrice;
+    }
+    // Last resort: use client's overall average
+    if(ttp._summary&&ttp._summary.avgPerWalk>0) return ttp._summary.avgPerWalk;
+  }
+
+  // 2. Fall back to localStorage manual pricing
   const entry=clientPricing[clean];
-  const type=detectServiceType(service,durationMins);
   if(entry){
+    const type=detectServiceType(service,durationMins);
     if(type==='adventure'&&entry.priceAdventure) return entry.priceAdventure;
     if(type==='60min'&&entry.price60) return entry.price60;
     if(type==='45min'&&entry.price45) return entry.price45;
-    // Fallback to any set price
     if(entry.price60) return entry.price60;
     if(entry.price45) return entry.price45;
-    if(entry.soloPrice) return entry.soloPrice;// Legacy
+    if(entry.soloPrice) return entry.soloPrice;
     if(entry.priceAdventure) return entry.priceAdventure;
   }
-  // Fallback to defaults
+
+  // 3. Fall back to defaults
+  const type=detectServiceType(service,durationMins);
   if(type==='adventure') return parseFloat(getSetting('s-price-adventure',75))||75;
   return parseFloat(getSetting('s-price-solo',55))||55;
 }
 
 function isClientPriced(clientName){
   const clean=(clientName||'').replace(/\\+$/g,'').trim();
+  // Check TTP pricing first
+  if(ttpPricing[clean]) return true;
   const entry=clientPricing[clean];
   return entry&&(entry.price45>0||entry.price60>0||entry.priceAdventure>0||entry.soloPrice>0);
 }
@@ -2754,67 +2792,64 @@ function renderPricingTable(){
   if(!el) return;
 
   const search=(document.getElementById('pricing-search')?.value||'').toLowerCase().trim();
-  const ttpClients=clients.filter(c=>c.name).map(c=>c.name.replace(/\\+$/g,'').trim()).filter(Boolean);
-  const allClientNames=[...new Set(ttpClients)].sort();
-  const unpriced=allClientNames.filter(n=>!isClientPriced(n));
+  const hasTTP=Object.keys(ttpPricing).length>0;
+
+  if(!hasTTP){
+    if(alertEl) alertEl.innerHTML='<div style="padding:10px 14px;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">No TTP pricing data loaded. Run the import script to generate pricing from walk history.</div>';
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Pricing data not available. Export walks from TTP and run the import.</div>';
+    return;
+  }
+
+  // Build client list from TTP pricing
+  const allClientNames=Object.keys(ttpPricing).filter(n=>n!=='_summary').sort();
   const filtered=search?allClientNames.filter(n=>n.toLowerCase().includes(search)):allClientNames;
-  // Sort: active first, then unpriced first
+
+  // Sort: active clients first, then by total revenue descending
   const sorted=filtered.sort((a,b)=>{
     const ca=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===a);
     const cb=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===b);
     const aa=ca?.status==='active'?0:1;
     const ab=cb?.status==='active'?0:1;
     if(aa!==ab) return aa-ab;
-    const pa=isClientPriced(a)?1:0;
-    const pb=isClientPriced(b)?1:0;
-    return pa-pb;
+    return (ttpPricing[b]?._summary?.totalRevenue||0)-(ttpPricing[a]?._summary?.totalRevenue||0);
   });
 
+  const totalClients=sorted.length;
+  const totalRev=sorted.reduce((s,n)=>s+(ttpPricing[n]?._summary?.totalRevenue||0),0);
   if(alertEl){
-    alertEl.innerHTML=unpriced.length>0
-      ?`<div style="padding:10px 14px;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);font-size:12px;color:var(--warning)">${unpriced.length} client${unpriced.length>1?'s':''} without pricing — using default rates. Set actual rates below.</div>`
-      :`<div style="padding:10px 14px;background:var(--success-bg);border:1px solid var(--success);border-radius:var(--radius-sm);font-size:12px;color:var(--success)">All clients have custom pricing set.</div>`;
+    alertEl.innerHTML=`<div style="padding:10px 14px;background:var(--info-bg);border:1px solid var(--info);border-radius:var(--radius-sm);font-size:12px;color:var(--info)">Pricing auto-calculated from TTP invoiced amounts. ${totalClients} clients · $${totalRev.toLocaleString()} total revenue. Synced across all devices.</div>`;
   }
 
   el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">${sorted.map(name=>{
-    const entry=clientPricing[name]||{};
+    const ttp=ttpPricing[name];
+    const summary=ttp?._summary||{};
     const client=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===name);
     const isActive=client?.status==='active';
-    const isPriced=isClientPriced(name);
-    const p45=entry.price45||entry.soloPrice||0;
-    const p60=entry.price60||entry.soloPrice||0;
-    const pAdv=entry.priceAdventure||entry.adventurePrice||0;
-    const dogs=entry.dogs||1;
-    const multiDisc=entry.multiDogDiscount??20;
-    const wkDisc2=entry.weeklyDiscount2||0;
-    const wkDisc3=entry.weeklyDiscount3||0;
-    const svc=client?.primaryService||'';
+    const services=Object.entries(ttp).filter(([k])=>k!=='_summary');
 
-    return `<div class="card" style="padding:14px;border-left:3px solid ${isPriced?'var(--success)':'var(--warning)'}">
+    return `<div class="card" style="padding:14px;border-left:3px solid ${isActive?'var(--success)':'var(--ink-xlight)'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div>
           <strong style="font-size:13px">${esc(name)}</strong>
           <span style="font-size:11px;color:${isActive?'var(--success)':'var(--ink-xlight)'};margin-left:6px">${isActive?'Active':'Inactive'}</span>
         </div>
-        <span style="font-size:10px;color:var(--ink-xlight)">${isPriced?'Custom':'Default'}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">$${(summary.totalRevenue||0).toLocaleString()}</span>
       </div>
-      ${svc?`<div style="font-size:11px;color:var(--ink-light);margin-bottom:8px">${esc(svc)}</div>`:''}
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
-        <div class="form-group"><label style="font-size:10px">45 min ($)</label><input type="number" data-client="${esc(name)}" data-field="price45" value="${p45||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:100%;padding:5px 6px;border:1px solid ${p45?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
-        <div class="form-group"><label style="font-size:10px">60 min ($)</label><input type="number" data-client="${esc(name)}" data-field="price60" value="${p60||''}" placeholder="${parseFloat(getSetting('s-price-solo',55))||55}" style="width:100%;padding:5px 6px;border:1px solid ${p60?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
-        <div class="form-group"><label style="font-size:10px">Adventure ($)</label><input type="number" data-client="${esc(name)}" data-field="priceAdventure" value="${pAdv||''}" placeholder="${parseFloat(getSetting('s-price-adventure',75))||75}" style="width:100%;padding:5px 6px;border:1px solid ${pAdv?'var(--border)':'var(--warning)'};border-radius:4px;font-size:12px"></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${services.map(([svc,data])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--cream);border-radius:6px">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--ink-mid)">${esc(svc)}</div>
+            <div style="font-size:10px;color:var(--ink-xlight)">${data.walkCount} walks</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:800;color:var(--ink);font-family:'Readex Pro',sans-serif">$${data.recentPrice.toFixed(0)}</div>
+            ${data.recentPrice!==data.avgPrice?`<div style="font-size:10px;color:var(--ink-xlight)">avg $${data.avgPrice.toFixed(0)}</div>`:''}
+          </div>
+        </div>`).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-        <div class="form-group"><label style="font-size:10px">Dogs</label><input type="number" data-client="${esc(name)}" data-field="dogs" value="${dogs}" min="1" max="5" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center" onchange="saveClientPricing();renderPricingTable()"></div>
-        ${dogs>1?`<div class="form-group"><label style="font-size:10px">2nd dog disc %</label><input type="number" data-client="${esc(name)}" data-field="multiDogDiscount" value="${multiDisc}" min="0" max="100" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></div>`
-        :`<div class="form-group"><label style="font-size:10px">2nd dog disc</label><span style="font-size:11px;color:var(--ink-xlight);padding:5px 0;display:block">—</span></div>`}
-        <div class="form-group"><label style="font-size:10px">2nd walk/wk disc %</label><input type="number" data-client="${esc(name)}" data-field="weeklyDiscount2" value="${wkDisc2||''}" placeholder="0" min="0" max="100" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></div>
-      </div>
+      <div style="margin-top:8px;font-size:10px;color:var(--ink-xlight);text-align:right">${summary.totalWalks||0} walks · avg $${(summary.avgPerWalk||0).toFixed(0)}/walk</div>
     </div>`;
-  }).join('')}</div>
-  <div style="margin-top:14px;display:flex;justify-content:flex-end">
-    <button class="btn btn-primary btn-sm" onclick="saveClientPricing()">Save All Pricing</button>
-  </div>`;
+  }).join('')}</div>`;
 }
 
 function saveClientPricing(){

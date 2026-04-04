@@ -1,0 +1,625 @@
+{
+  "Ebony Harris": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 40,
+      "recentPrice": 40,
+      "walkCount": 38,
+      "totalRevenue": 1520
+    },
+    "_summary": {
+      "totalRevenue": 1520,
+      "totalWalks": 38,
+      "avgPerWalk": 40
+    }
+  },
+  "Jennifer Hardwick": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 58.33,
+      "recentPrice": 55,
+      "walkCount": 6,
+      "totalRevenue": 350
+    },
+    "_summary": {
+      "totalRevenue": 350,
+      "totalWalks": 6,
+      "avgPerWalk": 58.33
+    }
+  },
+  "Phillipa Callis": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 60,
+      "recentPrice": 60,
+      "walkCount": 1,
+      "totalRevenue": 60
+    },
+    "_summary": {
+      "totalRevenue": 60,
+      "totalWalks": 1,
+      "avgPerWalk": 60
+    }
+  },
+  "Karen Kanno": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 40.32,
+      "recentPrice": 40,
+      "walkCount": 31,
+      "totalRevenue": 1250
+    },
+    "_summary": {
+      "totalRevenue": 1250,
+      "totalWalks": 31,
+      "avgPerWalk": 40.32
+    }
+  },
+  "Suzanne Gelbart": {
+    "Dog Walking - 20 Mins": {
+      "avgPrice": 35,
+      "recentPrice": 35,
+      "walkCount": 3,
+      "totalRevenue": 105
+    },
+    "_summary": {
+      "totalRevenue": 105,
+      "totalWalks": 3,
+      "avgPerWalk": 35
+    }
+  },
+  "Darcy Wu": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 45,
+      "recentPrice": 45,
+      "walkCount": 1,
+      "totalRevenue": 45
+    },
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 56.32,
+      "recentPrice": 55,
+      "walkCount": 52,
+      "totalRevenue": 2928.5
+    },
+    "_summary": {
+      "totalRevenue": 2973.5,
+      "totalWalks": 53,
+      "avgPerWalk": 56.1
+    }
+  },
+  "Tony Tran": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 50.48,
+      "recentPrice": 50,
+      "walkCount": 21,
+      "totalRevenue": 1060
+    },
+    "Dog Adventure Day": {
+      "avgPrice": 95,
+      "recentPrice": 95,
+      "walkCount": 4,
+      "totalRevenue": 380
+    },
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 12,
+      "totalRevenue": 900
+    },
+    "_summary": {
+      "totalRevenue": 2340,
+      "totalWalks": 37,
+      "avgPerWalk": 63.24
+    }
+  },
+  "Melanie Nagle": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 50,
+      "recentPrice": 50,
+      "walkCount": 1,
+      "totalRevenue": 50
+    },
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 42.93,
+      "recentPrice": 46.8,
+      "walkCount": 15,
+      "totalRevenue": 644
+    },
+    "_summary": {
+      "totalRevenue": 694,
+      "totalWalks": 16,
+      "avgPerWalk": 43.38
+    }
+  },
+  "Travis Schindler": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 54.48,
+      "recentPrice": 55,
+      "walkCount": 21,
+      "totalRevenue": 1144
+    },
+    "_summary": {
+      "totalRevenue": 1144,
+      "totalWalks": 21,
+      "avgPerWalk": 54.48
+    }
+  },
+  "Bella - NDIS Number - 431561499": {
+    "Dog Walking - 3 hrs": {
+      "avgPrice": 139.58,
+      "recentPrice": 140,
+      "walkCount": 12,
+      "totalRevenue": 1675
+    },
+    "in Home Day Care": {
+      "avgPrice": 250,
+      "recentPrice": 250,
+      "walkCount": 4,
+      "totalRevenue": 1000
+    },
+    "_summary": {
+      "totalRevenue": 2675,
+      "totalWalks": 16,
+      "avgPerWalk": 167.19
+    }
+  },
+  "Daniel": {
+    "Dog Walking - 30 Mins": {
+      "avgPrice": 40,
+      "recentPrice": 40,
+      "walkCount": 6,
+      "totalRevenue": 240
+    },
+    "_summary": {
+      "totalRevenue": 240,
+      "totalWalks": 6,
+      "avgPerWalk": 40
+    }
+  },
+  "Kastania": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 35,
+      "recentPrice": 35,
+      "walkCount": 3,
+      "totalRevenue": 105
+    },
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 45,
+      "recentPrice": 45,
+      "walkCount": 2,
+      "totalRevenue": 90
+    },
+    "_summary": {
+      "totalRevenue": 195,
+      "totalWalks": 5,
+      "avgPerWalk": 39
+    }
+  },
+  "Mandy Gibson": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 45.54,
+      "recentPrice": 45,
+      "walkCount": 37,
+      "totalRevenue": 1685
+    },
+    "_summary": {
+      "totalRevenue": 1685,
+      "totalWalks": 37,
+      "avgPerWalk": 45.54
+    }
+  },
+  "Ayona": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 44.8,
+      "recentPrice": 45,
+      "walkCount": 25,
+      "totalRevenue": 1120
+    },
+    "_summary": {
+      "totalRevenue": 1120,
+      "totalWalks": 25,
+      "avgPerWalk": 44.8
+    }
+  },
+  "Ashley Vos": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 44.57,
+      "recentPrice": 45,
+      "walkCount": 7,
+      "totalRevenue": 312
+    },
+    "_summary": {
+      "totalRevenue": 312,
+      "totalWalks": 7,
+      "avgPerWalk": 44.57
+    }
+  },
+  "Ruby": {
+    "Dog Adventure Day": {
+      "avgPrice": 142.5,
+      "recentPrice": 142.5,
+      "walkCount": 1,
+      "totalRevenue": 142.5
+    },
+    "2 Hour Dog Adventure": {
+      "avgPrice": 112.5,
+      "recentPrice": 112.5,
+      "walkCount": 1,
+      "totalRevenue": 112.5
+    },
+    "_summary": {
+      "totalRevenue": 255,
+      "totalWalks": 2,
+      "avgPerWalk": 127.5
+    }
+  },
+  "Georgiana Shaw": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 71.61,
+      "recentPrice": 66.8,
+      "walkCount": 23,
+      "totalRevenue": 1647
+    },
+    "Dog Walking - 30 Mins": {
+      "avgPrice": 40,
+      "recentPrice": 40,
+      "walkCount": 12,
+      "totalRevenue": 480
+    },
+    "_summary": {
+      "totalRevenue": 2127,
+      "totalWalks": 35,
+      "avgPerWalk": 60.77
+    }
+  },
+  "Nicole Stock": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 45,
+      "recentPrice": 45,
+      "walkCount": 2,
+      "totalRevenue": 90
+    },
+    "Dog Adventure Day": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 1,
+      "totalRevenue": 75
+    },
+    "_summary": {
+      "totalRevenue": 165,
+      "totalWalks": 3,
+      "avgPerWalk": 55
+    }
+  },
+  "Georgia Anne Akkerman": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 53.75,
+      "recentPrice": 53,
+      "walkCount": 8,
+      "totalRevenue": 430
+    },
+    "2 Hour Dog Adventure": {
+      "avgPrice": 73.75,
+      "recentPrice": 73,
+      "walkCount": 8,
+      "totalRevenue": 590
+    },
+    "_summary": {
+      "totalRevenue": 1020,
+      "totalWalks": 16,
+      "avgPerWalk": 63.75
+    }
+  },
+  "Alex Harman - NDIS Number 430984681": {
+    "Dog Walking - 30 Mins": {
+      "avgPrice": 38.33,
+      "recentPrice": 38,
+      "walkCount": 6,
+      "totalRevenue": 230
+    },
+    "20 Minute Home Visit": {
+      "avgPrice": 30,
+      "recentPrice": 30,
+      "walkCount": 2,
+      "totalRevenue": 60
+    },
+    "_summary": {
+      "totalRevenue": 290,
+      "totalWalks": 8,
+      "avgPerWalk": 36.25
+    }
+  },
+  "Margarette Midgley": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 55,
+      "recentPrice": 55,
+      "walkCount": 2,
+      "totalRevenue": 110
+    },
+    "_summary": {
+      "totalRevenue": 110,
+      "totalWalks": 2,
+      "avgPerWalk": 55
+    }
+  },
+  "Haitham": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 46.84,
+      "recentPrice": 48.6,
+      "walkCount": 25,
+      "totalRevenue": 1171
+    },
+    "20 Minute Home Visit": {
+      "avgPrice": 30,
+      "recentPrice": 30,
+      "walkCount": 31,
+      "totalRevenue": 930
+    },
+    "_summary": {
+      "totalRevenue": 2101,
+      "totalWalks": 56,
+      "avgPerWalk": 37.52
+    }
+  },
+  "Angela Chen": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 55,
+      "recentPrice": 55,
+      "walkCount": 31,
+      "totalRevenue": 1705
+    },
+    "_summary": {
+      "totalRevenue": 1705,
+      "totalWalks": 31,
+      "avgPerWalk": 55
+    }
+  },
+  "Noelle Krause": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 2,
+      "totalRevenue": 150
+    },
+    "_summary": {
+      "totalRevenue": 150,
+      "totalWalks": 2,
+      "avgPerWalk": 75
+    }
+  },
+  "Kylie Testa": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 43.64,
+      "recentPrice": 45,
+      "walkCount": 11,
+      "totalRevenue": 480
+    },
+    "_summary": {
+      "totalRevenue": 480,
+      "totalWalks": 11,
+      "avgPerWalk": 43.64
+    }
+  },
+  "Deborah Strange": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 1,
+      "totalRevenue": 75
+    },
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 55,
+      "recentPrice": 55,
+      "walkCount": 1,
+      "totalRevenue": 55
+    },
+    "_summary": {
+      "totalRevenue": 130,
+      "totalWalks": 2,
+      "avgPerWalk": 65
+    }
+  },
+  "Gillian Clarke": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 4,
+      "totalRevenue": 300
+    },
+    "_summary": {
+      "totalRevenue": 300,
+      "totalWalks": 4,
+      "avgPerWalk": 75
+    }
+  },
+  "Jenny Astorino": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 10,
+      "totalRevenue": 750
+    },
+    "_summary": {
+      "totalRevenue": 750,
+      "totalWalks": 10,
+      "avgPerWalk": 75
+    }
+  },
+  "Petra Naslund": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 5,
+      "totalRevenue": 375
+    },
+    "_summary": {
+      "totalRevenue": 375,
+      "totalWalks": 5,
+      "avgPerWalk": 75
+    }
+  },
+  "Emma": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 6,
+      "totalRevenue": 450
+    },
+    "_summary": {
+      "totalRevenue": 450,
+      "totalWalks": 6,
+      "avgPerWalk": 75
+    }
+  },
+  "Gloria Elina Gonzalez Guevara": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 70,
+      "recentPrice": 70,
+      "walkCount": 1,
+      "totalRevenue": 70
+    },
+    "_summary": {
+      "totalRevenue": 70,
+      "totalWalks": 1,
+      "avgPerWalk": 70
+    }
+  },
+  "Allyce Hurren": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 1,
+      "totalRevenue": 75
+    },
+    "_summary": {
+      "totalRevenue": 75,
+      "totalWalks": 1,
+      "avgPerWalk": 75
+    }
+  },
+  "Jemma Britton": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 1,
+      "totalRevenue": 75
+    },
+    "_summary": {
+      "totalRevenue": 75,
+      "totalWalks": 1,
+      "avgPerWalk": 75
+    }
+  },
+  "Michele Simpson": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 45,
+      "recentPrice": 45,
+      "walkCount": 1,
+      "totalRevenue": 45
+    },
+    "_summary": {
+      "totalRevenue": 45,
+      "totalWalks": 1,
+      "avgPerWalk": 45
+    }
+  },
+  "Irene Giannakis": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 60,
+      "recentPrice": 60,
+      "walkCount": 1,
+      "totalRevenue": 60
+    },
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 5,
+      "totalRevenue": 375
+    },
+    "_summary": {
+      "totalRevenue": 435,
+      "totalWalks": 6,
+      "avgPerWalk": 72.5
+    }
+  },
+  "Bahar Akbaryan": {
+    "Dog Walking - 30 Mins": {
+      "avgPrice": 43.21,
+      "recentPrice": 44,
+      "walkCount": 14,
+      "totalRevenue": 605
+    },
+    "_summary": {
+      "totalRevenue": 605,
+      "totalWalks": 14,
+      "avgPerWalk": 43.21
+    }
+  },
+  "Sarah Pal": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 60,
+      "recentPrice": 60,
+      "walkCount": 1,
+      "totalRevenue": 60
+    },
+    "2 Hour Dog Adventure": {
+      "avgPrice": 75,
+      "recentPrice": 75,
+      "walkCount": 5,
+      "totalRevenue": 375
+    },
+    "_summary": {
+      "totalRevenue": 435,
+      "totalWalks": 6,
+      "avgPerWalk": 72.5
+    }
+  },
+  "Chris Graham": {
+    "2 Hour Dog Adventure": {
+      "avgPrice": 58.33,
+      "recentPrice": 52.5,
+      "walkCount": 9,
+      "totalRevenue": 525
+    },
+    "_summary": {
+      "totalRevenue": 525,
+      "totalWalks": 9,
+      "avgPerWalk": 58.33
+    }
+  },
+  "Luca Balbo": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 60,
+      "recentPrice": 60,
+      "walkCount": 1,
+      "totalRevenue": 60
+    },
+    "_summary": {
+      "totalRevenue": 60,
+      "totalWalks": 1,
+      "avgPerWalk": 60
+    }
+  },
+  "Yoni Saltzman": {
+    "Dog Walking - 60 Minutes": {
+      "avgPrice": 70,
+      "recentPrice": 70,
+      "walkCount": 8,
+      "totalRevenue": 560
+    },
+    "_summary": {
+      "totalRevenue": 560,
+      "totalWalks": 8,
+      "avgPerWalk": 70
+    }
+  },
+  "Melissa Marshall": {
+    "Dog Walking - 45 Minutes": {
+      "avgPrice": 60,
+      "recentPrice": 60,
+      "walkCount": 1,
+      "totalRevenue": 60
+    },
+    "_summary": {
+      "totalRevenue": 60,
+      "totalWalks": 1,
+      "avgPerWalk": 60
+    }
+  }
+}

@@ -312,6 +312,59 @@ function importClients() {
 }
 
 // ═══════════════════════════════════════
+// 7. PRICING BY CLIENT (auto-calculated from walk history)
+// ═══════════════════════════════════════
+function importPricing() {
+  const walksFile = path.join(OUT_DIR, 'walks-history.json');
+  if (!fs.existsSync(walksFile)) { console.log('⏭  walks-history.json not found, skipping pricing'); return; }
+
+  const walks = JSON.parse(fs.readFileSync(walksFile, 'utf-8'));
+
+  // Group by client → service type → collect revenues
+  const clientMap = {};
+  for (const w of walks) {
+    if (!w.client || w.totalRevenue <= 0) continue;
+    if (!clientMap[w.client]) clientMap[w.client] = {};
+    const svc = w.service || 'Unknown';
+    if (!clientMap[w.client][svc]) clientMap[w.client][svc] = { total: 0, count: 0, prices: [] };
+    clientMap[w.client][svc].total += w.totalRevenue;
+    clientMap[w.client][svc].count++;
+    clientMap[w.client][svc].prices.push(w.totalRevenue);
+  }
+
+  // Build output: per-client, per-service averages
+  const pricing = {};
+  for (const [client, services] of Object.entries(clientMap)) {
+    pricing[client] = {};
+    let clientTotal = 0;
+    let clientWalks = 0;
+    for (const [svc, data] of Object.entries(services)) {
+      const avg = Math.round((data.total / data.count) * 100) / 100;
+      // Most recent price (last 5 walks of this type)
+      const recent = data.prices.slice(-5);
+      const recentAvg = Math.round((recent.reduce((s, p) => s + p, 0) / recent.length) * 100) / 100;
+      pricing[client][svc] = {
+        avgPrice: avg,
+        recentPrice: recentAvg,
+        walkCount: data.count,
+        totalRevenue: Math.round(data.total * 100) / 100,
+      };
+      clientTotal += data.total;
+      clientWalks += data.count;
+    }
+    pricing[client]._summary = {
+      totalRevenue: Math.round(clientTotal * 100) / 100,
+      totalWalks: clientWalks,
+      avgPerWalk: clientWalks > 0 ? Math.round((clientTotal / clientWalks) * 100) / 100 : 0,
+    };
+  }
+
+  const outFile = path.join(OUT_DIR, 'pricing-by-client.json');
+  fs.writeFileSync(outFile, JSON.stringify(pricing, null, 2));
+  console.log(`✅ pricing-by-client.json: ${Object.keys(pricing).length} clients with pricing`);
+}
+
+// ═══════════════════════════════════════
 // RUN ALL IMPORTS
 // ═══════════════════════════════════════
 console.log('\n🐾 TTP Data Import\n' + '='.repeat(40));
@@ -324,5 +377,6 @@ importClientRevenue();
 importServiceRevenue();
 importReferrals();
 importClients();
+importPricing();
 
 console.log('\n✅ All imports complete!\n');

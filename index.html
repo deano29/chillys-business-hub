@@ -177,21 +177,14 @@
       <!-- Pricing Tab -->
       <div id="client-tab-pricing" style="display:none">
         <div id="pricing-alert" style="margin-bottom:14px"></div>
-        <div class="card">
-          <div class="card-body">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-              <div>
-                <h4 style="font-size:14px;font-weight:700">Client Pricing</h4>
-                <p style="font-size:12px;color:var(--ink-light)">Set per-walk rates for each client. Used across all revenue calculations.</p>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <div class="enq-search-wrap"><input type="text" id="pricing-search" placeholder="Search clients..." oninput="renderPricingTable()"></div>
-                <button class="btn btn-primary btn-sm" onclick="saveClientPricing()">Save All</button>
-              </div>
-            </div>
-            <div id="pricing-table"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div>
+            <h4 style="font-size:14px;font-weight:700">Client Pricing</h4>
+            <p style="font-size:12px;color:var(--ink-light)">Auto-calculated from TTP invoiced amounts. Per client, per service type. Used across all revenue &amp; profitability calculations.</p>
           </div>
+          <div class="enq-search-wrap"><input type="text" id="pricing-search" placeholder="Search clients..." oninput="renderPricingTable()"></div>
         </div>
+        <div id="pricing-table"></div>
       </div>
     </div>
 
