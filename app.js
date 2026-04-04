@@ -1294,24 +1294,42 @@ async function renderReports(){
   const monthEndDate=new Date(now.getFullYear(),now.getMonth()+1,0);
   const monthEnd=`${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth()+1).padStart(2,'0')}-${String(monthEndDate.getDate()).padStart(2,'0')}`;
   const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=monthEnd);
-  const thisMonthShifts=buildShiftsFromWalks(thisMonthWalks,settings);
-  const monthRevenue=thisMonthShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
   const monthWalkCount=thisMonthWalks.length;
+
+  // MTD vs Scheduled split
+  const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
+  const scheduledWalks=thisMonthWalks.filter(w=>w.date>nowStr);
+  const completedShifts=buildShiftsFromWalks(completedWalks,settings);
+  const scheduledShifts=buildShiftsFromWalks(scheduledWalks,settings);
+  const mtdRevenue=completedShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const scheduledRevenue=scheduledShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const monthRevenue=mtdRevenue+scheduledRevenue;
   const avgPerWalk=monthWalkCount>0?monthRevenue/monthWalkCount:0;
 
   // Month names for labels
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Previous month revenue for growth %
+  const prevMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const prevStart=`${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth()+1).padStart(2,'0')}-01`;
+  const prevEndDate=new Date(prevMonthDate.getFullYear(),prevMonthDate.getMonth()+1,0);
+  const prevEnd=`${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth()+1).padStart(2,'0')}-${String(prevEndDate.getDate()).padStart(2,'0')}`;
+  const prevMonthWalks=allWalks.filter(w=>w.date>=prevStart&&w.date<=prevEnd);
+  const prevShifts=buildShiftsFromWalks(prevMonthWalks,settings);
+  const prevRevenue=prevShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
+  const growthPct=prevRevenue>0?Math.round(((monthRevenue-prevRevenue)/prevRevenue)*100):0;
+  const growthLabel=prevRevenue>0?(growthPct>=0?`<span style="color:var(--success)">↑ ${growthPct}% vs ${monthNames[prevMonthDate.getMonth()]}</span>`:`<span style="color:var(--danger)">↓ ${Math.abs(growthPct)}% vs ${monthNames[prevMonthDate.getMonth()]}</span>`):'';
 
   // Conversion rate from enquiries
   const totalEnq=enquiries.length;
   const closedWon=enquiries.filter(e=>e.stage==='closed-won').length;
   const conversionRate=totalEnq>0?Math.round((closedWon/totalEnq)*100):0;
 
-  // ── KPI CARDS (real data) ──
+  // ── KPI CARDS (real data with MTD/Booked split) ──
   document.getElementById('report-kpis').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">${conversionRate}%</div><div class="kpi-change">${closedWon} of ${totalEnq} enquiries converted</div></div>
-    <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">${monthWalkCount} walks · ${thisMonthShifts.length} routes</div></div>
-    <div class="kpi-card"><div class="kpi-label">Walks (${monthNames[now.getMonth()]})</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${[...new Set(thisMonthWalks.map(w=>w.walker))].length} walkers · includes scheduled</div></div>
+    <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">$${mtdRevenue.toFixed(0)} earned · $${scheduledRevenue.toFixed(0)} booked ${growthLabel?' · '+growthLabel:''}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Walks (${monthNames[now.getMonth()]})</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${completedWalks.length} completed · ${scheduledWalks.length} scheduled</div></div>
     <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">Based on current client pricing</div></div>
   `;
 
@@ -1397,6 +1415,7 @@ function reportTab(tab){
   if(tab==='by-source')renderBySource();
   if(tab==='by-service')renderByService();
   if(tab==='by-suburb')renderBySuburb();
+  if(tab==='retention')renderRetention();
 }
 
 function reportTableWrap(title,subtitle,theadHtml,tbodyHtml){
@@ -1457,6 +1476,156 @@ function renderBySuburb(){
     return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${d.total>=3?'var(--success)':'var(--ink-xlight)'}">${rate}%</span></td></tr>`;
   }).join('');
   document.getElementById('rp-by-suburb').innerHTML=reportTableWrap('Leads by Suburb','All time — shows best coverage areas','<th>Suburb</th><th>Enquiries</th><th>Converted</th><th>Rate</th>',tbody);
+}
+
+// ── RETENTION REPORT ──
+async function renderRetention(){
+  const panel=document.getElementById('rp-retention');
+  if(!panel) return;
+  panel.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading retention data...</div>';
+
+  // Fetch client data from TTP
+  const ttpClients=await fetch('/api/walks/clients').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Also fetch all walks for churn timeline
+  const allWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+
+  if(!ttpClients.length){
+    panel.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No client data available. Check TTP calendar connection.</div>';
+    return;
+  }
+
+  const now=new Date();
+  const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  // Classify clients
+  const active=ttpClients.filter(c=>c.status==='active');
+  const atRisk=active.filter(c=>c.daysAhead>0&&c.daysAhead<=7);
+  const wellBooked=active.filter(c=>c.daysAhead>=14);
+  const droppedOff=ttpClients.filter(c=>c.status==='no-upcoming');
+  const inactive=ttpClients.filter(c=>c.status==='inactive');
+
+  // Avg tenure for active clients (days since first walk)
+  const tenureDays=active.filter(c=>c.firstWalk).map(c=>{
+    const first=new Date(c.firstWalk+'T00:00:00');
+    return Math.floor((now-first)/864e5);
+  });
+  const avgTenure=tenureDays.length?Math.round(tenureDays.reduce((s,d)=>s+d,0)/tenureDays.length):0;
+  const avgTenureLabel=avgTenure>=60?`${Math.round(avgTenure/30)} months`:`${avgTenure} days`;
+
+  // ── KPI CARDS ──
+  let html=`<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Active Clients</div><div class="kpi-value" style="color:var(--success)">${active.length}</div><div class="kpi-change">${wellBooked.length} well-booked (14d+)</div></div>
+    <div class="kpi-card"><div class="kpi-label">At Risk</div><div class="kpi-value" style="color:var(--warning)">${atRisk.length}</div><div class="kpi-change">Booked &lt;7 days ahead</div></div>
+    <div class="kpi-card"><div class="kpi-label">Dropped Off</div><div class="kpi-value" style="color:var(--danger)">${droppedOff.length}</div><div class="kpi-change">Had walks, none booked now</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Tenure</div><div class="kpi-value">${avgTenureLabel}</div><div class="kpi-change">Active clients since first walk</div></div>
+  </div>`;
+
+  // ── CHURN TIMELINE (active clients per month, last 6 months) ──
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const churnData=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const mStart=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    const mEndDate=new Date(d.getFullYear(),d.getMonth()+1,0);
+    const mEnd=`${mEndDate.getFullYear()}-${String(mEndDate.getMonth()+1).padStart(2,'0')}-${String(mEndDate.getDate()).padStart(2,'0')}`;
+    // Count unique clients who had walks in this month
+    const monthClients=new Set(allWalks.filter(w=>w.date>=mStart&&w.date<=mEnd).map(w=>w.client));
+    churnData.push({month:monthNames[d.getMonth()],val:monthClients.size});
+  }
+
+  const maxClients=Math.max(1,...churnData.map(d=>d.val));
+  html+=`<div class="reports-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px">
+    <div class="card">
+      <div class="card-header"><h3>Active Clients by Month</h3><span style="font-size:11px;color:var(--ink-xlight)">Unique clients with walks</span></div>
+      <div class="card-body">
+        <div style="display:flex;align-items:flex-end;gap:8px;height:120px">
+          ${churnData.map((d,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+            <div style="font-size:11px;font-weight:700;color:var(--ink-mid)">${d.val}</div>
+            <div style="width:100%;background:${i===churnData.length-1?'var(--orange)':'var(--info)'};border-radius:4px 4px 0 0;height:${(d.val/maxClients)*90}px;min-height:4px;transition:height .3s"></div>
+            <div style="font-size:10px;color:var(--ink-xlight)">${d.month}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>Retention Breakdown</h3><span style="font-size:11px;color:var(--ink-xlight)">${ttpClients.length} total clients</span></div>
+      <div class="card-body">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[
+            {label:'Well Booked (14d+)',count:wellBooked.length,color:'var(--success)',pct:Math.round((wellBooked.length/Math.max(1,ttpClients.length))*100)},
+            {label:'Active (7-13d)',count:active.length-atRisk.length-wellBooked.length,color:'var(--info)',pct:Math.round(((active.length-atRisk.length-wellBooked.length)/Math.max(1,ttpClients.length))*100)},
+            {label:'At Risk (<7d)',count:atRisk.length,color:'var(--warning)',pct:Math.round((atRisk.length/Math.max(1,ttpClients.length))*100)},
+            {label:'Dropped Off',count:droppedOff.length,color:'var(--danger)',pct:Math.round((droppedOff.length/Math.max(1,ttpClients.length))*100)},
+            {label:'Inactive',count:inactive.length,color:'var(--ink-xlight)',pct:Math.round((inactive.length/Math.max(1,ttpClients.length))*100)},
+          ].map(r=>`<div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:12px;color:var(--ink-mid);width:130px;flex-shrink:0">${r.label}</div>
+            <div style="flex:1;background:var(--cream-dark);border-radius:4px;height:8px;overflow:hidden"><div style="width:${r.pct}%;height:100%;background:${r.color};border-radius:4px;min-width:${r.count>0?'4px':'0'}"></div></div>
+            <div style="font-size:12px;font-weight:700;color:var(--ink-mid);width:50px;text-align:right">${r.count} (${r.pct}%)</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // ── CLIENT TABLE (sorted by risk) ──
+  // Sort: dropped off first, then at-risk, then active by daysAhead ascending
+  const sortedClients=[...ttpClients].sort((a,b)=>{
+    const priority={'no-upcoming':0,'inactive':1,'active':2};
+    const pa=priority[a.status]??2;
+    const pb=priority[b.status]??2;
+    if(pa!==pb) return pa-pb;
+    // Within active: sort by daysAhead ascending (least booked first)
+    return (a.daysAhead||0)-(b.daysAhead||0);
+  });
+
+  const tbody=sortedClients.map(c=>{
+    const isAtRisk=c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7;
+    const isWellBooked=c.status==='active'&&c.daysAhead>=14;
+    const rowBg=c.status==='no-upcoming'?'background:var(--danger-bg)':isAtRisk?'background:var(--warning-bg)':isWellBooked?'background:rgba(22,163,74,.04)':'';
+    const statusBadge=c.status==='no-upcoming'?'<span style="background:var(--danger-bg);color:var(--danger);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Dropped Off</span>'
+      :isAtRisk?'<span style="background:var(--warning-bg);color:var(--warning);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">At Risk</span>'
+      :c.status==='inactive'?'<span style="background:var(--cream-dark);color:var(--ink-xlight);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Inactive</span>'
+      :isWellBooked?'<span style="background:var(--success-bg);color:var(--success);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Well Booked</span>'
+      :'<span style="background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Active</span>';
+
+    // Days since last walk
+    let daysSinceLastWalk='—';
+    if(c.lastWalk){
+      const diff=Math.floor((now-new Date(c.lastWalk+'T00:00:00'))/864e5);
+      daysSinceLastWalk=diff===0?'Today':diff===1?'Yesterday':`${diff}d ago`;
+    }
+
+    // Tenure
+    let tenure='—';
+    if(c.firstWalk){
+      const days=Math.floor((now-new Date(c.firstWalk+'T00:00:00'))/864e5);
+      tenure=days>=60?`${Math.round(days/30)}m`:days>=7?`${Math.round(days/7)}w`:`${days}d`;
+    }
+
+    return `<tr style="${rowBg}">
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${statusBadge}</td>
+      <td>${c.lastWalk?fmtDate(c.lastWalk):'—'}</td>
+      <td style="color:${c.status==='no-upcoming'?'var(--danger)':'var(--ink-light)'}">${daysSinceLastWalk}</td>
+      <td style="font-weight:700;color:${c.daysAhead>=14?'var(--success)':c.daysAhead>=7?'var(--info)':c.daysAhead>0?'var(--warning)':'var(--danger)'}">${c.daysAhead>0?c.daysAhead+'d':'—'}</td>
+      <td>${c.walksPerWeek>0?c.walksPerWeek.toFixed(1)+'/wk':'—'}</td>
+      <td>${c.totalWalks||0}</td>
+      <td>${tenure}</td>
+      <td style="font-size:11px;color:var(--ink-light)">${esc(c.services||'—')}</td>
+    </tr>`;
+  }).join('');
+
+  html+=`<div class="card">
+    <div class="card-header"><h3>Client Retention Detail</h3><span style="font-size:11px;color:var(--ink-xlight)">${ttpClients.length} clients · sorted by risk</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="report-table">
+        <thead><tr><th>Client</th><th>Status</th><th>Last Walk</th><th>Since</th><th>Booked Ahead</th><th>Frequency</th><th>Total Walks</th><th>Tenure</th><th>Services</th></tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  panel.innerHTML=html;
 }
 
 // ── SETTINGS ──
