@@ -39,9 +39,29 @@ module.exports = async function handler(req, res) {
     const events = parseICS(icsText);
 
     // Validate range param
-    const validRanges = ['today', 'week', 'month', 'all'];
+    const validRanges = ['today', 'week', 'month', 'all', 'debug'];
     const range = validRanges.includes(req.query.range) ? req.query.range : 'today';
     const now = new Date();
+
+    // Debug mode: return feed stats
+    if (range === 'debug') {
+      const dates = events.map(e => e.date).filter(Boolean).sort();
+      const walkers = [...new Set(events.map(e => e.walker).filter(Boolean))];
+      const clients = [...new Set(events.map(e => e.client).filter(Boolean))];
+      const byMonth = {};
+      dates.forEach(d => { const m = d.substring(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
+      return res.json({
+        totalEvents: events.length,
+        earliestDate: dates[0] || null,
+        latestDate: dates[dates.length - 1] || null,
+        dateRange: dates.length ? `${dates[0]} to ${dates[dates.length - 1]}` : 'No events',
+        walkers,
+        uniqueClients: clients.length,
+        eventsByMonth: byMonth,
+        icsBytes: icsText.length,
+      });
+    }
+
     const filtered = filterByRange(events, now, range);
 
     // Sort by start time
