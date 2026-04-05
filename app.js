@@ -3303,9 +3303,10 @@ async function renderRevenueForecast(){
               const status=m.isCurrent?'current':m.isPast?(m.rev>=m.target?'hit':'missed'):(m.rev>0?'booked':'planned');
               const statusLabel={current:'In Progress',hit:'✅ Hit',missed:'❌ Missed',booked:'Booked',planned:'Planned'}[status];
               const statusColor={current:'var(--orange)',hit:'var(--success)',missed:'var(--danger)',booked:'var(--info)',planned:'var(--ink-xlight)'}[status];
+              const hasCustom=!!parseFloat(targets[m.ms]);
               return `<tr style="${m.isCurrent?'background:var(--orange-xlight);font-weight:600':''}">
                 <td><strong>${monthName(m.ms)}</strong></td>
-                <td>$${m.target.toFixed(0)}</td>
+                <td><input type="number" value="${m.target.toFixed(0)}" onchange="saveRevTargets('${m.ms}',this.value)" style="width:80px;padding:4px 6px;border:1px solid ${hasCustom?'var(--orange)':'var(--border)'};border-radius:4px;font-size:12px;font-weight:600;text-align:right;background:${hasCustom?'var(--orange-xlight)':'var(--white)'}">${hasCustom?'<span style="font-size:9px;color:var(--orange);margin-left:2px" title="Custom target">*</span>':''}</td>
                 <td>$${m.rev.toFixed(0)}${m.isCurrent?` <span style="font-size:10px;color:var(--ink-light)">(${m.walks} walks)</span>`:m.walks>0?` <span style="font-size:10px;color:var(--ink-xlight)">(${m.walks})</span>`:''}</td>
                 <td style="color:${vsTarget>=0?'var(--success)':'var(--danger)'}; font-weight:700">${m.rev>0||m.isPast?(vsTarget>=0?'+':'')+vsTarget.toFixed(0)+'%':'—'}</td>
                 <td style="color:${mom>=0?'var(--success)':'var(--danger)'}">${prev&&(m.rev>0||m.isPast)?(mom>=0?'+':'')+mom.toFixed(0)+'%':'—'}</td>
@@ -3314,7 +3315,7 @@ async function renderRevenueForecast(){
             }).join('')}</tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Base: $${monthlyGoal.toLocaleString()}/month. Future targets grow at ${momGrowthTarget}% MoM. Click any target cell to set a custom goal for that month.</div>
+        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Edit any target directly. <span style="color:var(--orange)">*</span> = custom goal. Months without a custom goal use $${monthlyGoal.toLocaleString()} base + ${momGrowthTarget}% MoM growth.</div>
       </div>
     </div>
 
