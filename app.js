@@ -2786,6 +2786,12 @@ function switchClientTab(tab){
   if(tab==='overview') renderClients();
 }
 
+let pricingFilter='all';
+let pricingSort='revenue';
+
+function setPricingFilter(f){pricingFilter=f;renderPricingTable()}
+function setPricingSort(s){pricingSort=s;renderPricingTable()}
+
 function renderPricingTable(){
   const el=document.getElementById('pricing-table');
   const alertEl=document.getElementById('pricing-alert');
@@ -2801,23 +2807,48 @@ function renderPricingTable(){
   }
 
   // Build client list from TTP pricing
-  const allClientNames=Object.keys(ttpPricing).filter(n=>n!=='_summary').sort();
-  const filtered=search?allClientNames.filter(n=>n.toLowerCase().includes(search)):allClientNames;
+  const allClientNames=Object.keys(ttpPricing).filter(n=>n!=='_summary');
 
-  // Sort: active clients first, then by total revenue descending
+  // Apply status filter
+  let filtered=allClientNames;
+  if(pricingFilter==='active'){
+    filtered=filtered.filter(n=>{const c=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===n);return c?.status==='active'});
+  }else if(pricingFilter==='inactive'){
+    filtered=filtered.filter(n=>{const c=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===n);return !c||c.status!=='active'});
+  }
+  if(search) filtered=filtered.filter(n=>n.toLowerCase().includes(search));
+
+  // Sort
   const sorted=filtered.sort((a,b)=>{
-    const ca=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===a);
-    const cb=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===b);
-    const aa=ca?.status==='active'?0:1;
-    const ab=cb?.status==='active'?0:1;
-    if(aa!==ab) return aa-ab;
-    return (ttpPricing[b]?._summary?.totalRevenue||0)-(ttpPricing[a]?._summary?.totalRevenue||0);
+    if(pricingSort==='revenue') return (ttpPricing[b]?._summary?.totalRevenue||0)-(ttpPricing[a]?._summary?.totalRevenue||0);
+    if(pricingSort==='avg-walk') return (ttpPricing[b]?._summary?.avgPerWalk||0)-(ttpPricing[a]?._summary?.avgPerWalk||0);
+    if(pricingSort==='name') return a.localeCompare(b);
+    if(pricingSort==='walks') return (ttpPricing[b]?._summary?.totalWalks||0)-(ttpPricing[a]?._summary?.totalWalks||0);
+    return 0;
   });
 
   const totalClients=sorted.length;
   const totalRev=sorted.reduce((s,n)=>s+(ttpPricing[n]?._summary?.totalRevenue||0),0);
+  const totalWalks=sorted.reduce((s,n)=>s+(ttpPricing[n]?._summary?.totalWalks||0),0);
+  const activeCount=allClientNames.filter(n=>{const c=clients.find(c=>(c.name||'').replace(/\\+$/g,'').trim()===n);return c?.status==='active'}).length;
+  const inactiveCount=allClientNames.length-activeCount;
+
   if(alertEl){
-    alertEl.innerHTML=`<div style="padding:10px 14px;background:var(--info-bg);border:1px solid var(--info);border-radius:var(--radius-sm);font-size:12px;color:var(--info)">Pricing auto-calculated from TTP invoiced amounts. ${totalClients} clients · $${totalRev.toLocaleString()} total revenue. Synced across all devices.</div>`;
+    alertEl.innerHTML=`
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <div class="filter-pill${pricingFilter==='all'?' active':''}" onclick="setPricingFilter('all')">All (${allClientNames.length})</div>
+        <div class="filter-pill${pricingFilter==='active'?' active':''}" onclick="setPricingFilter('active')">Active (${activeCount})</div>
+        <div class="filter-pill${pricingFilter==='inactive'?' active':''}" onclick="setPricingFilter('inactive')">Inactive (${inactiveCount})</div>
+        <span style="color:var(--border);margin:0 4px">|</span>
+        <span style="font-size:11px;color:var(--ink-light);font-weight:600">Sort:</span>
+        <div class="filter-pill${pricingSort==='revenue'?' active':''}" onclick="setPricingSort('revenue')">Total Revenue</div>
+        <div class="filter-pill${pricingSort==='avg-walk'?' active':''}" onclick="setPricingSort('avg-walk')">Avg / Walk</div>
+        <div class="filter-pill${pricingSort==='walks'?' active':''}" onclick="setPricingSort('walks')">Total Walks</div>
+        <div class="filter-pill${pricingSort==='name'?' active':''}" onclick="setPricingSort('name')">Name</div>
+      </div>
+      <div style="padding:10px 14px;background:var(--info-bg);border:1px solid var(--info);border-radius:var(--radius-sm);font-size:12px;color:var(--info)">
+        Showing ${totalClients} clients · $${totalRev.toLocaleString()} total revenue · ${totalWalks.toLocaleString()} walks · avg $${totalWalks>0?Math.round(totalRev/totalWalks):0}/walk
+      </div>`;
   }
 
   el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">${sorted.map(name=>{
