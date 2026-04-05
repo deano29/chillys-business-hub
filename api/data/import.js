@@ -112,7 +112,8 @@ function importWalks() {
     if (!start) continue;
 
     const status = (r['Status'] || '').toLowerCase();
-    if (status === 'cancelled') continue; // Skip cancelled walks
+    const checkRev = parseDollar(r['Service Revenue']) + parseDollar(r['Pet Fees']) + parseDollar(r['Holiday Fees']) + parseDollar(r['After Hours Fees']) + parseDollar(r['Weekend Fees']);
+    if (status === 'cancelled' && checkRev <= 0) continue; // Skip cancelled walks with no revenue (keep cancellation fees)
 
     const serviceRevenue = parseDollar(r['Service Revenue']);
     const petFees = parseDollar(r['Pet Fees']);
@@ -131,7 +132,7 @@ function importWalks() {
       end: end ? toISODateTime(end) : '',
       time: formatTime(start),
       endTime: end ? formatTime(end) : '',
-      status: status === 'completed' ? 'completed' : status === 'scheduled' ? 'upcoming' : status,
+      status: status === 'completed' ? 'completed' : status === 'scheduled' ? 'upcoming' : status === 'cancelled' ? 'cancelled' : status,
       revenue: serviceRevenue,
       petFees,
       holidayFees,

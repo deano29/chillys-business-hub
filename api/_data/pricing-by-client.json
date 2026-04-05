@@ -72,15 +72,15 @@
       "totalRevenue": 45
     },
     "Dog Walking - 60 Minutes": {
-      "avgPrice": 56.32,
+      "avgPrice": 55.25,
       "recentPrice": 55,
-      "walkCount": 52,
-      "totalRevenue": 2928.5
+      "walkCount": 54,
+      "totalRevenue": 2983.5
     },
     "_summary": {
-      "totalRevenue": 2973.5,
-      "totalWalks": 53,
-      "avgPerWalk": 56.1
+      "totalRevenue": 3028.5,
+      "totalWalks": 55,
+      "avgPerWalk": 55.06
     }
   },
   "Tony Tran": {
@@ -445,12 +445,12 @@
     "2 Hour Dog Adventure": {
       "avgPrice": 75,
       "recentPrice": 75,
-      "walkCount": 5,
-      "totalRevenue": 375
+      "walkCount": 6,
+      "totalRevenue": 450
     },
     "_summary": {
-      "totalRevenue": 375,
-      "totalWalks": 5,
+      "totalRevenue": 450,
+      "totalWalks": 6,
       "avgPerWalk": 75
     }
   },

@@ -2641,6 +2641,25 @@
     "source": "ttp-csv"
   },
   {
+    "client": "Darcy Wu",
+    "walker": "Jessica Lauritz",
+    "service": "Dog Walking - 60 Minutes",
+    "date": "2026-02-12",
+    "start": "2026-02-11T21:30:00.000Z",
+    "end": "2026-02-11T22:30:00.000Z",
+    "time": "8:30am",
+    "endTime": "9:30am",
+    "status": "cancelled",
+    "revenue": 27.5,
+    "petFees": 0,
+    "holidayFees": 0,
+    "afterHoursFees": 0,
+    "weekendFees": 0,
+    "staffPaid": 0,
+    "totalRevenue": 27.5,
+    "source": "ttp-csv"
+  },
+  {
     "client": "Alex Harman - NDIS Number 430984681",
     "walker": "Jessica Lauritz",
     "service": "Dog Walking - 30 Mins",
@@ -5719,6 +5738,25 @@
     "source": "ttp-csv"
   },
   {
+    "client": "Petra Naslund",
+    "walker": "Jessica Lauritz",
+    "service": "2 Hour Dog Adventure",
+    "date": "2026-03-11",
+    "start": "2026-03-11T01:00:00.000Z",
+    "end": "2026-03-11T03:00:00.000Z",
+    "time": "12:00pm",
+    "endTime": "2:00pm",
+    "status": "cancelled",
+    "revenue": 75,
+    "petFees": 0,
+    "holidayFees": 0,
+    "afterHoursFees": 0,
+    "weekendFees": 0,
+    "staffPaid": 0,
+    "totalRevenue": 75,
+    "source": "ttp-csv"
+  },
+  {
     "client": "Darcy Wu",
     "walker": "Jessica Lauritz",
     "service": "Dog Walking - 60 Minutes",
@@ -8338,6 +8376,25 @@
     "weekendFees": 0,
     "staffPaid": 0,
     "totalRevenue": 45,
+    "source": "ttp-csv"
+  },
+  {
+    "client": "Darcy Wu",
+    "walker": "Jessica Lauritz",
+    "service": "Dog Walking - 60 Minutes",
+    "date": "2026-04-01",
+    "start": "2026-04-01T04:00:00.000Z",
+    "end": "2026-04-01T05:00:00.000Z",
+    "time": "3:00pm",
+    "endTime": "4:00pm",
+    "status": "cancelled",
+    "revenue": 27.5,
+    "petFees": 0,
+    "holidayFees": 0,
+    "afterHoursFees": 0,
+    "weekendFees": 0,
+    "staffPaid": 0,
+    "totalRevenue": 27.5,
     "source": "ttp-csv"
   },
   {
