@@ -1298,18 +1298,22 @@ async function renderReports(){
   const thisMonthWalks=allWalks.filter(w=>w.date>=monthStart&&w.date<=monthEnd);
   const monthWalkCount=thisMonthWalks.length;
 
-  // MTD vs Scheduled split (using real revenue where available)
+  // MTD vs Scheduled split
   const completedWalks=thisMonthWalks.filter(w=>w.date<=nowStr);
   const scheduledWalks=thisMonthWalks.filter(w=>w.date>nowStr);
-  const mtdRevenue=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const scheduledRevenue=scheduledWalks.reduce((s,w)=>s+walkRevenue(w),0);
-  const monthRevenue=mtdRevenue+scheduledRevenue;
+
+  // Use TTP monthly total as source of truth when available
+  const currentMonthKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const ttpCurrentMonth=summary?.revenueMonthly?.find(m=>m.month===currentMonthKey);
+  const monthRevenue=ttpCurrentMonth?ttpCurrentMonth.revenue:thisMonthWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  // Estimate MTD/booked split proportionally from walk counts
+  const mtdRevenue=monthWalkCount>0?monthRevenue*(completedWalks.length/monthWalkCount):0;
+  const scheduledRevenue=monthRevenue-mtdRevenue;
   const avgPerWalk=monthWalkCount>0?monthRevenue/monthWalkCount:0;
 
   // Previous month revenue for growth %
   const prevMonthDate=new Date(now.getFullYear(),now.getMonth()-1,1);
   const prevMonthKey=`${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth()+1).padStart(2,'0')}`;
-  // Use TTP summary if available (exact invoiced totals), else calculate from walks
   const ttpPrev=summary?.revenueMonthly?.find(m=>m.month===prevMonthKey);
   const prevRevenue=ttpPrev?ttpPrev.revenue:allWalks.filter(w=>w.date>=prevMonthKey+'-01'&&w.date<=prevMonthKey+'-31').reduce((s,w)=>s+walkRevenue(w),0);
   const growthPct=prevRevenue>0?Math.round(((monthRevenue-prevRevenue)/prevRevenue)*100):0;
@@ -1323,9 +1327,9 @@ async function renderReports(){
   // ── KPI CARDS (real data with MTD/Booked split) ──
   document.getElementById('report-kpis').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Conversion Rate</div><div class="kpi-value">${conversionRate}%</div><div class="kpi-change">${closedWon} of ${totalEnq} enquiries converted</div></div>
-    <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toFixed(0)}</div><div class="kpi-change">$${mtdRevenue.toFixed(0)} earned · $${scheduledRevenue.toFixed(0)} booked ${growthLabel?' · '+growthLabel:''}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Revenue (${monthNames[now.getMonth()]})</div><div class="kpi-value">$${monthRevenue.toLocaleString()}</div><div class="kpi-change">~$${mtdRevenue.toFixed(0)} earned · ~$${scheduledRevenue.toFixed(0)} booked ${growthLabel?' · '+growthLabel:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">Walks (${monthNames[now.getMonth()]})</div><div class="kpi-value">${monthWalkCount}</div><div class="kpi-change">${completedWalks.length} completed · ${scheduledWalks.length} scheduled</div></div>
-    <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">${thisMonthWalks.some(w=>w.totalRevenue>0)?'Based on TTP invoiced amounts':'Based on client pricing'}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Revenue / Walk</div><div class="kpi-value">$${avgPerWalk.toFixed(0)}</div><div class="kpi-change">${ttpCurrentMonth?'From TTP revenue report':'Estimated from pricing'}</div></div>
   `;
 
   // ── REVENUE TREND (use TTP monthly totals where available, else calculate from walks) ──
