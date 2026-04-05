@@ -3187,9 +3187,9 @@ async function renderRevenueForecast(){
   function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
   function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
 
-  // Build monthly data for last 6 months + current + next 6 months (13 months)
+  // Build monthly data for last 5 months + current + next 7 months (13 months)
   const monthlyData=[];
-  for(let i=-6;i<=6;i++){
+  for(let i=-5;i<=7;i++){
     const d=new Date(now.getFullYear(),now.getMonth()+i,1);
     const ms=monthStr(d.getFullYear(),d.getMonth());
     const mWalks=walks.filter(w=>w.date.startsWith(ms));
