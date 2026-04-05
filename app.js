@@ -89,17 +89,17 @@ const OB_STEPS=[
 
 // ── DUMMY DATA ──
 const DUMMY_ENQ=[
-  {id:'e1',name:'Sarah Mitchell',phone:'0412 345 678',email:'sarah.mitchell@gmail.com',channel:'WhatsApp',dogName:'Buddy',dogBreed:'Golden Retriever',services:'Daily group walks',stage:'new',followup:'2026-03-28',notes:'Has a friendly dog, looking for 5 days/week.',dateAdded:'2026-03-27',source:'Meta Ad',suburb:'Fitzroy'},
+  {id:'e1',name:'Sarah Mitchell',phone:'0412 345 678',email:'sarah.mitchell@gmail.com',channel:'WhatsApp',dogName:'Buddy',dogBreed:'Golden Retriever',services:'Daily group walks',stage:'new',followup:'2026-03-28',notes:'Has a friendly dog, looking for 5 days/week.',dateAdded:'2026-03-27',source:'Meta Ads',suburb:'Fitzroy'},
   {id:'e2',name:'James Thompson',phone:'0423 456 789',email:'james.t@outlook.com',channel:'Instagram',dogName:'Bella',dogBreed:'Labrador',services:'Solo walks, drop-ins',stage:'new',followup:'2026-03-27',notes:'Enquired via Instagram DM. 2yr old lab.',dateAdded:'2026-03-26',source:'Instagram',suburb:'Richmond'},
-  {id:'e3',name:'Emma Chen',phone:'0434 567 890',email:'emma.chen@gmail.com',channel:'Facebook',dogName:'Max',dogBreed:'Border Collie',services:'Group walks',stage:'new',followup:'2026-04-01',notes:'Very active dog, needs stimulation.',dateAdded:'2026-03-25',source:'Meta Ad',suburb:'Collingwood'},
+  {id:'e3',name:'Emma Chen',phone:'0434 567 890',email:'emma.chen@gmail.com',channel:'Facebook',dogName:'Max',dogBreed:'Border Collie',services:'Group walks',stage:'new',followup:'2026-04-01',notes:'Very active dog, needs stimulation.',dateAdded:'2026-03-25',source:'Meta Ads',suburb:'Collingwood'},
   {id:'e4',name:'Michael Torres',phone:'0445 678 901',email:'mtorres@hotmail.com',channel:'Website',dogName:'Luna',dogBreed:'Poodle',services:'Solo walks',stage:'new',followup:'2026-04-02',notes:'Prefers afternoon walks. Luna is well trained.',dateAdded:'2026-03-24',source:'Website',suburb:'South Yarra'},
   {id:'e5',name:'Priya Sharma',phone:'0456 789 012',email:'priya.sharma@gmail.com',channel:'Referral',dogName:'Coco',dogBreed:'Cavoodle',services:'Group walks, puppy visits',stage:'contacted',followup:'2026-04-03',notes:'Referred by Amy Foster. 6-month old puppy.',dateAdded:'2026-03-23',source:'Referral',suburb:'Northcote'},
   {id:'e6',name:'Tom Wilson',phone:'0467 890 123',email:'tom.wilson@gmail.com',channel:'Email',dogName:'Archie',dogBreed:'Staffy',services:'Daily walks',stage:'contacted',followup:'2026-04-04',notes:'Works from home, wants 9am walks Mon-Fri.',dateAdded:'2026-03-22',source:'Google',suburb:'Brunswick'},
   {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'qualified',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
-  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'qualified',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Meta Ad',suburb:'Fitzroy North'},
+  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'qualified',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Meta Ads',suburb:'Fitzroy North'},
   {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'closed-won',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
   {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'closed-won',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
-  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'closed-won',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Meta Ad',suburb:'Fitzroy'},
+  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'closed-won',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Meta Ads',suburb:'Fitzroy'},
   {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
 ];
 
@@ -157,7 +157,7 @@ const AUTOMATION_LOG_BASE=[
   {id:'al4',event:'Follow-up overdue',detail:'Sarah Mitchell — was due 28 Mar',time:'8:00am today',status:'warning',icon:'⚠️'},
   {id:'al5',event:'Onboarding step updated',detail:'Lisa Park: T&Cs signed (step 3 of 8)',time:'Yesterday 4:12pm',status:'success',icon:'✅'},
   {id:'al6',event:'Stage changed',detail:'Nick Patel: Meet & Greet → Onboarding',time:'Yesterday 2:30pm',status:'success',icon:'📊'},
-  {id:'al7',event:'Enquiry added',detail:'Emma Chen → New stage (via Meta Ad)',time:'25 Mar, 11:02am',status:'success',icon:'📥'},
+  {id:'al7',event:'Enquiry added',detail:'Emma Chen → New stage (via Meta Ads)',time:'25 Mar, 11:02am',status:'success',icon:'📥'},
   {id:'al8',event:'Converted to client',detail:'Amy Foster: Onboarding → Converted 🎉',time:'1 Mar, 9:15am',status:'success',icon:'🎉'},
 ];
 
@@ -265,7 +265,7 @@ function sendEmailWebhook(to,subject,body){
 // ── FIT SCORE ──
 function calcFitScore(e){
   let s=0;
-  const src={Referral:5,'Meta Ad':3,WhatsApp:3,Instagram:3,Facebook:2,Website:2,Email:1,Google:1,Other:1};
+  const src={Referral:5,'Meta Ads':3,WhatsApp:3,Instagram:3,Facebook:2,Website:2,Email:1,Google:1,Other:1};
   s+=src[e.source]||src[e.channel]||1;
   const svc=(e.services||'').toLowerCase();
   if(/daily|5 day/i.test(svc))s+=3;
@@ -644,7 +644,7 @@ async function fetchNewLeads(){
         dogName:lead.dogName||lead.dog_name||'',dogBreed:lead.dogBreed||lead.dog_breed||'',
         services:lead.services||'',stage:'new',followup:null,
         notes:lead.notes||lead.message||'',suburb:lead.suburb||'',
-        source:lead.source||'Meta Ad',dateAdded:today()
+        source:lead.source||'Meta Ads',dateAdded:today()
       });
       added++;
     });
@@ -2014,7 +2014,7 @@ function openAddEnquiry(){
   ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-stage').value='new';
   document.getElementById('f-channel').value='WhatsApp';
-  document.getElementById('f-source').value='Meta Ad';
+  document.getElementById('f-source').value='Meta Ads';
   openModal('modal-enq');
 }
 
@@ -2034,7 +2034,7 @@ function openEditEnquiry(id){
   document.getElementById('f-followup').value=e.followup||'';
   document.getElementById('f-notes').value=e.notes||'';
   document.getElementById('f-suburb').value=e.suburb||'';
-  document.getElementById('f-source').value=e.source||'Meta Ad';
+  document.getElementById('f-source').value=e.source||'Meta Ads';
   openModal('modal-enq');
 }
 
