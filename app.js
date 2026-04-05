@@ -3180,7 +3180,7 @@ async function renderRevenueForecast(){
 
   // Load targets
   const targets=load('cw_rev_targets',{});
-  const annualGoal=parseFloat(targets.annualGoal)||100000;
+  const monthlyGoal=parseFloat(targets.monthlyGoal)||8000;
   const momGrowthTarget=parseFloat(targets.momGrowth)||10;
 
   function walkRevenue(w){return getClientPrice(w.client,w.service);}
@@ -3203,16 +3203,13 @@ async function renderRevenueForecast(){
     const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
     const bookedRev=isCurrent?rev-completedRev:0;
 
-    // Target: use custom target if set, otherwise calculate from annual goal or growth
-    let target=targets[ms]||0;
+    // Target: use custom target if set, otherwise use monthly goal + growth
+    let target=parseFloat(targets[ms])||0;
     if(!target){
-      if(i===0) target=annualGoal/12;// Default: equal monthly share
-      else if(i>0){
-        // Future: apply MoM growth from current month
-        const prevMonth=monthlyData[monthlyData.length-1];
-        target=prevMonth?prevMonth.target*(1+momGrowthTarget/100):annualGoal/12;
-      }else{
-        target=annualGoal/12;
+      if(i<=0) target=monthlyGoal;// Current and past: use base monthly goal
+      else{
+        // Future: apply MoM growth compounding from monthly goal
+        target=monthlyGoal*Math.pow(1+momGrowthTarget/100,i);
       }
     }
 
@@ -3236,7 +3233,7 @@ async function renderRevenueForecast(){
   const ytdMonths=monthlyData.filter(m=>(m.isPast||m.isCurrent)&&m.ms.startsWith(String(now.getFullYear())));
   const ytdRev=ytdMonths.reduce((s,m)=>s+m.rev,0);
   const ytdTarget=ytdMonths.reduce((s,m)=>s+m.target,0);
-  const annualPace=ytdRev/(now.getMonth()+1)*12;
+  const annualProjected=monthlyGoal*12;
 
   // Weekly run rate
   const fourWeeksAgo=new Date(now);fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
@@ -3245,16 +3242,16 @@ async function renderRevenueForecast(){
   const weeklyRunRate=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
 
   el.innerHTML=`
-    <!-- HERO: Annual Goal + Settings -->
+    <!-- HERO: Monthly Goal + Settings -->
     <div style="display:flex;gap:16px;margin-bottom:20px;align-items:stretch">
       <div class="card" style="flex:2;border-top:4px solid var(--orange)">
         <div class="card-body" style="text-align:center;padding:24px">
-          <div style="font-size:12px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Annual Revenue Goal</div>
-          <div style="font-size:42px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--ink)">$${(annualGoal/1000).toFixed(0)}k</div>
-          <div style="font-size:13px;color:var(--ink-light);margin-top:4px">= $${(annualGoal/12).toFixed(0)}/month avg</div>
+          <div style="font-size:12px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Monthly Revenue Goal</div>
+          <div style="font-size:42px;font-weight:800;font-family:'Readex Pro',sans-serif;color:var(--ink)">$${monthlyGoal.toLocaleString()}</div>
+          <div style="font-size:13px;color:var(--ink-light);margin-top:4px">= $${(annualProjected/1000).toFixed(0)}k/year at this rate</div>
           <div style="margin-top:12px;font-size:12px">
             YTD: <strong style="color:${ytdRev>=ytdTarget?'var(--success)':'var(--warning)'}">$${(ytdRev/1000).toFixed(1)}k</strong> of $${(ytdTarget/1000).toFixed(1)}k target
-            · Annual pace: <strong style="color:${annualPace>=annualGoal?'var(--success)':'var(--warning)'}">$${(annualPace/1000).toFixed(0)}k</strong>
+            · Run rate: <strong>$${weeklyRunRate.toFixed(0)}/wk</strong>
           </div>
         </div>
       </div>
@@ -3262,7 +3259,7 @@ async function renderRevenueForecast(){
         <div class="card-body">
           <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">Growth Settings</h4>
           <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
-            <div class="form-group"><label>Annual Goal ($)</label><input type="number" value="${annualGoal}" onchange="saveRevTargets('annualGoal',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
+            <div class="form-group"><label>Monthly Goal ($)</label><input type="number" value="${monthlyGoal}" onchange="saveRevTargets('monthlyGoal',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
             <div class="form-group"><label>MoM Growth Target (%)</label><input type="number" value="${momGrowthTarget}" step="1" onchange="saveRevTargets('momGrowth',this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:100%"></div>
           </div>
         </div>
@@ -3317,18 +3314,18 @@ async function renderRevenueForecast(){
             }).join('')}</tbody>
           </table>
         </div>
-        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Future targets auto-calculated at ${momGrowthTarget}% MoM growth. Override any month by setting a custom target in settings.</div>
+        <div style="margin-top:10px;font-size:11px;color:var(--ink-xlight)">Base: $${monthlyGoal.toLocaleString()}/month. Future targets grow at ${momGrowthTarget}% MoM. Click any target cell to set a custom goal for that month.</div>
       </div>
     </div>
 
     <!-- KPI Summary -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
       <div class="rp-metric"><div class="rp-metric-label">Weekly Run Rate</div><div class="rp-metric-value">$${weeklyRunRate.toFixed(0)}</div></div>
-      <div class="rp-metric"><div class="rp-metric-label">Monthly Run Rate</div><div class="rp-metric-value">$${(weeklyRunRate*4.3).toFixed(0)}</div></div>
+      <div class="rp-metric ${weeklyRunRate*4.3>=monthlyGoal?'good':'warn'}"><div class="rp-metric-label">Monthly Run Rate</div><div class="rp-metric-value">$${(weeklyRunRate*4.3).toFixed(0)}</div></div>
       <div class="rp-metric"><div class="rp-metric-label">Avg Rev/Walk</div><div class="rp-metric-value">$${avgRevPerWalk.toFixed(0)}</div></div>
       <div class="rp-metric"><div class="rp-metric-label">YTD Revenue</div><div class="rp-metric-value">$${(ytdRev/1000).toFixed(1)}k</div></div>
-      <div class="rp-metric ${annualPace>=annualGoal?'good':'warn'}"><div class="rp-metric-label">Annual Pace</div><div class="rp-metric-value">$${(annualPace/1000).toFixed(0)}k</div></div>
-      <div class="rp-metric"><div class="rp-metric-label">MoM Target</div><div class="rp-metric-value">${momGrowthTarget}%</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">Monthly Goal</div><div class="rp-metric-value">$${monthlyGoal.toLocaleString()}</div></div>
+      <div class="rp-metric"><div class="rp-metric-label">MoM Growth Target</div><div class="rp-metric-value">${momGrowthTarget}%</div></div>
     </div>
   `;
 }
