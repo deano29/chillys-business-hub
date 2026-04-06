@@ -3687,9 +3687,14 @@ async function renderClientLTV(){
   });
 
   // Override revenue with TTP client totals where available (source of truth)
+  const ttpRevKeys=Object.keys(ttpClientRevenue);
   Object.values(clientMap).forEach(c=>{
-    // Try exact match, then trimmed match
-    const ttpRev=ttpClientRevenue[c.name]||ttpClientRevenue[c.name+' ']||0;
+    // Try exact match, then trimmed, then case-insensitive partial
+    let ttpRev=ttpClientRevenue[c.name]||ttpClientRevenue[c.name+' ']||0;
+    if(!ttpRev){
+      const match=ttpRevKeys.find(k=>k.trim().toLowerCase()===c.name.trim().toLowerCase());
+      if(match) ttpRev=ttpClientRevenue[match];
+    }
     if(ttpRev>0) c.revenue=ttpRev;
   });
 
@@ -3706,7 +3711,10 @@ async function renderClientLTV(){
 
   const activeClients=clientList.filter(c=>c.isActive);
   const totalClients=clientList.length;
-  const totalRev=clientList.reduce((s,c)=>s+c.revenue,0);
+  // Use TTP monthly totals for overall revenue (matches Reports page)
+  const ttpMonthlyLTV=summary?.revenueMonthly||[];
+  const ttpTotalRev=ttpMonthlyLTV.reduce((s,m)=>s+m.revenue,0);
+  const totalRev=ttpTotalRev>0?ttpTotalRev:clientList.reduce((s,c)=>s+c.revenue,0);
   const avgLTV=totalClients>0?totalRev/totalClients:0;
   const avgTenure=clientList.reduce((s,c)=>s+c.tenureMonths,0)/Math.max(1,totalClients);
   const avgMonthlyPerClient=clientList.reduce((s,c)=>s+c.avgPerMonth,0)/Math.max(1,totalClients);
