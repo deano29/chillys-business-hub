@@ -212,6 +212,13 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function fmtDate(d){if(!d)return '';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}
 function fuStatus(d){if(!d)return null;if(d<today())return 'overdue';if(d===today())return 'today';return 'upcoming'}
 
+// ── GLOBAL CONSTANTS & HELPERS ──
+const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
+function isKnownWalker(name){return KNOWN_WALKERS.some(k=>(name||'').toLowerCase().includes(k.split(' ')[0].toLowerCase()))}
+function cleanClientName(s){return (s||'').replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim()}
+function isRealClient(name){const n=cleanClientName(name).toLowerCase();return n&&!n.includes('potential client')&&n!=='dean haimes'}
+function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service)}
+
 function showToast(msg,emoji='✅'){
   const el=document.getElementById('toast');
   el.innerHTML=`<span>${emoji}</span> ${msg}`;
@@ -380,9 +387,6 @@ function buildChart(containerId,labelId,data,h=110){
 // ── SHARED: Build shifts from walk data (used by Dashboard + Profitability) ──
 function buildShiftsFromWalks(walks,settings){
   // Only group by known walkers — ICS sometimes puts dog names in walker field
-  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
-  const isKnownWalker=name=>KNOWN_WALKERS.some(k=>name.toLowerCase().includes(k.split(' ')[0].toLowerCase()));
-
   const walkerGroups={};
   walks.forEach(w=>{
     let walker=w.walker||'Unknown';
@@ -442,7 +446,6 @@ function buildShiftsFromWalks(walks,settings){
 }
 
 // Shared revenue cache — keeps dashboard + profitability in sync
-let _weeklyRevenueCache={revenue:0,profit:0,margin:0,walks:0};
 
 // ── DASHBOARD ──
 async function renderDashboard(){
@@ -464,7 +467,7 @@ async function renderDashboard(){
 
   // Calculate real stats
   const activeLeads=enquiries.filter(e=>['new','contacted','qualified'].includes(e.stage)).length;
-  const activeClients=clients.filter(c=>c.status==='active').length;
+  const activeClients=clients.filter(c=>c.status==='active'&&isRealClient(c.name)).length;
   const todayWalkCount=TODAY_WALKS.length;
   const weekWalkCount=thisWeekWalks.length;
 
@@ -474,7 +477,6 @@ async function renderDashboard(){
   const weekRev=weekShifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
   const weekProfit=weekShifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
   const weekMargin=weekRev>0?(weekProfit/weekRev)*100:0;
-  _weeklyRevenueCache={revenue:weekRev,profit:weekProfit,margin:weekMargin,walks:weekWalkCount};
 
   // Follow-ups
   const due=enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'||s==='today';}).sort((a,b)=>(a.followup||'').localeCompare(b.followup||''));
@@ -483,7 +485,7 @@ async function renderDashboard(){
   // Clients needing attention (booked < 7 days ahead)
   const needsAttention=clients.filter(c=>c.status==='active'&&c.daysAhead>0&&c.daysAhead<=7).length;
   const noUpcoming=clients.filter(c=>c.status==='no-upcoming').length;
-  const unpricedClients=clients.filter(c=>c.name&&!isClientPriced(c.name.replace(/\\+$/g,'').trim())).length;
+  const unpricedClients=clients.filter(c=>c.name&&isRealClient(c.name)&&!isClientPriced(cleanClientName(c.name))).length;
 
   // KPI Stats
   document.getElementById('dash-stats').innerHTML=`
@@ -1302,7 +1304,6 @@ async function renderReports(){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   // Helper: get real revenue from a walk (uses TTP invoiced amount if available, else estimates)
-  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service)}
 
   // Current month walks (full month including future scheduled walks)
   const monthStart=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
@@ -1404,11 +1405,11 @@ async function renderReports(){
 
   // ── WALKER UTILISATION (real TTP data, this month) ──
   // Only count known walkers — ICS sometimes puts dog names in the walker field
-  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
   const walkerMap={};
   thisMonthWalks.forEach(w=>{
     const raw=w.walker||'Unknown';
-    const name=KNOWN_WALKERS.find(k=>raw.toLowerCase().includes(k.split(' ')[0].toLowerCase()))||null;
+    let name=KNOWN_WALKERS.find(k=>raw.toLowerCase().includes(k.split(' ')[0].toLowerCase()))||null;
+    if(!name){const knownOnDate=thisMonthWalks.find(x=>x.date===w.date&&isKnownWalker(x.walker));name=knownOnDate?KNOWN_WALKERS.find(k=>knownOnDate.walker.toLowerCase().includes(k.split(' ')[0].toLowerCase())):KNOWN_WALKERS[0]}
     if(!name) return;
     if(!walkerMap[name]) walkerMap[name]={walks:0,hours:0,revenue:0};
     walkerMap[name].walks++;
@@ -2236,8 +2237,7 @@ async function renderRoutePlanner(){
   }
 
   // Filter walks for selected date
-  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
-  const isKnown=name=>KNOWN_WALKERS.some(k=>(name||'').toLowerCase().includes(k.split(' ')[0].toLowerCase()));
+  const isKnown=isKnownWalker;
   let dayWalks=rpAllWalks.filter(w=>w.date===selectedDate);
   // Assign unknown walkers to known ones (same fix as buildShiftsFromWalks)
   dayWalks=dayWalks.map(w=>{
@@ -2535,7 +2535,7 @@ async function renderCoverage(){
 
   // Determine active/inactive by matching against TTP clients array (recalc each render)
   // TTP names often include dog name: "Tony Tran (Teddy" — strip parenthetical part for matching
-  const cleanName=s=>(s||'').replace(/\s*\(.*$/, '').replace(/\+$/g,'').trim().toLowerCase();
+  const cleanName=s=>cleanClientName(s).toLowerCase();
   const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanName(c.name)));
   covClientLocations.forEach(loc=>{
     loc._active=activeNames.has(cleanName(loc.name));
@@ -3487,7 +3487,6 @@ async function renderRevenueForecast(){
   const monthlyGoal=parseFloat(targets.monthlyGoal)||8000;
   const momGrowthTarget=parseFloat(targets.momGrowth)||10;
 
-  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service);}
   function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
   function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
 
@@ -3664,11 +3663,9 @@ async function renderClientLTV(){
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   // Use real TTP revenue where available, else estimate
-  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service);}
 
   // Build active client names set from live TTP data (strip dog names)
-  const cleanClientName=s=>(s||'').replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim().toLowerCase();
-  const activeClientNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanClientName(c.name)));
+  const activeClientNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanClientName(c.name).toLowerCase()));
 
   // Client type lookup helper
   function getClientType(name){
@@ -3987,7 +3984,7 @@ async function renderGrowthSim(){
   const avgDaysPerWeek=Math.round(uniqueWeekDays/4*10)/10;
 
   // Revenue estimate
-  const weeklyRevenue=recentWalks.reduce((s,w)=>s+getClientPrice(w.client,w.service),0)/4;
+  const weeklyRevenue=recentWalks.reduce((s,w)=>s+walkRevenue(w),0)/4;
 
   // Walk hours
   const totalHrs=recentWalks.reduce((s,w)=>s+(w.start&&w.end?(new Date(w.end)-new Date(w.start))/3600000:0),0)/4;
