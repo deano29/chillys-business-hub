@@ -3656,7 +3656,7 @@ async function renderClientLTV(){
     fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
   ]);
   const ttpClientRevenue=summary?.revenueByClient||{};
-  const clientTypesMap=summary?.clientTypes||{};
+  const clientTypesMap=load('cw_client_types',{});
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
@@ -3680,7 +3680,9 @@ async function renderClientLTV(){
   walks.forEach(w=>{
     const rawName=(w.client||'').trim();
     const name=rawName.replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim();
-    if(!name||name==='Potential Client (general)'||name==='Dean Haimes') return;
+    if(!name||name.toLowerCase().includes('potential client')||name==='Dean Haimes') return;
+    // Skip Meet & Greet only entries (not real revenue)
+    if((w.service||'').toLowerCase().includes('meet & greet')&&!w.totalRevenue) return;
     if(!clientMap[name]) clientMap[name]={name,walks:0,revenue:0,firstWalk:null,lastWalk:null,months:new Set(),futureWalks:0};
     const c=clientMap[name];
     const rev=walkRevenue(w);
@@ -3881,11 +3883,13 @@ async function renderClientLTV(){
   `;
 }
 
-async function saveClientType(clientName,clientType){
-  try{
-    await fetch('/api/data/summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientName,clientType})});
-    showToast(clientName+' → '+(clientType||'untagged'),'✅');
-  }catch{showToast('Failed to save type','⚠️');}
+function saveClientType(clientName,clientType){
+  // Save to localStorage (persists on refresh, works on Vercel)
+  const types=load('cw_client_types',{});
+  if(clientType) types[clientName]=clientType;
+  else delete types[clientName];
+  save('cw_client_types',types);
+  showToast(clientName+' → '+(clientType?{regular:'Regular',project:'Project',adhoc:'Ad Hoc'}[clientType]:'untagged'),'✅');
 }
 
 // ── GROWTH SIMULATOR ──

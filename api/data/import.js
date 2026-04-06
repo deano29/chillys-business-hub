@@ -115,6 +115,13 @@ function importWalks() {
     const checkRev = parseDollar(r['Service Revenue']) + parseDollar(r['Pet Fees']) + parseDollar(r['Holiday Fees']) + parseDollar(r['After Hours Fees']) + parseDollar(r['Weekend Fees']);
     if (status === 'cancelled' && checkRev <= 0) continue; // Skip cancelled walks with no revenue (keep cancellation fees)
 
+    // Skip non-client entries
+    const clientName = (r['Client'] || '').trim();
+    if (!clientName || clientName.toLowerCase().includes('potential client') || clientName === 'Dean Haimes') continue;
+    // Skip Meet & Greet / Call entries (not real walks)
+    const svc = (r['Service'] || '').toLowerCase();
+    if (svc.includes('meet & greet') || svc.includes('call potential')) continue;
+
     const serviceRevenue = parseDollar(r['Service Revenue']);
     const petFees = parseDollar(r['Pet Fees']);
     const holidayFees = parseDollar(r['Holiday Fees']);
