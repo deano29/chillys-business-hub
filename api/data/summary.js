@@ -21,6 +21,7 @@ module.exports = async function handler(req, res) {
   const revenueByService = loadJSON('revenue-by-service.json');
   const referrals = loadJSON('referrals.json');
   const pricingByClient = loadJSON('pricing-by-client.json');
+  const clientLocations = loadJSON('client-locations.json');
 
   res.json({
     revenueMonthly: revenueMonthly || [],
@@ -28,6 +29,7 @@ module.exports = async function handler(req, res) {
     revenueByService: revenueByService || [],
     referrals: referrals || {},
     pricingByClient: pricingByClient || {},
+    clientLocations: clientLocations || [],
     hasData: !!(revenueMonthly && revenueMonthly.length),
   });
 };

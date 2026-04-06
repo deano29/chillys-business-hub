@@ -447,60 +447,27 @@
     <div class="view" id="view-coverage">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="display:flex;gap:6px;flex-wrap:wrap" id="cov-filters">
-          <div class="filter-pill active" onclick="setCovFilter('all')">All</div>
-          <div class="filter-pill" onclick="setCovFilter('active')">🐕 Active Clients</div>
-          <div class="filter-pill" onclick="setCovFilter('inactive')">💤 Inactive Clients</div>
-          <div class="filter-pill" onclick="setCovFilter('lead')">📥 Enquiries</div>
+          <div class="filter-pill active" onclick="setCovFilter('all')">All Clients</div>
+          <div class="filter-pill" onclick="setCovFilter('active')">🐕 Active</div>
+          <div class="filter-pill" onclick="setCovFilter('inactive')">💤 Inactive</div>
           <div class="filter-pill" onclick="toggleOffLeashParks()" id="cov-parks-toggle" style="background:var(--success-bg);color:var(--success);border-color:var(--success)">🌳 Off-Leash Parks</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="cov-assign-select" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;outline:none;background:var(--cream);min-width:220px;color:var(--ink)">
-            <option value="">📍 Assign address to a client or lead...</option>
-          </select>
-          <button class="btn btn-primary btn-sm" onclick="openAssignAddress()">Assign</button>
         </div>
       </div>
       <div class="cov-stat-row">
-        <div class="cov-stat"><div class="val" id="cov-suburbs">0</div><div class="lbl">Suburbs</div></div>
         <div class="cov-stat"><div class="val" id="cov-clients">0</div><div class="lbl">Clients on Map</div></div>
-        <div class="cov-stat"><div class="val" id="cov-leads">0</div><div class="lbl">Leads on Map</div></div>
-        <div class="cov-stat"><div class="val" id="cov-density">0</div><div class="lbl">Avg per Suburb</div></div>
+        <div class="cov-stat"><div class="val" id="cov-suburbs">0</div><div class="lbl">Suburbs</div></div>
+        <div class="cov-stat"><div class="val" id="cov-parks-count">0</div><div class="lbl">Off-Leash Parks</div></div>
       </div>
       <div class="cov-layout">
         <div class="cov-sidebar">
-          <div class="cluster-card">
-            <h4>🔥 Cluster Analysis</h4>
-            <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Auto-detected from client + lead density</p>
-            <div id="cluster-tags"></div>
+          <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:10px">
+            <div class="ac-tab active" data-covtab="clients" onclick="setCovTab('clients')">🐕 Clients</div>
+            <div class="ac-tab" data-covtab="parks" onclick="setCovTab('parks')">🌳 Parks</div>
+            <div class="ac-tab" data-covtab="suburbs" onclick="setCovTab('suburbs')">📍 Suburbs</div>
           </div>
-          <div class="cluster-card">
-            <h4>📍 Suburbs</h4>
-            <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Click a suburb to zoom on map</p>
-            <div id="suburb-list" style="display:flex;flex-direction:column;gap:6px"></div>
-          </div>
-          <div class="cluster-card">
-            <h4>🏷️ Legend</h4>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Active Client (TTP)</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#9ca3af"></div> Inactive Client</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div> Enquiry (New/Contacted)</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div> Enquiry (Qualified)</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Enquiry (Closed Won)</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#22c55e;border:2px solid #16a34a"></div> Off-Leash Dog Park</div>
-          </div>
-          <div class="cluster-card" id="parks-sidebar" style="display:none">
-            <h4>🌳 Nearby Off-Leash Parks</h4>
-            <p style="font-size:11px;color:var(--ink-light);margin-bottom:8px">Click a client pin to find parks nearby</p>
-            <div id="parks-list" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto"></div>
-          </div>
-          <div class="cluster-card">
-            <h4>➕ Manual Address</h4>
-            <p style="font-size:11px;color:var(--ink-light);margin-bottom:6px">Type any address to geocode onto the map</p>
-            <div class="addr-input-row">
-              <input id="addr-input" placeholder="e.g. 42 Smith St, Fitzroy VIC">
-              <button class="btn btn-primary btn-sm" onclick="geocodeAddress()">📍 Plot</button>
-            </div>
-            <div id="geocode-status" style="font-size:11px;color:var(--ink-xlight);margin-top:6px"></div>
-          </div>
+          <div id="cov-tab-clients" style="display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:calc(100vh - 300px)"></div>
+          <div id="cov-tab-parks" style="display:none;flex-direction:column;gap:4px;overflow-y:auto;max-height:calc(100vh - 300px)"></div>
+          <div id="cov-tab-suburbs" style="display:none;flex-direction:column;gap:4px;overflow-y:auto;max-height:calc(100vh - 300px)"></div>
         </div>
         <div class="cov-map-wrap">
           <div id="coverage-map" style="height:100%;width:100%"></div>

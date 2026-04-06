@@ -327,7 +327,7 @@ function navigate(v){
     enquiries:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button><button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>`,
     templates:`<button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft Reply</button>`,
     reports:`<button class="btn btn-secondary btn-sm" onclick="window.print()">📥 Export PDF</button>`,
-    coverage:`<button class="btn btn-ghost btn-sm" onclick="assignedPins={};save('cw_map_pins',{});renderCoverage();showToast('All pins cleared — defaults will reload','🗑️')">🗑️ Reset Map</button>`,
+    coverage:`<button class="btn btn-ghost btn-sm" onclick="covDataLoaded=false;covClientLocations=[];renderCoverage();showToast('Map data reloaded','🗑️')">🔄 Reload Map</button>`,
   };
   document.getElementById('topbar-actions').innerHTML=actions[v]||'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-light)"><span class="int-live-dot"></span> Live sync</div>';
   if(v==='dashboard')renderDashboard();
@@ -2191,243 +2191,97 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── COVERAGE MAP ──
-const SUBURB_COORDS={
-  'Fitzroy':[-37.7988,144.9784],'Fitzroy North':[-37.7878,144.9784],
-  'Richmond':[-37.8183,144.9981],'Collingwood':[-37.7984,144.9874],
-  'South Yarra':[-37.8380,144.9930],'Northcote':[-37.7698,144.9973],
-  'Brunswick':[-37.7668,144.9600],'Carlton':[-37.7996,144.9671],
-  'St Kilda':[-37.8617,144.9803],'Prahran':[-37.8493,144.9917],
-};
+// Pre-geocoded client locations from /api/data/summary (clientLocations)
+// Active/inactive status determined by matching against live TTP clients array
 
-// Stored assigned pins: keyed by refId (c1, e1, etc.) to prevent duplicates
-// Format: { refId, refType:'client'|'lead', name, dog, suburb, addr, lat, lng, health?, stage? }
-let assignedPins=load('cw_map_pins',{});
 let covMap=null;
 let covMarkers=null;
-let covFilter='all'; // 'all','client','lead'
-
-// Seed default pins from dummy data (only if no saved data)
+let covFilter='all'; // 'all','active','inactive'
+let covClientLocations=[]; // Pre-geocoded from client-locations.json
 let covDataLoaded=false;
-
-async function geocodeAddr(addr){
-  const cache=load('cw_geocache',{});
-  if(cache[addr]) return cache[addr];
-  try{
-    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr+', VIC, Australia')}&countrycodes=au&limit=1`,{headers:{'Accept':'application/json'}});
-    const data=await res.json();
-    if(data.length){
-      const coords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
-      cache[addr]=coords;
-      save('cw_geocache',cache);
-      return coords;
-    }
-  }catch{}
-  return null;
-}
-
-async function loadCoverageData(){
-  if(covDataLoaded) return;
-  covDataLoaded=true;// Prevent duplicate calls
-
-  // Load client data from TTP (addresses, no geocoding yet)
-  const locRes=await fetch('/api/walks/locations').then(r=>r.ok?r.json():null).catch(()=>null);
-  const allItems=[...(locRes||[])];
-
-  // Add enquiries with suburbs
-  enquiries.filter(e=>e.suburb).forEach(e=>{
-    allItems.push({
-      refId:'enq_'+e.id,refType:'lead',name:e.name,dog:e.dogName||'',
-      stage:e.stage,suburb:e.suburb,addr:e.suburb,service:'',
-    });
-  });
-
-  // Geocode progressively — add pins as they resolve
-  let count=0;
-  for(const item of allItems){
-    if(assignedPins[item.refId]&&assignedPins[item.refId].lat) continue;// Already geocoded
-    const searchAddr=item.addr||item.suburb;
-    if(!searchAddr) continue;
-    const coords=await geocodeAddr(searchAddr);
-    if(coords){
-      const jitter=item.refType==='lead'?(Math.random()-0.5)*0.003:0;
-      item.lat=coords.lat+jitter;
-      item.lng=coords.lng+(item.refType==='lead'?(Math.random()-0.5)*0.003:0);
-      assignedPins[item.refId]=item;
-      count++;
-      // Re-render every 5 pins to show progress
-      if(count%5===0){
-        save('cw_map_pins',assignedPins);
-        renderMapPins();
-        document.getElementById('cov-clients').textContent=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat).length;
-        document.getElementById('cov-leads').textContent=Object.values(assignedPins).filter(p=>p.refType==='lead'&&p.lat).length;
-      }
-      await new Promise(r=>setTimeout(r,250));// Nominatim rate limit
-    }
-  }
-  save('cw_map_pins',assignedPins);
-  renderCoverage();// Final render
-}
-
-function seedDefaultPins(){
-  // Load cached pins — real data loaded async via loadCoverageData()
-  const cached=load('cw_map_pins',{});
-  if(Object.keys(cached).length>0){
-    Object.assign(assignedPins,cached);
-  }
-}
+let covActiveTab='clients';
 
 function setCovFilter(f){
   covFilter=f;
   document.querySelectorAll('#cov-filters .filter-pill').forEach(el=>{
-    const map={'All':'all','Active Clients':'active','Inactive Clients':'inactive','Enquiries':'lead'};
-    const label=el.textContent.replace(/[🐕💤📥]/g,'').trim();
+    const map={'All Clients':'all','Active':'active','Inactive':'inactive'};
+    const label=el.textContent.replace(/[🐕💤🌳]/g,'').trim();
+    // Don't touch the parks toggle pill
+    if(label==='Off-Leash Parks') return;
     el.classList.toggle('active',map[label]===f);
   });
-  renderCoverage();
+  renderCovPins();
+  renderCovSidebar();
+  updateCovStats();
 }
 
-function buildAssignDropdown(){
-  const sel=document.getElementById('cov-assign-select');
-  const already=new Set(Object.keys(assignedPins));
-  let html='<option value="">📍 Assign address to a client or lead...</option>';
-  html+='<optgroup label="🐕 Clients">';
-  clients.forEach(c=>{
-    const on=already.has(c.id);
-    html+=`<option value="${c.id}" ${on?'disabled':''}>${c.owner} — ${c.dog}${on?' (already mapped)':''}</option>`;
+function setCovTab(tab){
+  covActiveTab=tab;
+  ['clients','parks','suburbs'].forEach(t=>{
+    const el=document.getElementById('cov-tab-'+t);
+    if(el) el.style.display=t===tab?'flex':'none';
   });
-  html+='</optgroup><optgroup label="📥 Leads / Enquiries">';
-  enquiries.forEach(e=>{
-    const on=already.has(e.id);
-    html+=`<option value="${e.id}" ${on?'disabled':''}>${e.name} — ${e.dogName||'?'}${on?' (already mapped)':''}</option>`;
+  document.querySelectorAll('[data-covtab]').forEach(el=>{
+    el.classList.toggle('active',el.dataset.covtab===tab);
   });
-  html+='</optgroup>';
-  sel.innerHTML=html;
+  renderCovSidebar();
 }
 
-function openAssignAddress(){
-  const sel=document.getElementById('cov-assign-select');
-  const refId=sel.value;
-  if(!refId){showToast('Select a client or lead first','⚠️');return;}
-  if(assignedPins[refId]){showToast('Already on the map — no duplicates','⚠️');return;}
-
-  // Find the record
-  const client=clients.find(c=>c.id===refId);
-  const lead=enquiries.find(e=>e.id===refId);
-  const record=client||lead;
-  if(!record)return;
-
-  const name=client?client.owner:lead.name;
-  const dog=client?client.dog:lead.dogName||'?';
-  const suburb=client?client.suburb:lead.suburb;
-  const refType=client?'client':'lead';
-
-  // Prompt for address
-  const addr=prompt(`Enter the street address for ${name} (${dog}):\ne.g. 42 Smith St, Fitzroy VIC`);
-  if(!addr||!addr.trim())return;
-
-  showToast('Geocoding address...','🔍');
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr.trim())}&countrycodes=au&limit=1`,{
-    headers:{'Accept':'application/json'}
-  })
-  .then(r=>r.json())
-  .then(data=>{
-    if(!data.length){showToast('Address not found — try adding VIC or postcode','⚠️');return;}
-    const loc=data[0];
-    const lat=parseFloat(loc.lat);
-    const lng=parseFloat(loc.lon);
-    const pin={
-      refId,refType,name,dog,suburb:suburb||addr.split(',')[1]?.trim()||'Unknown',
-      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
-      lat,lng,
-    };
-    if(client)pin.health=client.health;
-    if(lead)pin.stage=lead.stage;
-    assignedPins[refId]=pin;
-    save('cw_map_pins',assignedPins);
-    renderCoverage();
-    covMap.setView([lat,lng],15,{animate:true});
-    showToast(`${name} plotted on map!`,'📍');
-  })
-  .catch(()=>showToast('Geocoding failed — check connection','⚠️'));
+function getFilteredCovClients(){
+  if(covFilter==='active') return covClientLocations.filter(c=>c._active);
+  if(covFilter==='inactive') return covClientLocations.filter(c=>!c._active);
+  return covClientLocations;
 }
 
-function renderCoverage(){
-  seedDefaultPins();
+function findNearestParks(lat,lng,count){
+  if(!offLeashParks.length) return [];
+  return offLeashParks.map(p=>({...p,dist:haversine(lat,lng,p.lat,p.lng)}))
+    .sort((a,b)=>a.dist-b.dist).slice(0,count);
+}
 
-  // Trigger async data load if not done
+async function renderCoverage(){
+  // Fetch client locations if not loaded
   if(!covDataLoaded){
-    loadCoverageData().then(()=>renderCoverage());
+    covDataLoaded=true;
+    try{
+      const summary=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null);
+      covClientLocations=(summary?.clientLocations||[]).filter(c=>c.lat&&c.lng);
+    }catch{covClientLocations=[];}
+
+    // Load parks if not already loaded
+    if(!offLeashParks.length){
+      try{offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);}catch{offLeashParks=[];}
+    }
+
+    // Determine active/inactive by matching against TTP clients array
+    const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>(c.name||'').replace(/\+$/g,'').trim().toLowerCase()));
+    covClientLocations.forEach(loc=>{
+      loc._active=activeNames.has((loc.name||'').trim().toLowerCase());
+    });
   }
-
-  const pins=Object.values(assignedPins);
-  let filteredPins=pins;
-  if(covFilter==='active') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='active');
-  else if(covFilter==='inactive') filteredPins=pins.filter(p=>p.refType==='client'&&p.status==='inactive');
-  else if(covFilter==='lead') filteredPins=pins.filter(p=>p.refType==='lead');
-
-  // Suburb stats from filtered pins
-  const allSuburbs={};
-  filteredPins.forEach(p=>{
-    if(!p.suburb)return;
-    if(!allSuburbs[p.suburb])allSuburbs[p.suburb]={clients:0,leads:0};
-    if(p.refType==='client')allSuburbs[p.suburb].clients++;
-    else allSuburbs[p.suburb].leads++;
-  });
-
-  const suburbArr=Object.entries(allSuburbs).sort((a,b)=>(b[1].clients+b[1].leads)-(a[1].clients+a[1].leads));
-  const clientCount=filteredPins.filter(p=>p.refType==='client').length;
-  const leadCount=filteredPins.filter(p=>p.refType==='lead').length;
-  const suburbCount=suburbArr.length;
-  const avg=suburbCount?((clientCount+leadCount)/suburbCount).toFixed(1):'0';
-
-  document.getElementById('cov-suburbs').textContent=suburbCount;
-  document.getElementById('cov-clients').textContent=clientCount;
-  document.getElementById('cov-leads').textContent=leadCount;
-  document.getElementById('cov-density').textContent=avg;
-
-  // Cluster analysis
-  const maxCount=suburbArr.length?(suburbArr[0][1].clients+suburbArr[0][1].leads):0;
-  document.getElementById('cluster-tags').innerHTML=suburbArr.map(([name,d])=>{
-    const total=d.clients+d.leads;
-    let cls='ct-new',label='New area';
-    if(total>=4){cls='ct-hot';label='🔥 Hotspot';}
-    else if(total>=3){cls='ct-growing';label='📈 Growing';}
-    else if(d.leads>d.clients){cls='ct-opportunity';label='💡 Opportunity';}
-    return `<span class="cluster-tag ${cls}">${name}: ${total} ${label}</span>`;
-  }).join('');
-
-  // Suburb list
-  document.getElementById('suburb-list').innerHTML=suburbArr.map(([name,d])=>{
-    const total=d.clients+d.leads;
-    const pct=maxCount?(total/maxCount)*100:0;
-    return `<div class="suburb-row" onclick="zoomToSuburb('${name}',this)">
-      <div class="suburb-dot" style="background:${total>=4?'var(--orange)':total>=3?'var(--warning)':'var(--info)'}"></div>
-      <div class="suburb-name">${name}</div>
-      <div style="font-size:10px;color:var(--ink-xlight);white-space:nowrap">${d.clients}C ${d.leads}L</div>
-      <div class="suburb-bar"><div class="suburb-bar-fill" style="width:${pct}%"></div></div>
-      <div class="suburb-count">${total}</div>
-    </div>`;
-  }).join('');
-
-  // Build dropdown (excluding already-assigned)
-  buildAssignDropdown();
 
   // Init map
   setTimeout(()=>{
     if(!covMap){
-      covMap=L.map('coverage-map',{zoomControl:true}).setView([-37.8136,144.9631],13);
+      const baseLat=getBaseLat();
+      const baseLng=getBaseLng();
+      covMap=L.map('coverage-map',{zoomControl:true}).setView([baseLat,baseLng],12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
         attribution:'&copy; OpenStreetMap contributors',maxZoom:19
       }).addTo(covMap);
     }
-    renderMapPins(filteredPins);
+    renderCovPins();
+    renderCovSidebar();
+    updateCovStats();
     covMap.invalidateSize();
   },100);
 }
 
-function renderMapPins(pins){
-  if(!pins)pins=covFilter==='all'?Object.values(assignedPins):Object.values(assignedPins).filter(p=>p.refType===covFilter);
-  if(covMarkers)covMap.removeLayer(covMarkers);
+function renderCovPins(){
+  if(!covMap) return;
+  const filtered=getFilteredCovClients();
+
+  if(covMarkers) covMap.removeLayer(covMarkers);
   covMarkers=L.markerClusterGroup({
     maxClusterRadius:50,spiderfyOnMaxZoom:true,showCoverageOnHover:false,
     iconCreateFunction:function(cluster){
@@ -2442,84 +2296,113 @@ function renderMapPins(pins){
     }
   });
 
-  pins.forEach(p=>{
-    let color='#F26B21';// Default: active client
-    if(p.refType==='client'&&p.status==='inactive')color='#9ca3af';
-    if(p.refType==='lead'){
-      color='#3b82f6';// Default lead
-      if(p.stage==='qualified')color='#06b6d4';
-      if(p.stage==='closed-won')color='#22c55e';
-      if(p.stage==='closed-lost'||p.stage==='not-suitable')color='#6b7280';
-    }
-
+  filtered.forEach(p=>{
+    const color=p._active?'#F26B21':'#9ca3af';
     const icon=L.divIcon({
       html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
       className:'',iconSize:[14,14],iconAnchor:[7,7]
     });
-
     const marker=L.marker([p.lat,p.lng],{icon});
-    const badge=p.refType==='client'
-      ?`🏠 Client <span style="font-size:10px;font-weight:700;color:${p.status==='active'?'#16a34a':'#9ca3af'}">${p.status||''}${p.futureWalks?' · '+p.futureWalks+' upcoming walks':''}</span>`
-      :`📥 Enquiry <span style="font-size:10px;font-weight:700;color:${color}">${STAGES.find(s=>s.id===p.stage)?.label||p.stage||''}</span>`;
+
+    // Nearest 3 parks
+    const nearest=findNearestParks(p.lat,p.lng,3);
+    const nearestHtml=nearest.length?nearest.map(pk=>{
+      const d=pk.dist<1000?Math.round(pk.dist)+'m':(pk.dist/1000).toFixed(1)+'km';
+      return `<div style="font-size:10px;color:#6b7280;display:flex;justify-content:space-between"><span>${esc(pk.name)}</span><span style="color:var(--success);font-weight:600">${d}</span></div>`;
+    }).join(''):'';
+
+    const statusLabel=p._active?'Active':'Inactive';
+    const statusColor=p._active?'#16a34a':'#9ca3af';
+    const pets=(p.petNames||'').split(',').filter(Boolean).join(', ')||'--';
+
     marker.bindPopup(`
-      <div style="font-family:Inter,sans-serif;min-width:180px">
+      <div style="font-family:Inter,sans-serif;min-width:200px">
         <div style="font-weight:700;font-size:13px;margin-bottom:4px">${esc(p.name)}</div>
-        ${p.service?`<div style="font-size:12px;color:#6b6b6b;margin-bottom:4px">${esc(p.service)}</div>`:''}
-        <div style="font-size:11px;color:#a0a0a0;margin-bottom:4px">📍 ${esc(p.suburb||p.addr||'')}</div>
-        <div>${badge}</div>
-        <div style="margin-top:6px"><button onclick="showNearbyParks(${p.lat},${p.lng},'${esc(p.name).replace(/'/g,"\\'")}')" style="background:#dcfce7;border:1px solid #86efac;color:#16a34a;padding:3px 10px;border-radius:14px;font-size:10px;cursor:pointer;font-weight:600">🌳 Find off-leash parks nearby</button></div>
+        <div style="font-size:11px;color:#a0a0a0;margin-bottom:2px">📍 ${esc(p.suburb||'')}</div>
+        <div style="font-size:11px;margin-bottom:4px">Pets: <strong>${esc(pets)}</strong></div>
+        <div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:${statusColor};background:${p._active?'#dcfce7':'#f3f4f6'};padding:2px 8px;border-radius:10px">${statusLabel}</span></div>
+        ${nearestHtml?`<div style="border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px"><div style="font-size:10px;font-weight:600;color:var(--ink-mid);margin-bottom:3px">Nearest Parks</div>${nearestHtml}</div>`:''}
+        <div style="margin-top:6px"><button onclick="showNearbyParks(${p.lat},${p.lng},'${esc(p.name).replace(/'/g,"\\'")}')" style="background:#dcfce7;border:1px solid #86efac;color:#16a34a;padding:3px 10px;border-radius:14px;font-size:10px;cursor:pointer;font-weight:600">Show all nearby parks</button></div>
       </div>`);
     covMarkers.addLayer(marker);
   });
   covMap.addLayer(covMarkers);
 }
 
-function removePin(refId){
-  delete assignedPins[refId];
-  save('cw_map_pins',assignedPins);
-  renderCoverage();
-  showToast('Pin removed','🗑️');
+function renderCovSidebar(){
+  const filtered=getFilteredCovClients();
+
+  // ── Clients tab
+  const clientsEl=document.getElementById('cov-tab-clients');
+  if(clientsEl){
+    const sorted=[...filtered].sort((a,b)=>(a.suburb||'').localeCompare(b.suburb||'')||(a.name||'').localeCompare(b.name||''));
+    clientsEl.innerHTML=sorted.length?sorted.map(c=>{
+      const color=c._active?'var(--success)':'var(--ink-xlight)';
+      const pets=(c.petNames||'').split(',').filter(Boolean).join(', ');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--cream);border-radius:var(--radius-sm);cursor:pointer;font-size:12px" onclick="covMap.setView([${c.lat},${c.lng}],16,{animate:true})">
+        <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+          <div style="font-size:10px;color:var(--ink-xlight)">${esc(c.suburb||'')}${pets?' · '+esc(pets):''}</div>
+        </div>
+      </div>`;
+    }).join(''):'<div style="padding:16px;text-align:center;color:var(--ink-xlight);font-size:12px">No clients to show.</div>';
+  }
+
+  // ── Parks tab
+  const parksEl=document.getElementById('cov-tab-parks');
+  if(parksEl){
+    const centre=covMap?covMap.getCenter():{lat:getBaseLat(),lng:getBaseLng()};
+    const sorted=offLeashParks.map(p=>({...p,dist:haversine(centre.lat,centre.lng,p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist).slice(0,50);
+    parksEl.innerHTML=sorted.length?sorted.map(p=>{
+      const d=p.dist<1000?Math.round(p.dist)+'m':(p.dist/1000).toFixed(1)+'km';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--cream);border-radius:var(--radius-sm);cursor:pointer;font-size:12px" onclick="covMap.setView([${p.lat},${p.lng}],16,{animate:true})">
+        <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>
+          <div style="font-size:10px;color:var(--ink-xlight)">${p.suburb?esc(p.suburb)+' · ':''}${d}${p.fenced?' · Fenced':''}</div>
+        </div>
+      </div>`;
+    }).join(''):'<div style="padding:16px;text-align:center;color:var(--ink-xlight);font-size:12px">No parks loaded.</div>';
+  }
+
+  // ── Suburbs tab
+  const suburbsEl=document.getElementById('cov-tab-suburbs');
+  if(suburbsEl){
+    const suburbMap={};
+    filtered.forEach(c=>{
+      const s=c.suburb||'Unknown';
+      if(!suburbMap[s]) suburbMap[s]={count:0,lat:c.lat,lng:c.lng};
+      suburbMap[s].count++;
+      // Average the lat/lng for zoom
+      suburbMap[s].lat=(suburbMap[s].lat+c.lat)/2;
+      suburbMap[s].lng=(suburbMap[s].lng+c.lng)/2;
+    });
+    const sorted=Object.entries(suburbMap).sort((a,b)=>b[1].count-a[1].count);
+    const maxCount=sorted.length?sorted[0][1].count:0;
+    suburbsEl.innerHTML=sorted.length?sorted.map(([name,d])=>{
+      const pct=maxCount?(d.count/maxCount)*100:0;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--cream);border-radius:var(--radius-sm);cursor:pointer;font-size:12px" onclick="covMap.setView([${d.lat},${d.lng}],14,{animate:true})">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${esc(name)}</div>
+          <div style="height:4px;background:var(--cream-dark);border-radius:2px;margin-top:3px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--orange);border-radius:2px"></div></div>
+        </div>
+        <div style="font-weight:700;color:var(--orange);font-size:13px;flex-shrink:0">${d.count}</div>
+      </div>`;
+    }).join(''):'<div style="padding:16px;text-align:center;color:var(--ink-xlight);font-size:12px">No suburbs to show.</div>';
+  }
 }
 
-function zoomToSuburb(name,el){
-  document.querySelectorAll('.suburb-row').forEach(r=>r.classList.remove('active'));
-  if(el)el.classList.add('active');
-  const coords=SUBURB_COORDS[name];
-  if(coords&&covMap)covMap.setView(coords,15,{animate:true});
-}
+function updateCovStats(){
+  const filtered=getFilteredCovClients();
+  const suburbs=new Set(filtered.map(c=>c.suburb).filter(Boolean));
 
-function geocodeAddress(){
-  const input=document.getElementById('addr-input').value.trim();
-  const status=document.getElementById('geocode-status');
-  if(!input){status.textContent='Enter an address first.';status.style.color='var(--danger)';return;}
-  status.textContent='Geocoding...';status.style.color='var(--ink-light)';
-
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=au&limit=1`,{
-    headers:{'Accept':'application/json'}
-  })
-  .then(r=>r.json())
-  .then(data=>{
-    if(!data.length){status.textContent='Address not found — try adding VIC or postcode.';status.style.color='var(--danger)';return;}
-    const loc=data[0];
-    const lat=parseFloat(loc.lat);
-    const lng=parseFloat(loc.lon);
-    const refId='manual_'+Date.now();
-    const pin={
-      refId,refType:'lead',name:'Manual Pin',dog:'—',stage:'new',
-      suburb:input.split(',')[1]?.trim()||'Unknown',
-      addr:loc.display_name.split(',').slice(0,3).join(',').trim(),
-      lat,lng
-    };
-    assignedPins[refId]=pin;
-    save('cw_map_pins',assignedPins);
-    renderCoverage();
-    covMap.setView([lat,lng],16,{animate:true});
-    status.innerHTML=`✅ Plotted! <span style="color:var(--orange);cursor:pointer;font-weight:600" onclick="document.getElementById('addr-input').value=''">Add another</span>`;
-    status.style.color='var(--success)';
-    document.getElementById('addr-input').value='';
-    showToast('Address plotted on map!','📍');
-  })
-  .catch(()=>{status.textContent='Geocoding failed — check connection.';status.style.color='var(--danger)';});
+  const clientsEl=document.getElementById('cov-clients');
+  const suburbsEl=document.getElementById('cov-suburbs');
+  const parksEl=document.getElementById('cov-parks-count');
+  if(clientsEl) clientsEl.textContent=filtered.length;
+  if(suburbsEl) suburbsEl.textContent=suburbs.size;
+  if(parksEl) parksEl.textContent=offLeashParks.length;
 }
 
 // ── OFF-LEASH PARKS PAGE ──
@@ -2560,7 +2443,7 @@ async function renderParksPage(){
   let refLat=getBaseLat(),refLng=getBaseLng(),refLabel='base';
   if(selectedClient){
     // Try to find client in coverage map pins first (most accurate)
-    const pin=Object.values(assignedPins).find(p=>p.name===selectedClient&&p.lat);
+    const pin=covClientLocations.find(p=>p.name===selectedClient&&p.lat);
     if(pin){refLat=pin.lat;refLng=pin.lng;refLabel=selectedClient}
     else{
       // Fall back to suburb geocoding from client data
@@ -2581,7 +2464,7 @@ async function renderParksPage(){
   if(search) parks=parks.filter(p=>(p.name||'').toLowerCase().includes(search));
 
   // Find nearest client to each park
-  const clientPins=Object.values(assignedPins).filter(p=>p.refType==='client'&&p.lat);
+  const clientPins=covClientLocations.filter(p=>p.lat);
   parks.forEach(p=>{
     let nearestClient=null,nearestDist=Infinity;
     clientPins.forEach(c=>{
@@ -2690,8 +2573,6 @@ async function toggleOffLeashParks(){
   offLeashVisible=!offLeashVisible;
   const btn=document.getElementById('cov-parks-toggle');
   if(btn) btn.classList.toggle('active',offLeashVisible);
-  const sidebar=document.getElementById('parks-sidebar');
-  if(sidebar) sidebar.style.display=offLeashVisible?'block':'none';
 
   if(offLeashVisible){
     if(!offLeashParks.length){
@@ -2702,9 +2583,13 @@ async function toggleOffLeashParks(){
       }catch{offLeashParks=[];}
     }
     renderParkMarkers();
+    updateCovStats();
+    // Switch to parks tab in sidebar
+    setCovTab('parks');
   }else{
     if(offLeashLayer&&covMap){covMap.removeLayer(offLeashLayer);offLeashLayer=null;}
     if(radiusCircle&&covMap){covMap.removeLayer(radiusCircle);radiusCircle=null;}
+    updateCovStats();
   }
 }
 
@@ -2747,10 +2632,9 @@ function showNearbyParks(lat,lng,clientName){
     return {...p,dist};
   }).filter(p=>p.dist<=2000).sort((a,b)=>a.dist-b.dist);
 
-  // Update sidebar
-  const el=document.getElementById('parks-list');
-  const sidebar=document.getElementById('parks-sidebar');
-  if(sidebar) sidebar.style.display='block';
+  // Update parks tab in sidebar with nearby results
+  setCovTab('parks');
+  const el=document.getElementById('cov-tab-parks');
   if(el){
     if(nearby.length){
       el.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px">${nearby.length} parks within 2km of ${esc(clientName)}</div>`+
@@ -2760,7 +2644,7 @@ function showNearbyParks(lat,lng,clientName){
           <span style="font-size:11px;color:var(--ink-xlight)">${p.dist<1000?Math.round(p.dist)+'m':(p.dist/1000).toFixed(1)+'km'}</span>
         </div>`).join('');
     }else{
-      el.innerHTML=`<div style="font-size:12px;color:var(--warning);padding:8px">No off-leash parks found within 2km of ${esc(clientName)}. Try the full parks layer.</div>`;
+      el.innerHTML=`<div style="font-size:12px;color:var(--warning);padding:8px">No off-leash parks found within 2km of ${esc(clientName)}. Try toggling the full parks layer.</div>`;
     }
   }
   covMap.fitBounds(radiusCircle.getBounds(),{padding:[20,20]});
