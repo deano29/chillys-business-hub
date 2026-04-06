@@ -105,14 +105,7 @@ const DUMMY_ENQ=[
 
 const DUMMY_CLIENTS=[];
 
-let TODAY_WALKS=[
-  {time:'7:00am',dogs:'Biscuit (Amy F.)',type:'Solo Walk',walker:'Jake',status:'completed'},
-  {time:'8:30am',dogs:'Pepper + Scout',type:'Group Walk',walker:'Sarah',status:'inprogress'},
-  {time:'9:00am',dogs:'Banjo (Connor H.)',type:'Solo Walk',walker:'Jake',status:'upcoming'},
-  {time:'10:30am',dogs:'Noodle + Bear',type:'Group Walk',walker:'Sarah',status:'upcoming'},
-  {time:'2:00pm',dogs:'Scout (Ryan C.)',type:'Drop-in',walker:'Jake',status:'upcoming'},
-  {time:'4:00pm',dogs:'Lola + Maple',type:'Group Walk',walker:'Chris',status:'upcoming'},
-];
+let TODAY_WALKS=[];
 
 const EMAILS=[
   {id:'m1',from:'Sarah Mitchell',email:'sarah.mitchell@gmail.com',subject:"Dog walking enquiry for Buddy 🐶",preview:"Hi! I saw your Instagram and would love to find out more...",time:'9:23am',read:false,tag:'enquiry',body:`Hi Chilly's team!\n\nI came across your Instagram and honestly your service looks amazing — Buddy would absolutely love it! 🐶\n\nHe's a 3-year-old Golden Retriever, super friendly and loves other dogs. I'm looking for someone to walk him 5 days a week while I'm at work. We're based in Fitzroy.\n\nCould you let me know your pricing and availability? Happy to arrange a meet and greet whenever suits.\n\nThanks so much!\nSarah 😊`},
