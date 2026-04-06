@@ -123,18 +123,22 @@ const EMAILS=[
 ];
 
 const TEMPLATES=[
-  {id:'t1',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'First Response to New Enquiry',
-   body:`Hi {name}! 👋\n\nThanks so much for getting in touch — we'd love to help with {dog_name}!\n\nWe're Chilly's Dog Adventures, a professional dog walking service based in Melbourne. Here's a quick overview:\n\n🐾 Group walks (1 hour) — $XX per walk\n🐾 Solo/private walks (1 hour) — $XX per walk\n🐾 Drop-in visits (30 min) — $XX per visit\n🐾 Puppy visits (30 min) — $XX per visit\n\nAll our walkers are fully insured, DBS checked, and dog-obsessed 🐶\n\nI'd love to find out more about {dog_name}! Could you let me know:\n• What service(s) are you interested in?\n• How many days per week?\n• Any medical or behavioural needs?\n\nLooking forward to hearing from you!\n\n{walker_name} 🐾\nChilly's Dog Adventures\nchillys.com.au`},
-  {id:'t2',cat:'info',catLabel:'Info Pack',catClass:'tc-info',name:'Services & Pricing Info Pack',
-   body:`Hi {name},\n\nThanks for your interest in Chilly's! Here's everything you need to know 🐾\n\n📋 OUR SERVICES & PRICING\n━━━━━━━━━━━━━━━━━━━━━━━━\n🦮 Group Walk (60 min)      — $XX/walk\n🐕 Solo Walk (60 min)       — $XX/walk\n🏠 Drop-in Visit (30 min)   — $XX/visit\n🐾 Puppy Package (30 min)   — $XX/visit\n\n📋 HOW IT WORKS\n━━━━━━━━━━━━━━━━━━━━━━━━\n1️⃣ Free meet & greet (no obligation)\n2️⃣ Complete our quick online intake form\n3️⃣ Sign our T&Cs (takes 2 minutes via DocuSign)\n4️⃣ You're in the pack! Walks tracked via our app 📱\n\nAfter every walk you'll receive a GPS-tracked report card with photos 📸\n\nWould you like to book a free meet & greet?\n\nCan't wait to meet {dog_name}! 🐶\n\n{walker_name}\nChilly's Dog Adventures`},
-  {id:'t3',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Follow-up — No Reply',
-   body:`Hi {name},\n\nJust following up on my message from the other day — didn't want it to get lost! 😊\n\nWe'd still love to welcome {dog_name} to the Chilly's pack. If you have any questions or want to chat, just reply here or give me a call/WhatsApp.\n\nNo pressure at all — just checking in!\n\n{walker_name} 🐾`},
-  {id:'t4',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Confirmation',
-   body:`Hi {name},\n\nBrilliant — looking forward to meeting you and {dog_name}! 🐾\n\nHere are the details for our free meet & greet:\n\n📅 Date: [DATE]\n⏰ Time: [TIME]\n📍 Location: [ADDRESS / your home]\n\nThis usually takes about 20-30 minutes. We'll go over {dog_name}'s routine, any needs, and answer all your questions.\n\nSee you soon!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
-  {id:'t5',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome to the Pack! 🎉',
-   body:`Hi {name},\n\nWe're SO excited to welcome {dog_name} to the Chilly's pack! 🎉🐾\n\nHere's what happens next:\n\n1️⃣ Fill in {dog_name}'s profile form: [TYPEFORM LINK]\n   (takes ~5 mins — vet details, emergency contacts, routine)\n\n2️⃣ Sign our T&Cs here: [DOCUSIGN LINK]\n\n3️⃣ We'll add you to our app (Time to Pet) — you'll get a login to view walk schedules, GPS reports, photos & invoices 📱\n\n4️⃣ Your first walk is confirmed for [DATE] at [TIME]! 🐶\n\nAny questions at all, just message me. {dog_name} is going to LOVE it!\n\n{walker_name} 🐾\nChilly's Dog Adventures`},
-  {id:'t6',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Sorry — Not the Right Fit',
-   body:`Hi {name},\n\nThank you so much for your enquiry and for thinking of us for {dog_name} 🐾\n\nAfter careful consideration, unfortunately we're not quite the right fit at this stage.\n\nI'd really recommend checking out local alternatives — I'm happy to refer you to another trusted walker in your area.\n\nWishing you and {dog_name} all the best!\n\n{walker_name}\nChilly's Dog Adventures`},
+  {id:'t1',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'First Response',
+   body:`Hey {name}!\n\nThanks for reaching out about {dog_name}. I'm Jess from Chilly's.\n\nWe do group walks, solo walks and adventure days across Melbourne's south-east. Happy to chat about what'd suit {dog_name} best.\n\nWhat area are you in and how many days a week were you thinking?\n\nJess`},
+  {id:'t2',cat:'info',catLabel:'Info Pack',catClass:'tc-info',name:'Pricing & Info',
+   body:`Hey {name}!\n\nHere's a quick rundown:\n\n- Group walk (60 min) — $55\n- Solo walk (45 min) — $60\n- 2hr adventure — $75\n- Home visit (20 min) — $30\n\nWe do a free meet & greet first so {dog_name} can meet us at home. No commitment.\n\nWant me to lock one in?\n\nJess`},
+  {id:'t3',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Follow-up',
+   body:`Hey {name}, just checking in!\n\nStill keen to get {dog_name} out with us? Happy to answer any questions.\n\nNo rush — just didn't want my message to get buried.\n\nJess`},
+  {id:'t4',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Booked',
+   body:`Hey {name}!\n\nLocked in your meet & greet:\n\n[DATE] at [TIME]\n[ADDRESS]\n\nI'll come to you — takes about 20 mins. We'll meet {dog_name}, have a chat and go from there.\n\nSee you then!\n\nJess`},
+  {id:'t5',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome!',
+   body:`Hey {name}!\n\nSo good to meet {dog_name} — we're excited to get started!\n\nQuick next steps:\n1. Fill in {dog_name}'s profile: [LINK]\n2. Sign the T&Cs: [LINK]\n3. First walk: [DATE] at [TIME]\n\nYou'll get a login to our app where you can see walk updates, photos and invoices.\n\nAny questions just text me.\n\nJess`},
+  {id:'t6',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Not the Right Fit',
+   body:`Hey {name},\n\nThanks so much for thinking of us for {dog_name}.\n\nUnfortunately we're not the best fit right now — but I can recommend a few great walkers in your area if you'd like?\n\nAll the best with {dog_name}!\n\nJess`},
+  {id:'t7',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Second Follow-up',
+   body:`Hey {name}!\n\nJust me again. Totally understand if the timing isn't right — just wanted to make sure you got my earlier message about {dog_name}.\n\nIf you ever want to revisit, we're here. No expiry on the offer!\n\nJess`},
+  {id:'t8',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'Quick Callback Missed',
+   body:`Hey {name}!\n\nSorry I missed you — tried calling just now about {dog_name}.\n\nGive me a buzz back when you're free or just reply here and I'll sort you out.\n\nJess\n0430 921 951`},
 ];
 
 const INTEGRATIONS=[
@@ -4457,5 +4461,6 @@ function timeToMins(t){
 }
 
 // ── INIT ──
+document.getElementById('topbar-sub').textContent=new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 renderDashboard();
 updateBadges();

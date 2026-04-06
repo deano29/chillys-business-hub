@@ -242,22 +242,34 @@ function mergeWithHistory(icsEvents) {
 
   if (!history.length) return icsEvents;
 
-  // Build a set of ICS event keys for deduplication
-  // Key = client + date + start time (normalized)
+  // Find the ICS feed's date range — this is the "live" window
+  const icsDates = icsEvents.map(e => e.date).filter(Boolean).sort();
+  const icsEarliestDate = icsDates[0] || '';
+  const icsLatestDate = icsDates[icsDates.length - 1] || '';
+
+  // Build a set of ICS event keys for deduplication within the ICS window
   const icsKeys = new Set();
   icsEvents.forEach(e => {
     const key = `${(e.client || '').trim().toLowerCase()}|${e.date}|${e.time}`;
     icsKeys.add(key);
   });
 
-  // Add historical walks that aren't in the ICS feed
+  // Add historical walks:
+  // - OUTSIDE ICS window: always add (ICS doesn't have this data)
+  // - INSIDE ICS window: only add if ICS also has it (dedup match), skip if ICS doesn't
+  //   because ICS is the live truth — if it's not there, it was cancelled/moved
   const merged = [...icsEvents];
-  let added = 0;
   for (const h of history) {
+    const isInsideICSWindow = h.date >= icsEarliestDate && h.date <= icsLatestDate;
+    if (isInsideICSWindow) {
+      // Inside ICS window: ICS is truth. Only add CSV walk if it matches an ICS event
+      // (for the totalRevenue data). Already covered by ICS events, so skip.
+      continue;
+    }
+    // Outside ICS window: add historical walk (this data only exists in CSV)
     const key = `${(h.client || '').trim().toLowerCase()}|${h.date}|${h.time}`;
     if (!icsKeys.has(key)) {
       merged.push(h);
-      added++;
     }
   }
 
