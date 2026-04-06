@@ -3656,7 +3656,10 @@ async function renderClientLTV(){
     fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
   ]);
   const ttpClientRevenue=summary?.revenueByClient||{};
-  const clientTypesMap=load('cw_client_types',{});
+  // Merge: server defaults + localStorage overrides
+  const serverTypes=summary?.clientTypes||{};
+  const localTypes=load('cw_client_types',{});
+  const clientTypesMap={...serverTypes,...localTypes};
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
