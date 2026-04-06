@@ -2949,8 +2949,11 @@ let rpDashRange='day';
 
 function setRpRange(range){
   rpDashRange=range;
+  // Reset date picker to today when switching ranges
+  const dateInput=document.getElementById('rp-date');
+  if(dateInput&&range!=='day') dateInput.value='';
   document.querySelectorAll('#rp-range-pills .filter-pill').forEach(p=>{
-    const map={Today:'day','Week Ahead':'week','Month Ahead':'month'};
+    const map={Today:'day','This Week':'week','This Month':'month'};
     p.classList.toggle('active',map[p.textContent.trim()]===range);
   });
   renderRpDashboard();
@@ -2982,11 +2985,22 @@ async function renderRpDashboard(){
     const dt=new Date(y,m-1,d+days);
     return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   }
-  let endDate=startDate;
-  if(rpDashRange==='week') endDate=addDays(startDate,6);
-  else if(rpDashRange==='month') endDate=addDays(startDate,29);
+  let rangeStart=startDate,rangeEnd=startDate;
+  if(rpDashRange==='week'){
+    // Full current week (Mon-Sun) around the selected date
+    const d=new Date(startDate+'T00:00:00');
+    const dow=d.getDay()||7;
+    rangeStart=addDays(startDate,-(dow-1));// Monday
+    rangeEnd=addDays(rangeStart,6);// Sunday
+  }else if(rpDashRange==='month'){
+    // Full calendar month of selected date
+    const [y,m]=startDate.split('-').map(Number);
+    rangeStart=`${y}-${String(m).padStart(2,'0')}-01`;
+    const lastDay=new Date(y,m,0).getDate();
+    rangeEnd=`${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  }
 
-  const rangeWalks=walks.filter(w=>w.date>=startDate&&w.date<=endDate);
+  const rangeWalks=walks.filter(w=>w.date>=rangeStart&&w.date<=rangeEnd);
   const settings=getRouteSettings();
 
   // Build shifts using shared engine (same as Dashboard)
@@ -2996,7 +3010,7 @@ async function renderRpDashboard(){
   const periodRevenue=shifts.reduce((s,sh)=>s+sh.metrics.totalRevenue,0);
   const periodProfit=shifts.reduce((s,sh)=>s+sh.metrics.grossProfit,0);
   const periodMargin=periodRevenue>0?(periodProfit/periodRevenue)*100:0;
-  const periodLabel=rpDashRange==='day'?'Today':rpDashRange==='week'?'This Week':'This Month';
+  const periodLabel=rpDashRange==='day'?'Today':rpDashRange==='week'?`Week (${rangeStart.substring(5)} — ${rangeEnd.substring(5)})`:`Month (${rangeStart.substring(0,7)})`;
   const uniqueDays=[...new Set(rangeWalks.map(w=>w.date))].length;
 
   summaryEl.innerHTML=`
