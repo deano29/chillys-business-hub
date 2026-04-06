@@ -242,6 +242,9 @@
           <div class="filter-pill" onclick="setParksFilter('fenced')">Fenced Only</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
+          <select id="parks-client-filter" onchange="renderParksPage()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif;outline:none;background:var(--white);min-width:200px;color:var(--ink)">
+            <option value="">From base location</option>
+          </select>
           <div class="enq-search-wrap"><input type="text" id="parks-search" placeholder="Search parks..." oninput="renderParksPage()"></div>
         </div>
       </div>

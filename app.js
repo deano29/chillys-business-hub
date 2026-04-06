@@ -2543,8 +2543,37 @@ async function renderParksPage(){
 
   const search=(document.getElementById('parks-search')?.value||'').toLowerCase().trim();
 
-  // Calculate distance from base for each park
-  let parks=offLeashParks.map(p=>({...p,dist:haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
+  // Populate client dropdown
+  const clientSelect=document.getElementById('parks-client-filter');
+  if(clientSelect&&clientSelect.options.length<=1&&clients.length){
+    const activeClients=clients.filter(c=>c.status==='active'&&c.name).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    activeClients.forEach(c=>{
+      const opt=document.createElement('option');
+      opt.value=c.name;
+      opt.textContent=`🐕 ${c.name}${c.suburb?' — '+c.suburb:''}`;
+      clientSelect.appendChild(opt);
+    });
+  }
+
+  // Distance reference point: selected client's location or base
+  const selectedClient=clientSelect?.value||'';
+  let refLat=getBaseLat(),refLng=getBaseLng(),refLabel='base';
+  if(selectedClient){
+    // Try to find client in coverage map pins first (most accurate)
+    const pin=Object.values(assignedPins).find(p=>p.name===selectedClient&&p.lat);
+    if(pin){refLat=pin.lat;refLng=pin.lng;refLabel=selectedClient}
+    else{
+      // Fall back to suburb geocoding from client data
+      const cli=clients.find(c=>c.name===selectedClient);
+      const suburb=(cli?.suburb||'').toLowerCase();
+      // Find a park in the same suburb to approximate location
+      const suburbPark=offLeashParks.find(p=>(p.suburb||'').toLowerCase()===suburb);
+      if(suburbPark){refLat=suburbPark.lat;refLng=suburbPark.lng;refLabel=selectedClient}
+    }
+  }
+
+  // Calculate distance from reference point for each park
+  let parks=offLeashParks.map(p=>({...p,dist:haversine(refLat,refLng,p.lat,p.lng)})).sort((a,b)=>a.dist-b.dist);
 
   // Apply filters
   if(parksFilter==='nearby') parks=parks.filter(p=>p.dist<=5000);
@@ -2565,7 +2594,7 @@ async function renderParksPage(){
 
   // Stats
   const total=offLeashParks.length;
-  const within5km=offLeashParks.filter(p=>haversine(getBaseLat(),getBaseLng(),p.lat,p.lng)<=5000).length;
+  const within5km=offLeashParks.filter(p=>haversine(refLat,refLng,p.lat,p.lng)<=5000).length;
   const fenced=offLeashParks.filter(p=>p.fenced).length;
   const nearClients=offLeashParks.filter(p=>{
     return clientPins.some(c=>haversine(p.lat,p.lng,c.lat,c.lng)<=2000);
@@ -2592,7 +2621,8 @@ async function renderParksPage(){
   }
 
   el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">${parks.slice(0,60).map(p=>{
-    const distLabel=p.dist<1000?Math.round(p.dist)+'m from base':(p.dist/1000).toFixed(1)+'km from base';
+    const distFrom=selectedClient||'base';
+    const distLabel=p.dist<1000?Math.round(p.dist)+'m from '+distFrom:(p.dist/1000).toFixed(1)+'km from '+distFrom;
     const clientDistLabel=p.nearestClientDist<1000?Math.round(p.nearestClientDist)+'m':(p.nearestClientDist/1000).toFixed(1)+'km';
     const isClose=p.nearestClientDist<=2000;
 
