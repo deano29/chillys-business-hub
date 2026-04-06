@@ -3712,19 +3712,33 @@ async function renderClientLTV(){
     if(ttpRev>0) c.revenue=ttpRev;
   });
 
+  // Load manual status overrides (on-hold etc)
+  const statusOverrides=load('cw_client_status',{});
+
   const clientList=Object.values(clientMap).map(c=>{
     const monthsActive=c.months.size;
     const firstDate=c.firstWalk?new Date(c.firstWalk+'T00:00:00'):null;
     const tenureMonths=firstDate?Math.max(1,Math.round((now-firstDate)/(30.44*86400000))):0;
     const avgPerMonth=tenureMonths>0?c.revenue/tenureMonths:c.revenue;
     const walksPerWeek=tenureMonths>0?c.walks/(tenureMonths*4.3):0;
-    // Match against live TTP client status
-    const isActive=activeClientNames.has(c.name.toLowerCase());
     const clientType=getClientType(c.name);
-    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive,clientType};
+
+    // Determine status: active / inactive / churned
+    const hasBookings=activeClientNames.has(c.name.toLowerCase());
+    const daysSinceLastWalk=c.lastWalk?Math.floor((now-new Date(c.lastWalk+'T00:00:00'))/864e5):999;
+    const override=statusOverrides[c.name]||'';
+
+    let clientStatus='churned';
+    if(override==='on-hold') clientStatus='on-hold';
+    else if(override==='churned') clientStatus='churned';
+    else if(hasBookings||c.futureWalks>0) clientStatus='active';
+    else if(daysSinceLastWalk<=30) clientStatus='inactive'; // Not booked but walked recently
+    else clientStatus='churned'; // 60+ days no activity, no bookings
+
+    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,clientStatus,clientType,daysSinceLastWalk};
   }).sort((a,b)=>b.revenue-a.revenue);
 
-  const activeClients=clientList.filter(c=>c.isActive);
+  const activeClients=clientList.filter(c=>c.clientStatus==='active');
   const totalClients=clientList.length;
   // Use TTP monthly totals for overall revenue (matches Reports page)
   const ttpMonthlyLTV=summary?.revenueMonthly||[];
@@ -3755,16 +3769,25 @@ async function renderClientLTV(){
     if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0,clients:[],byType:{regular:{total:0,active:0},adhoc:{total:0,active:0},'':{'total':0,'active':0}}};
     const co=cohorts[cohort];
     co.started++;
-    if(c.isActive) co.active++;
+    if(c.clientStatus==='active'||c.clientStatus==='inactive') co.active++;
+    if(c.clientStatus==='churned') co.churned=(co.churned||0)+1;
+    if(c.clientStatus==='on-hold') co.onHold=(co.onHold||0)+1;
     co.totalRev+=c.revenue;
     co.clients.push(c);
     const t=c.clientType||'';
-    if(co.byType[t]){co.byType[t].total++;if(c.isActive)co.byType[t].active++;}
+    if(co.byType[t]){
+      co.byType[t].total++;
+      if(c.clientStatus==='active'||c.clientStatus==='inactive') co.byType[t].active++;
+    }
   });
-  // Calculate retention for regulars only
+  // Retention = Regular clients NOT churned / total Regulars
   Object.values(cohorts).forEach(co=>{
-    co.regularRetention=co.byType.regular.total>0?(co.byType.regular.active/co.byType.regular.total)*100:null;
+    const regTotal=co.byType.regular.total;
+    const regActive=co.byType.regular.active;
+    co.regularRetention=regTotal>0?(regActive/regTotal)*100:null;
     co.overallRetention=co.started>0?(co.active/co.started)*100:0;
+    co.churned=co.churned||0;
+    co.onHold=co.onHold||0;
   });
 
   el.innerHTML=`
@@ -3821,34 +3844,37 @@ async function renderClientLTV(){
               const retDisplay=regRet!==null?regRet.toFixed(0)+'%':d.overallRetention.toFixed(0)+'%*';
               const retColor=regRet!==null?(regRet>=70?'var(--success)':regRet>=40?'var(--warning)':'var(--danger)'):(d.overallRetention>=70?'var(--success)':d.overallRetention>=40?'var(--warning)':'var(--danger)');
               const untagged=d.byType['']?.total||0;
-              const churned=d.started-d.active;
               return `<tr style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
                 <td><strong>${month}</strong></td>
                 <td>${d.started}${untagged>0?` <span style="font-size:9px;color:var(--ink-xlight)">(${untagged} untagged)</span>`:''}</td>
                 <td style="color:var(--success)">${d.byType.regular.total||'—'}</td>
                 <td style="color:var(--purple)">${d.byType.adhoc.total||'—'}</td>
                 <td>${d.active}</td>
-                <td style="color:${churned>0?'var(--danger)':'var(--ink-xlight)'}">${churned||'—'}</td>
+                <td style="color:${d.churned>0?'var(--danger)':'var(--ink-xlight)'}">${d.churned||'—'}${d.onHold?` <span style="font-size:9px;color:var(--info)">(${d.onHold} on hold)</span>`:''}</td>
                 <td style="color:${retColor};font-weight:700">${retDisplay}</td>
                 <td>$${d.totalRev.toFixed(0)}</td>
               </tr>
               <tr style="display:none;background:var(--cream)">
                 <td colspan="8" style="padding:12px">
                   <div style="display:flex;gap:12px;margin-bottom:8px;font-size:11px;flex-wrap:wrap">
-                    ${d.byType.regular.total?`<span style="color:var(--success);font-weight:600">Regular: ${d.byType.regular.active}/${d.byType.regular.total} active</span>`:''}
-                    ${d.byType.adhoc.total?`<span style="color:var(--purple);font-weight:600">Ad Hoc: ${d.byType.adhoc.total} (${d.byType.adhoc.active} active)</span>`:''}
+                    ${d.byType.regular.total?`<span style="color:var(--success);font-weight:600">Regular: ${d.byType.regular.active}/${d.byType.regular.total} retained</span>`:''}
+                    ${d.byType.adhoc.total?`<span style="color:var(--purple);font-weight:600">Ad Hoc: ${d.byType.adhoc.total}</span>`:''}
                     ${untagged?`<span style="color:var(--ink-xlight)">Untagged: ${untagged}</span>`:''}
-                    ${churned>0?`<span style="color:var(--danger);font-weight:600">Churned: ${churned}</span>`:''}
+                    ${d.churned>0?`<span style="color:var(--danger);font-weight:600">Churned: ${d.churned}</span>`:''}
+                    ${d.onHold>0?`<span style="color:var(--info);font-weight:600">On Hold: ${d.onHold}</span>`:''}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:3px">
-                    ${d.clients.sort((a,b)=>b.revenue-a.revenue).map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
-                      <span style="width:120px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span>
+                    ${d.clients.sort((a,b)=>b.revenue-a.revenue).map(c=>{
+                      const statusIcon=c.clientStatus==='active'?'🟢':c.clientStatus==='inactive'?'🟡':c.clientStatus==='on-hold'?'🔵':'🔴';
+                      const statusText=c.clientStatus==='active'?'Active':c.clientStatus==='inactive'?'Not booked':c.clientStatus==='on-hold'?'On hold':'Churned';
+                      return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+                      <span style="width:130px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span>
                       <span style="font-size:9px;padding:1px 6px;border-radius:10px;background:${c.clientType?typeColor(c.clientType):'var(--cream-dark)'};color:${c.clientType?'#fff':'var(--ink-xlight)'}">${typeLabel(c.clientType)}</span>
-                      <span style="color:${c.isActive?'var(--success)':'var(--danger)'}">●</span>
-                      <span style="color:var(--ink-light)">${c.walks} walks</span>
+                      <span title="${statusText}">${statusIcon}</span>
+                      <span style="color:var(--ink-light)">${c.walks} walks${c.daysSinceLastWalk<999?' · last '+c.daysSinceLastWalk+'d ago':''}</span>
                       <span style="font-weight:600">$${c.revenue.toFixed(0)}</span>
                       <span style="color:var(--ink-xlight)">$${c.avgPerMonth.toFixed(0)}/mo</span>
-                    </div>`).join('')}
+                    </div>`}).join('')}
                   </div>
                 </td>
               </tr>`;
@@ -3865,6 +3891,8 @@ async function renderClientLTV(){
     const bg=!c.clientType?' style="background:var(--warning-bg)"':'';
     const bdr=c.clientType?'var(--border)':'var(--warning)';
     const safeName=esc(c.name).replace(/'/g,"\\'");
+    const sIcon=c.clientStatus==='active'?'🟢':c.clientStatus==='inactive'?'🟡':c.clientStatus==='on-hold'?'🔵':'🔴';
+    const sText=c.clientStatus==='active'?'Active':c.clientStatus==='inactive'?'Not booked':c.clientStatus==='on-hold'?'On hold':'Churned';
     return '<tr'+bg+'>'
       +'<td><strong>'+(i+1)+'</strong></td>'
       +'<td><strong>'+esc(c.name)+'</strong></td>'
@@ -3873,7 +3901,12 @@ async function renderClientLTV(){
       +'<option value="regular"'+(c.clientType==='regular'?' selected':'')+'>Regular</option>'
       +'<option value="adhoc"'+(c.clientType==='adhoc'?' selected':'')+'>Ad Hoc</option>'
       +'</select></td>'
-      +'<td><span style="color:'+(c.isActive?'var(--success)':'var(--danger)')+';font-size:11px">'+(c.isActive?'● Active':'○ Inactive')+'</span></td>'
+      +'<td title="'+sText+'"><span style="font-size:11px">'+sIcon+' '+sText+'</span>'
+      +'<select onchange="saveClientStatus(\''+safeName+'\',this.value)" style="font-size:9px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;background:var(--white);margin-left:4px;color:var(--ink-xlight)">'
+      +'<option value="">auto</option>'
+      +'<option value="on-hold"'+(c.clientStatus==='on-hold'?' selected':'')+'>On Hold</option>'
+      +'<option value="churned"'+(statusOverrides[c.name]==='churned'?' selected':'')+'>Churned</option>'
+      +'</select></td>'
       +'<td>'+c.tenureMonths+'mo</td>'
       +'<td>'+c.walks+'</td>'
       +'<td style="font-weight:700">$'+c.revenue.toFixed(0)+'</td>'
@@ -3904,12 +3937,19 @@ async function renderClientLTV(){
 }
 
 function saveClientType(clientName,clientType){
-  // Save to localStorage (persists on refresh, works on Vercel)
   const types=load('cw_client_types',{});
   if(clientType) types[clientName]=clientType;
   else delete types[clientName];
   save('cw_client_types',types);
-  showToast(clientName+' → '+(clientType?{regular:'Regular',project:'Project',adhoc:'Ad Hoc'}[clientType]:'untagged'),'✅');
+  showToast(clientName+' → '+(clientType?{regular:'Regular',adhoc:'Ad Hoc'}[clientType]:'untagged'),'✅');
+}
+
+function saveClientStatus(clientName,status){
+  const overrides=load('cw_client_status',{});
+  if(status) overrides[clientName]=status;
+  else delete overrides[clientName];
+  save('cw_client_status',overrides);
+  showToast(clientName+' → '+(status||'auto-detect'),'✅');
 }
 
 // ── GROWTH SIMULATOR ──
