@@ -730,7 +730,18 @@ function getFilteredEnquiries(){
   if(search){
     list=list.filter(e=>(e.name||'').toLowerCase().includes(search)||(e.suburb||'').toLowerCase().includes(search)||(e.source||'').toLowerCase().includes(search)||(e.dogName||'').toLowerCase().includes(search)||(e.email||'').toLowerCase().includes(search)||(e.phone||'').toLowerCase().includes(search));
   }
-  return list;
+  // Sort newest first
+  return [...list].sort((a,b)=>(b.dateAdded||'').localeCompare(a.dateAdded||''));
+}
+
+function daysAgo(dateStr){
+  if(!dateStr)return '';
+  const diff=Math.floor((new Date()-new Date(dateStr+'T00:00:00'))/864e5);
+  if(diff===0)return 'Today';
+  if(diff===1)return '1d ago';
+  if(diff<7)return diff+'d ago';
+  if(diff<30)return Math.floor(diff/7)+'w ago';
+  return Math.floor(diff/30)+'mo ago';
 }
 
 function renderPipeline(){
@@ -762,18 +773,19 @@ function renderPipeline(){
     const stagesToShow=pipelineFilter==='all'?(showClosedStages?STAGES:ACTIVE_STAGES):STAGES.filter(s=>s.id===pipelineFilter);
     const rows=stagesToShow.flatMap(s=>filtered.filter(e=>e.stage===s.id));
     board.innerHTML=rows.length?`<table class="enq-list-table">
-      <thead><tr><th>Name</th><th>Stage</th><th>Source</th><th>Suburb</th><th>Dog</th><th>Date</th><th>Follow-up</th></tr></thead>
+      <thead><tr><th>Name</th><th>Dog</th><th>Suburb</th><th>Stage</th><th>Added</th><th></th><th>Follow-up</th></tr></thead>
       <tbody>${rows.map(e=>{
         const s=STAGES.find(s=>s.id===e.stage);
         const fs=fuStatus(e.followup);
+        const da=daysAgo(e.dateAdded);
         return `<tr onclick="openEditEnquiry('${e.id}')">
-          <td><strong>${esc(e.name)}</strong>${e.email?`<div style="font-size:11px;color:var(--ink-light)">${esc(e.email)}</div>`:''}</td>
-          <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span>${(e.stageTags||[]).map(t=>`<span style="font-size:9px;color:#6b7280;margin-left:4px">${esc(t)}</span>`).join('')}</td>
-          <td>${esc(e.source||'—')}</td>
-          <td>${esc(e.suburb||'—')}</td>
+          <td><strong>${esc(e.name)}</strong>${e.phone?`<div style="font-size:11px;color:var(--ink-light)">${esc(e.phone)}</div>`:''}</td>
           <td>${esc(e.dogName||'—')}</td>
-          <td>${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
-          <td>${fs?`<span style="color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ ':''}${e.followup?fmtDate(e.followup):fs}</span>`:'—'}</td>
+          <td>${esc(e.suburb||'—')}</td>
+          <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span></td>
+          <td style="font-weight:600">${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
+          <td style="font-size:11px;color:var(--ink-muted)">${da}</td>
+          <td>${fs?`<span style="color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}; font-weight:${fs==='overdue'?'700':'500'}">${fs==='overdue'?'⚠️ ':''}${e.followup?fmtDate(e.followup):fs}</span>`:'—'}</td>
         </tr>`}).join('')}</tbody></table>`
       :'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No enquiries found</div>';
     return;
@@ -821,25 +833,18 @@ function expandColumn(btn,stageId){
 
 function renderEnqCard(e){
   const fs=fuStatus(e.followup);
-  const fuHtml=fs?`<div class="fu-badge ${fs}">${fs==='overdue'?'⚠️':'📅'} ${fs==='upcoming'?fmtDate(e.followup):fs.charAt(0).toUpperCase()+fs.slice(1)}</div>`:'';
-  const na=getEnqNextAction(e);
+  const fuHtml=fs?`<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${fs==='overdue'?'var(--danger-bg)':fs==='today'?'var(--warning-bg)':'var(--cream-dark)'};color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ Overdue':fs==='today'?'Due today':'📅 '+fmtDate(e.followup)}</span>`:'';
+  const da=daysAgo(e.dateAdded);
   return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
-    <div class="enq-name">${esc(e.name)}</div>
-    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' ('+esc(e.dogBreed)+')':''}`:'<span style="color:var(--ink-xlight)">No dog info</span>'}</div>
-    <div class="enq-tags">
-      ${e.channel?`<span class="tag tag-channel">${esc(e.channel)}</span>`:''}
-      ${e.source&&e.source!==e.channel?`<span class="tag tag-source">${esc(e.source)}</span>`:''}
-      ${e.suburb?`<span class="tag" style="background:var(--cream-dark);color:var(--ink-light)">📍${esc(e.suburb)}</span>`:''}
-      ${(e.stageTags||[]).map(t=>`<span class="tag" style="background:#f3f4f6;color:#6b7280;font-size:9px">${esc(t)}</span>`).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+      <div class="enq-name">${esc(e.name)}</div>
+      <span style="font-size:10px;color:var(--ink-muted);white-space:nowrap;flex-shrink:0">${da}</span>
     </div>
-    <div class="enq-footer">
-      <div class="enq-date">Added ${fmtDate(e.dateAdded)}</div>
-      <div style="display:flex;align-items:center;gap:4px">
-        ${fuHtml}
-        <button style="background:none;border:1px solid var(--border);border-radius:20px;padding:1px 6px;font-size:10px;cursor:pointer;color:var(--ink-light)" onclick="event.stopPropagation();openAiDraft('${e.id}')">🤖</button>
-      </div>
+    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' · '+esc(e.dogBreed):''}`:''}${e.suburb?` · 📍${esc(e.suburb)}`:''}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
+      ${fuHtml}
+      ${e.phone?`<span style="font-size:10px;color:var(--ink-muted)">${esc(e.phone)}</span>`:''}
     </div>
-    ${na?`<div class="next-action"><span>${na.icon}</span>${na.text}</div>`:''}
   </div>`;
 }
 
