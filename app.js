@@ -2652,8 +2652,8 @@ function updateCovStats(){
 
 // ── OFF-LEASH PARKS PAGE ──
 let parksFilter='all';
-function getBaseLat(){return parseFloat(getSetting('s-base-lat',-37.8736))||-37.8736;}
-function getBaseLng(){return parseFloat(getSetting('s-base-lng',145.0292))||145.0292;}
+function getBaseLat(){return parseFloat(getSetting('s-base-lat',-37.8990))||-37.8990;}
+function getBaseLng(){return parseFloat(getSetting('s-base-lng',145.0448))||145.0448;}
 
 async function renderParksPage(){
   const el=document.getElementById('parks-page-content');
