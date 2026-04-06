@@ -538,7 +538,18 @@
           </select>
         </div>
         <div class="form-group"><label>Follow-up Date</label><input id="f-followup" type="date"></div>
-        <div class="form-group full"><label>Notes</label><textarea id="f-notes" placeholder="Any details, dog behaviour, requirements..."></textarea></div>
+        <div class="form-group full" id="log-contact-group" style="display:none">
+          <label>Quick Log</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Called')">📞 Called</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Sent email')">✉️ Email Sent</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Sent SMS')">💬 SMS Sent</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Left voicemail')">🎙️ Voicemail</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Messaged on WhatsApp')">📱 WhatsApp</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="logContact('Messaged on Instagram')">📸 IG DM</button>
+          </div>
+        </div>
+        <div class="form-group full"><label>Notes</label><textarea id="f-notes" placeholder="Any details, dog behaviour, requirements..." rows="4"></textarea></div>
       </div>
     </div>
     <div class="modal-foot">

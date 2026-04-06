@@ -2081,6 +2081,7 @@ function openAddEnquiry(){
   editingId=null;
   document.getElementById('modal-enq-title').textContent='New Enquiry';
   document.getElementById('btn-del-enq').style.display='none';
+  document.getElementById('log-contact-group').style.display='none';
   ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-stage').value='new';
   document.getElementById('f-channel').value='WhatsApp';
@@ -2093,6 +2094,7 @@ function openEditEnquiry(id){
   editingId=id;
   document.getElementById('modal-enq-title').textContent='Edit Enquiry — '+e.name;
   document.getElementById('btn-del-enq').style.display='inline-flex';
+  document.getElementById('log-contact-group').style.display='block';
   document.getElementById('f-name').value=e.name||'';
   document.getElementById('f-phone').value=e.phone||'';
   document.getElementById('f-email').value=e.email||'';
@@ -2106,6 +2108,16 @@ function openEditEnquiry(id){
   document.getElementById('f-suburb').value=e.suburb||'';
   document.getElementById('f-source').value=e.source||'Meta Ads';
   openModal('modal-enq');
+}
+
+function logContact(action){
+  const notesEl=document.getElementById('f-notes');
+  const dateStr=new Date().toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+  const timeStr=new Date().toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit',hour12:true});
+  const entry=`[${dateStr} ${timeStr}] ${action}`;
+  notesEl.value=entry+(notesEl.value?'\n'+notesEl.value:'');
+  notesEl.focus();
+  showToast(action+' logged','✅');
 }
 
 function saveEnquiry(){
