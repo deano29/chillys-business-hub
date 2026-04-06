@@ -3473,7 +3473,12 @@ async function renderRevenueForecast(){
   if(!el) return;
   el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading revenue data...</div>';
 
-  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  // Fetch walks and TTP summary (real revenue totals)
+  const [walks,summary]=await Promise.all([
+    fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
+  ]);
+  const ttpMonthly=summary?.revenueMonthly||[];
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
@@ -3482,7 +3487,6 @@ async function renderRevenueForecast(){
   const monthlyGoal=parseFloat(targets.monthlyGoal)||8000;
   const momGrowthTarget=parseFloat(targets.momGrowth)||10;
 
-  // Use real TTP revenue where available, else estimate
   function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service);}
   function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
   function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
@@ -3493,14 +3497,17 @@ async function renderRevenueForecast(){
     const d=new Date(now.getFullYear(),now.getMonth()+i,1);
     const ms=monthStr(d.getFullYear(),d.getMonth());
     const mWalks=walks.filter(w=>w.date.startsWith(ms));
-    const rev=mWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    // Use TTP monthly total as source of truth where available
+    const ttpMonth=ttpMonthly.find(m=>m.month===ms);
+    const rev=ttpMonth&&ttpMonth.revenue>0?ttpMonth.revenue:mWalks.reduce((s,w)=>s+walkRevenue(w),0);
     const daysInM=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
     const isPast=i<0;
     const isCurrent=i===0;
     const isFuture=i>0;
     const dayOfM=isCurrent?now.getDate():isPast?daysInM:0;
+    // For MTD split: proportion based on walk count
     const completedWalks=isCurrent?mWalks.filter(w=>w.date<=nowStr):mWalks;
-    const completedRev=completedWalks.reduce((s,w)=>s+walkRevenue(w),0);
+    const completedRev=isCurrent&&mWalks.length>0?rev*(completedWalks.length/mWalks.length):rev;
     const bookedRev=isCurrent?rev-completedRev:0;
 
     // Target: use custom target if set, otherwise use monthly goal + growth
@@ -3644,7 +3651,11 @@ async function renderClientLTV(){
   if(!el) return;
   el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Calculating client values...</div>';
 
-  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const [walks,summary]=await Promise.all([
+    fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
+  ]);
+  const ttpClientRevenue=summary?.revenueByClient||{};
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
@@ -3673,6 +3684,13 @@ async function renderClientLTV(){
       c.futureWalks++;
     }
     c.months.add(w.date.substring(0,7));
+  });
+
+  // Override revenue with TTP client totals where available (source of truth)
+  Object.values(clientMap).forEach(c=>{
+    // Try exact match, then trimmed match
+    const ttpRev=ttpClientRevenue[c.name]||ttpClientRevenue[c.name+' ']||0;
+    if(ttpRev>0) c.revenue=ttpRev;
   });
 
   const clientList=Object.values(clientMap).map(c=>{
