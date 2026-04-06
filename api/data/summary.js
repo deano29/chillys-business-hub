@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const { clientName, clientType } = req.body || {};
-      if (!clientName || !['regular', 'project', 'adhoc', ''].includes(clientType)) {
+      if (!clientName || !['regular', 'adhoc', ''].includes(clientType)) {
         return res.status(400).json({ error: 'Invalid client name or type' });
       }
       const types = clientTypes || {};

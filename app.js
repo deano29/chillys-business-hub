@@ -3675,8 +3675,8 @@ async function renderClientLTV(){
     const clean=name.trim();
     return clientTypesMap[clean]||clientTypesMap[clean.toLowerCase()]||'';
   }
-  const typeLabel=t=>t==='regular'?'Regular':t==='project'?'Project':t==='adhoc'?'Ad Hoc':'Untagged';
-  const typeColor=t=>t==='regular'?'var(--success)':t==='project'?'var(--info)':t==='adhoc'?'var(--purple)':'var(--ink-xlight)';
+  const typeLabel=t=>t==='regular'?'Regular':t==='adhoc'?'Ad Hoc':'Untagged';
+  const typeColor=t=>t==='regular'?'var(--success)':t==='adhoc'?'var(--purple)':'var(--ink-xlight)';
 
   // Build client value map — clean client names to merge dog-name variants
   const clientMap={};
@@ -3752,7 +3752,7 @@ async function renderClientLTV(){
   clientList.forEach(c=>{
     if(!c.firstWalk) return;
     const cohort=c.firstWalk.substring(0,7);
-    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0,clients:[],byType:{regular:{total:0,active:0},project:{total:0,active:0},adhoc:{total:0,active:0},'':{'total':0,'active':0}}};
+    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0,clients:[],byType:{regular:{total:0,active:0},adhoc:{total:0,active:0},'':{'total':0,'active':0}}};
     const co=cohorts[cohort];
     co.started++;
     if(c.isActive) co.active++;
@@ -3812,22 +3812,23 @@ async function renderClientLTV(){
     <div class="card" style="margin-bottom:16px">
       <div class="card-body">
         <h4 style="font-size:13px;font-weight:700;margin-bottom:4px">📊 Client Cohorts</h4>
-        <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Retention % based on Regular clients only (excludes Projects &amp; Ad Hoc). Click a row to expand.</p>
+        <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Retention % based on Regular clients only (excludes Ad Hoc). Click a row to expand.</p>
         <div style="overflow-x:auto">
           <table class="enq-list-table">
-            <thead><tr><th>Cohort</th><th>Started</th><th>Regular</th><th>Project</th><th>Ad Hoc</th><th>Still Active</th><th>Retention</th><th>Revenue</th></tr></thead>
+            <thead><tr><th>Cohort</th><th>Started</th><th>Regular</th><th>Ad Hoc</th><th>Still Active</th><th>Churned</th><th>Retention</th><th>Revenue</th></tr></thead>
             <tbody>${Object.entries(cohorts).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12).map(([month,d])=>{
               const regRet=d.regularRetention;
               const retDisplay=regRet!==null?regRet.toFixed(0)+'%':d.overallRetention.toFixed(0)+'%*';
               const retColor=regRet!==null?(regRet>=70?'var(--success)':regRet>=40?'var(--warning)':'var(--danger)'):(d.overallRetention>=70?'var(--success)':d.overallRetention>=40?'var(--warning)':'var(--danger)');
               const untagged=d.byType['']?.total||0;
+              const churned=d.started-d.active;
               return `<tr style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
                 <td><strong>${month}</strong></td>
                 <td>${d.started}${untagged>0?` <span style="font-size:9px;color:var(--ink-xlight)">(${untagged} untagged)</span>`:''}</td>
                 <td style="color:var(--success)">${d.byType.regular.total||'—'}</td>
-                <td style="color:var(--info)">${d.byType.project.total||'—'}</td>
                 <td style="color:var(--purple)">${d.byType.adhoc.total||'—'}</td>
                 <td>${d.active}</td>
+                <td style="color:${churned>0?'var(--danger)':'var(--ink-xlight)'}">${churned||'—'}</td>
                 <td style="color:${retColor};font-weight:700">${retDisplay}</td>
                 <td>$${d.totalRev.toFixed(0)}</td>
               </tr>
@@ -3835,9 +3836,9 @@ async function renderClientLTV(){
                 <td colspan="8" style="padding:12px">
                   <div style="display:flex;gap:12px;margin-bottom:8px;font-size:11px;flex-wrap:wrap">
                     ${d.byType.regular.total?`<span style="color:var(--success);font-weight:600">Regular: ${d.byType.regular.active}/${d.byType.regular.total} active</span>`:''}
-                    ${d.byType.project.total?`<span style="color:var(--info);font-weight:600">Project: ${d.byType.project.total} (${d.byType.project.active} active)</span>`:''}
                     ${d.byType.adhoc.total?`<span style="color:var(--purple);font-weight:600">Ad Hoc: ${d.byType.adhoc.total} (${d.byType.adhoc.active} active)</span>`:''}
                     ${untagged?`<span style="color:var(--ink-xlight)">Untagged: ${untagged}</span>`:''}
+                    ${churned>0?`<span style="color:var(--danger);font-weight:600">Churned: ${churned}</span>`:''}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:3px">
                     ${d.clients.sort((a,b)=>b.revenue-a.revenue).map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
@@ -3857,33 +3858,49 @@ async function renderClientLTV(){
       </div>
     </div>
 
-    <!-- Client Rankings -->
+    <!-- Client Rankings -->`;
+
+  // Build LTV rows
+  function ltvRow(c,i){
+    const bg=!c.clientType?' style="background:var(--warning-bg)"':'';
+    const bdr=c.clientType?'var(--border)':'var(--warning)';
+    const safeName=esc(c.name).replace(/'/g,"\\'");
+    return '<tr'+bg+'>'
+      +'<td><strong>'+(i+1)+'</strong></td>'
+      +'<td><strong>'+esc(c.name)+'</strong></td>'
+      +'<td><select onchange="saveClientType(\''+safeName+'\',this.value)" style="font-size:10px;padding:2px 4px;border:1px solid '+bdr+';border-radius:4px;background:var(--white)">'
+      +'<option value=""'+(!c.clientType?' selected':'')+'>— Tag</option>'
+      +'<option value="regular"'+(c.clientType==='regular'?' selected':'')+'>Regular</option>'
+      +'<option value="adhoc"'+(c.clientType==='adhoc'?' selected':'')+'>Ad Hoc</option>'
+      +'</select></td>'
+      +'<td><span style="color:'+(c.isActive?'var(--success)':'var(--danger)')+';font-size:11px">'+(c.isActive?'● Active':'○ Inactive')+'</span></td>'
+      +'<td>'+c.tenureMonths+'mo</td>'
+      +'<td>'+c.walks+'</td>'
+      +'<td style="font-weight:700">$'+c.revenue.toFixed(0)+'</td>'
+      +'<td>$'+c.avgPerMonth.toFixed(0)+'</td>'
+      +'</tr>';
+  }
+  const top10=clientList.slice(0,10).map((c,i)=>ltvRow(c,i)).join('');
+  const allRows=clientList.map((c,i)=>ltvRow(c,i)).join('');
+  const untaggedCount=clientList.filter(c=>!c.clientType).length;
+
+  el.innerHTML+=`
     <div class="card">
       <div class="card-body">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Client Rankings by Lifetime Value</h4>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h4 style="font-size:13px;font-weight:700">🏆 Client Rankings by Lifetime Value</h4>
+          <span style="font-size:11px;color:${untaggedCount?'var(--warning)':'var(--ink-xlight)'}">${untaggedCount} untagged</span>
+        </div>
         <div style="overflow-x:auto">
           <table class="enq-list-table">
             <thead><tr><th>#</th><th>Client</th><th>Type</th><th>Status</th><th>Tenure</th><th>Walks</th><th>Lifetime Revenue</th><th>Monthly Avg</th></tr></thead>
-            <tbody>${clientList.slice(0,30).map((c,i)=>`<tr>
-              <td><strong>${i+1}</strong></td>
-              <td><strong>${esc(c.name)}</strong></td>
-              <td><select onchange="saveClientType('${esc(c.name)}',this.value)" style="font-size:10px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--white)">
-                <option value="" ${!c.clientType?'selected':''}>—</option>
-                <option value="regular" ${c.clientType==='regular'?'selected':''}>Regular</option>
-                <option value="project" ${c.clientType==='project'?'selected':''}>Project</option>
-                <option value="adhoc" ${c.clientType==='adhoc'?'selected':''}>Ad Hoc</option>
-              </select></td>
-              <td><span style="color:${c.isActive?'var(--success)':'var(--danger)'};font-size:11px">${c.isActive?'● Active':'○ Inactive'}</span></td>
-              <td>${c.tenureMonths}mo</td>
-              <td>${c.walks}</td>
-              <td style="font-weight:700">$${c.revenue.toFixed(0)}</td>
-              <td>$${c.avgPerMonth.toFixed(0)}</td>
-            </tr>`).join('')}</tbody>
+            <tbody id="ltv-table-body">${top10}</tbody>
           </table>
+          ${clientList.length>10?'<button class="k-show-more" id="ltv-show-all" style="margin-top:8px" onclick="document.getElementById(\'ltv-table-body\').innerHTML=window._ltvAllRows;this.style.display=\'none\'">Show all '+clientList.length+' clients'+(untaggedCount?' ('+untaggedCount+' need tagging)':'')+'</button>':''}
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
+  window._ltvAllRows=allRows;
 }
 
 function saveClientType(clientName,clientType){
