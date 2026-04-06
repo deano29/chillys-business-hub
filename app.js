@@ -2252,9 +2252,11 @@ async function renderCoverage(){
   }
 
   // Determine active/inactive by matching against TTP clients array (recalc each render)
-  const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>(c.name||'').replace(/\+$/g,'').trim().toLowerCase()));
+  // TTP names often include dog name: "Tony Tran (Teddy" — strip parenthetical part for matching
+  const cleanName=s=>(s||'').replace(/\s*\(.*$/, '').replace(/\+$/g,'').trim().toLowerCase();
+  const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanName(c.name)));
   covClientLocations.forEach(loc=>{
-    loc._active=activeNames.has((loc.name||'').trim().toLowerCase());
+    loc._active=activeNames.has(cleanName(loc.name));
   });
 
   // Init map
