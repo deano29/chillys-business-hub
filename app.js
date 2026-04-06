@@ -2184,11 +2184,140 @@ function openAddEnquiry(){
   document.getElementById('modal-enq-title').textContent='New Enquiry';
   document.getElementById('btn-del-enq').style.display='none';
   document.getElementById('log-contact-group').style.display='none';
+  document.getElementById('call-script-section').style.display='none';
   ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-stage').value='new';
   document.getElementById('f-channel').value='WhatsApp';
   document.getElementById('f-source').value='Meta Ads';
   openModal('modal-enq');
+}
+
+// ── CALL SCRIPT CHECKLIST ──
+const CALL_SCRIPT=[
+  {group:'🐕 Dog Basics',questions:[
+    {id:'dog_name',q:'Dog name?',type:'text'},
+    {id:'dog_breed',q:'Breed?',type:'text'},
+    {id:'dog_age',q:'Age?',type:'text'},
+    {id:'dog_size',q:'Size (small/med/large)?',type:'select',opts:['Small','Medium','Large']},
+    {id:'dog_energy',q:'Energy level?',type:'select',opts:['Low','Medium','High','Very high']},
+    {id:'dog_desexed',q:'Desexed?',type:'check'},
+    {id:'dog_vacc',q:'Vaccinations up to date?',type:'check'},
+  ]},
+  {group:'🐾 Behaviour & Compatibility',questions:[
+    {id:'other_dogs',q:'Comfortable around other dogs?',type:'select',opts:['Yes — loves dogs','Mostly — with calm dogs','Selective','No — reactive/aggressive']},
+    {id:'reactivity',q:'Any reactivity? (leads, cars, people, dogs)',type:'text'},
+    {id:'recall',q:'Good recall off-leash?',type:'select',opts:['Yes','Working on it','No']},
+    {id:'pulling',q:'Pulls on lead?',type:'check'},
+    {id:'separation',q:'Any separation anxiety?',type:'check'},
+    {id:'medical',q:'Medical issues or medications?',type:'text'},
+    {id:'triggers',q:'Known triggers or things to avoid?',type:'text'},
+  ]},
+  {group:'📋 Service & Logistics',questions:[
+    {id:'service_interest',q:'Service interested in?',type:'select',opts:['Group Walk','Solo Walk','Adventure (2hr)','Home Visit','Not sure yet']},
+    {id:'days_week',q:'How many days per week?',type:'select',opts:['1','2','3','4','5','Not sure']},
+    {id:'preferred_times',q:'Preferred times?',type:'text'},
+    {id:'preferred_days',q:'Preferred days?',type:'text'},
+    {id:'suburb',q:'Suburb?',type:'text'},
+    {id:'access',q:'Access instructions (key, gate code)?',type:'text'},
+    {id:'parking',q:'Easy parking?',type:'check'},
+  ]},
+  {group:'👤 Owner & Expectations',questions:[
+    {id:'why_looking',q:'Why looking for a walker?',type:'select',opts:['Work from office','Not enough time','Dog needs more exercise','Socialisation','Other']},
+    {id:'prev_walker',q:'Used a walker before?',type:'select',opts:['Yes — switching','Yes — adding','No — first time']},
+    {id:'start_timeline',q:'When looking to start?',type:'select',opts:['ASAP','This week','Next week','Just exploring']},
+    {id:'budget_ok',q:'Discussed pricing — comfortable?',type:'check'},
+    {id:'meet_greet',q:'Meet & greet booked?',type:'check'},
+  ]},
+];
+
+let callScriptState={};
+
+function initCallScript(enqId){
+  const section=document.getElementById('call-script-section');
+  const body=document.getElementById('call-script-body');
+  if(!section||!body)return;
+  section.style.display='block';
+  // Load saved state for this enquiry
+  callScriptState=load('cw_cs_'+enqId,{});
+
+  let totalQ=0,answeredQ=0;
+  body.innerHTML=CALL_SCRIPT.map(g=>{
+    return `<div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--ink-mid);padding:6px 0;border-bottom:1px solid var(--border-light)">${g.group}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;padding:6px 0">
+        ${g.questions.map(q=>{
+          totalQ++;
+          const val=callScriptState[q.id]||'';
+          if(val)answeredQ++;
+          if(q.type==='check'){
+            const checked=val==='yes';
+            if(checked)answeredQ++;else if(val){}// already counted
+            return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;cursor:pointer">
+              <input type="checkbox" ${checked?'checked':''} onchange="updateCallScript('${q.id}',this.checked?'yes':'')" style="accent-color:var(--orange)">
+              <span>${q.q}</span>
+            </label>`;
+          }
+          if(q.type==='select'){
+            return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0">
+              <span style="min-width:180px;color:var(--ink-mid)">${q.q}</span>
+              <select onchange="updateCallScript('${q.id}',this.value)" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:var(--white)">
+                <option value="">—</option>
+                ${q.opts.map(o=>`<option value="${o}"${val===o?' selected':''}>${o}</option>`).join('')}
+              </select>
+            </div>`;
+          }
+          return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0">
+            <span style="min-width:180px;color:var(--ink-mid)">${q.q}</span>
+            <input type="text" value="${esc(val)}" onchange="updateCallScript('${q.id}',this.value)" placeholder="..." style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  const progress=document.getElementById('cs-progress');
+  if(progress) progress.textContent=`${answeredQ}/${totalQ}`;
+}
+
+function updateCallScript(id,val){
+  callScriptState[id]=val;
+  if(editingId) save('cw_cs_'+editingId,callScriptState);
+  // Update progress
+  let total=0,answered=0;
+  CALL_SCRIPT.forEach(g=>g.questions.forEach(q=>{total++;if(callScriptState[q.id])answered++}));
+  const progress=document.getElementById('cs-progress');
+  if(progress){
+    progress.textContent=`${answered}/${total}`;
+    progress.style.background=answered===total?'var(--success-bg)':'var(--cream-dark)';
+    progress.style.color=answered===total?'var(--success)':'var(--ink-light)';
+  }
+}
+
+function saveCallScriptToNotes(){
+  const notesEl=document.getElementById('f-notes');
+  if(!notesEl)return;
+  const dateStr=new Date().toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+  let summary=`\n--- Call Notes (${dateStr}) ---\n`;
+  CALL_SCRIPT.forEach(g=>{
+    const filled=g.questions.filter(q=>callScriptState[q.id]);
+    if(!filled.length)return;
+    summary+=`${g.group}\n`;
+    filled.forEach(q=>{
+      const val=callScriptState[q.id];
+      if(q.type==='check') summary+=`  ✓ ${q.q}\n`;
+      else summary+=`  ${q.q} ${val}\n`;
+    });
+  });
+  notesEl.value=notesEl.value+summary;
+  notesEl.scrollTop=notesEl.scrollHeight;
+  showToast('Call notes added','📋');
+}
+
+function resetCallScript(){
+  callScriptState={};
+  if(editingId) save('cw_cs_'+editingId,{});
+  initCallScript(editingId);
+  showToast('Checklist reset','↺');
 }
 
 function openEditEnquiry(id){
@@ -2209,6 +2338,7 @@ function openEditEnquiry(id){
   document.getElementById('f-notes').value=e.notes||'';
   document.getElementById('f-suburb').value=e.suburb||'';
   document.getElementById('f-source').value=e.source||'Meta Ads';
+  initCallScript(id);
   openModal('modal-enq');
 }
 
