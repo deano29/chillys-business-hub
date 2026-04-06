@@ -527,46 +527,132 @@ async function renderDashboard(){
     walksEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">No walks scheduled today</div>';
   }
 
-  // Follow-ups
-  const fuBadge=document.getElementById('fu-badge-count');
-  const lastFuCheck=load('cw_fu_last_check','');
-  if(lastFuCheck!==today()&&overdue>0){
-    due.filter(e=>fuStatus(e.followup)==='overdue').forEach(e=>fireWebhook('followup-overdue',{name:e.name,email:e.email,dogName:e.dogName,followup:e.followup,stage:e.stage}));
-    save('cw_fu_last_check',today());
+  // ── REVENUE TRACKER ──
+  const revEl=document.getElementById('dash-revenue-tracker');
+  if(revEl){
+    // Fetch TTP summary for real revenue
+    const summary=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null);
+    const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const currentMonthKey=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}`;
+    const prevMonthKey=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()).padStart(2,'0')}`;
+    const ttpCurrent=summary?.revenueMonthly?.find(m=>m.month===currentMonthKey);
+    const ttpPrev=summary?.revenueMonthly?.find(m=>m.month===prevMonthKey);
+    const monthRev=ttpCurrent?.revenue||weekRev*4.3;
+    const prevRev=ttpPrev?.revenue||0;
+    const targets=load('cw_rev_targets',{});
+    const monthlyGoal=parseFloat(targets.monthlyGoal)||8000;
+    const pct=monthlyGoal>0?Math.min(100,(monthRev/monthlyGoal)*100):0;
+    const gap=monthlyGoal-monthRev;
+    const weeklyRunRate=weekRev;
+    const projectedMonth=weeklyRunRate*4.3;
+    const growthVsPrev=prevRev>0?((monthRev-prevRev)/prevRev*100):0;
+
+    revEl.innerHTML=`
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:28px;font-weight:800;font-family:'Readex Pro',sans-serif">$${monthRev.toLocaleString()}</span>
+          <span style="font-size:12px;color:var(--ink-light)">of $${monthlyGoal.toLocaleString()} goal</span>
+        </div>
+        <div style="background:var(--cream);border-radius:20px;height:24px;overflow:hidden;position:relative">
+          <div style="background:${pct>=100?'var(--success)':'var(--orange)'};height:100%;width:${pct}%;border-radius:20px;transition:width .3s"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:var(--ink)">${pct.toFixed(0)}%</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;font-size:12px;flex-wrap:wrap">
+        <div>${gap>0?`<span style="color:var(--warning)">$${gap.toFixed(0)} to go</span>`:`<span style="color:var(--success)">Exceeded by $${Math.abs(gap).toFixed(0)}</span>`}</div>
+        <div>Run rate: <strong>$${weeklyRunRate.toFixed(0)}/wk</strong></div>
+        <div>Pace: <strong style="color:${projectedMonth>=monthlyGoal?'var(--success)':'var(--warning)'}">$${projectedMonth.toFixed(0)}</strong></div>
+        ${prevRev>0?`<div style="color:${growthVsPrev>=0?'var(--success)':'var(--danger)'}"> ${growthVsPrev>=0?'↑':'↓'} ${Math.abs(growthVsPrev).toFixed(0)}% vs ${monthNames[nowLocal.getMonth()-1]||'prev'}</div>`:''}
+      </div>`;
   }
-  fuBadge.textContent=overdue>0?overdue+' overdue':due.length?due.length+' today':'All clear';
-  fuBadge.style.background=overdue>0?'var(--danger-bg)':due.length?'var(--warning-bg)':'var(--success-bg)';
-  fuBadge.style.color=overdue>0?'var(--danger)':due.length?'var(--warning)':'var(--success)';
 
-  const fuEl=document.getElementById('dash-followups');
-  if(!due.length){fuEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">🎉 All caught up!</div>';}
-  else fuEl.innerHTML=due.map(e=>{
-    const s=fuStatus(e.followup);
-    return `<div class="followup-item" onclick="navigate('enquiries')">
-      <div class="fu-dot ${s}"></div>
-      <div style="flex:1"><div class="followup-name">${esc(e.name)}</div><div class="followup-detail">${STAGES.find(st=>st.id===e.stage)?.label||''} · ${esc(e.source||'')}</div></div>
-      <div class="followup-date ${s}">${s==='overdue'?'⚠️ ':'📅 '}${fmtDate(e.followup)}</div>
-    </div>`;
-  }).join('');
+  // ── SMART ALERTS (auto-detected from real data) ──
+  const alertsEl=document.getElementById('dash-alerts');
+  const alertsBadge=document.getElementById('dash-alerts-badge');
+  const alerts=[];
+  const todayDate=today();
 
-  // Pipeline
-  const pipelineEl=document.getElementById('dash-pipeline');
-  const pipelineCount=document.getElementById('dash-pipeline-count');
-  const totalActive=enquiries.filter(e=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(e.stage)).length;
-  if(pipelineCount) pipelineCount.textContent=totalActive+' active leads';
-  const totalForBar=totalActive||1;
-  pipelineEl.innerHTML=STAGES.filter(s=>!['closed-won','not-suitable','closed-lost','archived','uncontactable','not-interested'].includes(s.id)).map(s=>{
-    const c=enquiries.filter(e=>e.stage===s.id).length;
-    if(!c) return '';
-    return `<div class="pm-row">
-      <div class="pm-dot" style="background:${s.color}"></div>
-      <div class="pm-label">${s.label}</div>
-      <div class="pm-bar-wrap"><div class="pm-bar" style="width:${(c/totalForBar)*100}%;background:${s.color}"></div></div>
-      <div class="pm-count">${c}</div>
-    </div>`;
-  }).join('');
+  // 1. New leads not contacted (48hrs+)
+  const twoDaysAgo=new Date();twoDaysAgo.setDate(twoDaysAgo.getDate()-2);
+  const twoDaysStr=twoDaysAgo.toISOString().split('T')[0];
+  enquiries.filter(e=>e.stage==='new'&&e.dateAdded&&e.dateAdded<=twoDaysStr).forEach(e=>{
+    alerts.push({icon:'🔴',text:`${esc(e.name)} — new lead ${daysAgo(e.dateAdded)}, not contacted yet`,action:'Call',onclick:`openEditEnquiry('${e.id}')`,urgency:1});
+  });
 
-  acTab('urgent');
+  // 2. Overdue follow-ups
+  enquiries.filter(e=>{const s=fuStatus(e.followup);return s==='overdue'}).forEach(e=>{
+    alerts.push({icon:'⚠️',text:`${esc(e.name)} — follow-up was due ${fmtDate(e.followup)}`,action:'View',onclick:`openEditEnquiry('${e.id}')`,urgency:2});
+  });
+
+  // 3. Clients running low on bookings (<3 days ahead)
+  const clientTypes=load('cw_client_types',{});
+  const serverTypes=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).then(s=>s?.clientTypes||{}).catch(()=>({}));
+  const allTypes={...serverTypes,...clientTypes};
+  clients.filter(c=>c.status==='active'&&isRealClient(c.name)&&c.daysAhead>0&&c.daysAhead<=3).forEach(c=>{
+    const type=allTypes[cleanClientName(c.name)]||'';
+    if(type==='regular'||!type){
+      alerts.push({icon:'📅',text:`${esc(cleanClientName(c.name))} — only ${c.daysAhead}d of walks booked`,action:'Book',onclick:`navigate('clients')`,urgency:3});
+    }
+  });
+
+  // 4. Uncontactable stale leads (7+ days)
+  const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
+  const weekStr=weekAgo.toISOString().split('T')[0];
+  enquiries.filter(e=>e.stage==='uncontactable'&&e.dateAdded&&e.dateAdded<=weekStr).forEach(e=>{
+    alerts.push({icon:'📱',text:`${esc(e.name)} — uncontactable for ${daysAgo(e.dateAdded)}`,action:'Try again',onclick:`openEditEnquiry('${e.id}')`,urgency:4});
+  });
+
+  // 5. Qualified leads not progressing
+  enquiries.filter(e=>e.stage==='qualified'&&e.dateAdded&&e.dateAdded<=twoDaysStr).forEach(e=>{
+    alerts.push({icon:'🎯',text:`${esc(e.name)} — qualified ${daysAgo(e.dateAdded)}, ready to close`,action:'Close',onclick:`openEditEnquiry('${e.id}')`,urgency:3});
+  });
+
+  alerts.sort((a,b)=>a.urgency-b.urgency);
+
+  if(alertsBadge){
+    alertsBadge.textContent=alerts.length?alerts.length+' items':'All clear';
+    alertsBadge.style.background=alerts.length?'var(--danger-bg)':'var(--success-bg)';
+    alertsBadge.style.color=alerts.length?'var(--danger)':'var(--success)';
+  }
+
+  if(alertsEl){
+    alertsEl.innerHTML=alerts.length?alerts.map(a=>`
+      <div class="ac-item${a.urgency<=2?' urgent':''}" style="cursor:pointer" onclick="${a.onclick}">
+        <div class="ac-icon">${a.icon}</div>
+        <div class="ac-content"><div class="ac-title" style="font-size:12px">${a.text}</div></div>
+        <div class="ac-cta">${a.action} →</div>
+      </div>`).join('')
+      :'<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">🎉 All clear — nothing needs attention</div>';
+  }
+
+  // ── QUICK ACTIONS (prioritised to-do list) ──
+  const actionsEl=document.getElementById('dash-actions');
+  const actions=[];
+
+  // New leads to call
+  enquiries.filter(e=>e.stage==='new').slice(0,3).forEach(e=>{
+    actions.push({icon:'📞',text:`Call ${esc(e.name)}`,sub:`New lead${e.dateAdded?' · '+daysAgo(e.dateAdded):''}${e.suburb?' · '+esc(e.suburb):''}`,onclick:`openEditEnquiry('${e.id}')`});
+  });
+
+  // Contacted leads to follow up
+  enquiries.filter(e=>e.stage==='contacted').slice(0,2).forEach(e=>{
+    actions.push({icon:'💬',text:`Follow up ${esc(e.name)}`,sub:`Contacted${e.dateAdded?' · '+daysAgo(e.dateAdded):''}`,onclick:`openEditEnquiry('${e.id}')`});
+  });
+
+  // Clients with no upcoming walks
+  clients.filter(c=>c.status==='no-upcoming'&&isRealClient(c.name)).slice(0,3).forEach(c=>{
+    actions.push({icon:'🐕',text:`Rebook ${esc(cleanClientName(c.name))}`,sub:`No upcoming walks${c.lastWalk?' · last walk '+c.lastWalk:''}`,onclick:`navigate('clients')`});
+  });
+
+  if(actionsEl){
+    actionsEl.innerHTML=actions.length?actions.map(a=>`
+      <div class="ac-item" style="cursor:pointer" onclick="${a.onclick}">
+        <div class="ac-icon">${a.icon}</div>
+        <div class="ac-content"><div class="ac-title" style="font-size:12px">${a.text}</div><div class="ac-sub">${a.sub}</div></div>
+        <div class="ac-cta">→</div>
+      </div>`).join('')
+      :'<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:13px">Nothing to action right now</div>';
+  }
 }
 
 // ── XERO FETCH ──
