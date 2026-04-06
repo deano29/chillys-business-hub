@@ -2274,10 +2274,7 @@ async function renderRoutePlanner(){
   const unlocatedStops=stops.filter(s=>!s.hasLocation);
   const baseLat=getBaseLat(),baseLng=getBaseLng();
 
-  // Optimise route (nearest neighbour from base)
-  const optimised=optimiseRoute(locatedStops,baseLat,baseLng);
-
-  // Calculate distances
+  // Calculate distances for current schedule order
   function routeDistance(route){
     let dist=0;
     let prev={lat:baseLat,lng:baseLng};
@@ -2288,45 +2285,61 @@ async function renderRoutePlanner(){
     return dist;
   }
   const currentDist=routeDistance(locatedStops);
+  const currentKm=currentDist/1000;
+  const currentMins=Math.round(currentKm/40*60);
+  const suburbs=[...new Set(stops.map(s=>s.suburb).filter(Boolean))];
+
+  // Check for backtracking (drive > 5km between consecutive stops)
+  const legs=[];
+  let prevStop={lat:baseLat,lng:baseLng,clientClean:'Base'};
+  locatedStops.forEach(s=>{
+    const dist=haversine(prevStop.lat,prevStop.lng,s.lat,s.lng);
+    const isLong=dist>5000;
+    legs.push({from:prevStop.clientClean,to:s.clientClean,dist,isLong});
+    prevStop=s;
+  });
+  const longLegs=legs.filter(l=>l.isLong);
+
+  // Compare with optimised to show potential savings
+  const optimised=optimiseRoute(locatedStops,baseLat,baseLng);
   const optimisedDist=routeDistance(optimised);
   const savingKm=Math.max(0,(currentDist-optimisedDist)/1000);
-  const savingMins=Math.round(savingKm/40*60);
-  const totalKm=optimisedDist/1000;
-  const totalMins=Math.round(totalKm/40*60);
-  const suburbs=[...new Set(stops.map(s=>s.suburb).filter(Boolean))];
 
   // Stats
   if(statsEl){
-    const dayName=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'short'});
     statsEl.innerHTML=`
       <div class="rp-weekly-stat"><div class="rp-weekly-val">${dayWalks.length}</div><div class="rp-weekly-lbl">Walks</div></div>
       <div class="rp-weekly-stat"><div class="rp-weekly-val">${suburbs.length}</div><div class="rp-weekly-lbl">Suburbs</div></div>
-      <div class="rp-weekly-stat"><div class="rp-weekly-val">${totalKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Est. Travel</div></div>
-      <div class="rp-weekly-stat"><div class="rp-weekly-val">~${totalMins}min</div><div class="rp-weekly-lbl">Drive Time</div></div>
-      ${savingKm>0.5?`<div class="rp-weekly-stat" style="border-color:var(--success)"><div class="rp-weekly-val" style="color:var(--success)">-${savingKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Saving vs Current</div></div>`:''}
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${currentKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Total Driving</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">~${currentMins}min</div><div class="rp-weekly-lbl">Drive Time</div></div>
+      ${longLegs.length?`<div class="rp-weekly-stat" style="border-color:var(--warning)"><div class="rp-weekly-val" style="color:var(--warning)">${longLegs.length}</div><div class="rp-weekly-lbl">Long Drives (5km+)</div></div>`:''}
+      ${savingKm>1?`<div class="rp-weekly-stat" style="border-color:var(--info)"><div class="rp-weekly-val" style="color:var(--info)">${savingKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Potential Saving</div></div>`:''}
     `;
   }
 
-  // Route list
+  // Route list — ACTUAL SCHEDULE ORDER (not reordered)
   if(!dayWalks.length){
     listEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this date</div>';
   }else{
-    let html='<div style="padding:8px 12px;background:var(--cream);border-radius:var(--radius-sm);margin-bottom:8px;font-size:11px;font-weight:600;color:var(--ink-light)">Suggested Route Order</div>';
+    let html='<div style="padding:8px 12px;background:var(--cream);border-radius:var(--radius-sm);margin-bottom:8px;font-size:11px;font-weight:600;color:var(--ink-light)">Today\'s Schedule — Drive Route</div>';
 
     // Base start
     html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-light)">
       <div style="width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">🏠</div>
-      <div><div style="font-size:13px;font-weight:700">Base</div><div style="font-size:11px;color:var(--ink-light)">Start point</div></div>
+      <div><div style="font-size:13px;font-weight:700">Base — Ormond</div><div style="font-size:11px;color:var(--ink-light)">Start point</div></div>
     </div>`;
 
     let prev={lat:baseLat,lng:baseLng};
-    optimised.forEach((s,i)=>{
+    // Show ALL stops (located first in schedule order, then unlocated)
+    const scheduleOrder=[...locatedStops];
+    scheduleOrder.forEach((s,i)=>{
       const dist=haversine(prev.lat,prev.lng,s.lat,s.lng);
       const distLabel=dist<1000?Math.round(dist)+'m':(dist/1000).toFixed(1)+'km';
       const driveMins=Math.round(dist/1000/40*60);
+      const isLong=dist>5000;
 
-      html+=`<div style="padding:2px 12px 2px 24px;font-size:10px;color:var(--ink-xlight)">↓ ${distLabel} · ~${driveMins}min</div>`;
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="if(rpMap)rpMap.setView([${s.lat},${s.lng}],15)">
+      html+=`<div style="padding:2px 12px 2px 24px;font-size:10px;color:${isLong?'var(--warning)':'var(--ink-xlight)'}">↓ ${distLabel} · ~${driveMins}min drive${isLong?' ⚠️':''}</div>`;
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-light);cursor:pointer${isLong?';background:var(--warning-bg)':''}" onclick="if(rpMap)rpMap.setView([${s.lat},${s.lng}],15)">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">${i+1}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700">${esc(s.clientClean)}</div>
@@ -2336,6 +2349,19 @@ async function renderRoutePlanner(){
       </div>`;
       prev=s;
     });
+
+    // Insights
+    if(longLegs.length||savingKm>1){
+      html+=`<div style="margin-top:10px;padding:10px 12px;background:var(--cream);border-radius:var(--radius-sm);border:1px solid var(--border-light)">
+        <div style="font-size:11px;font-weight:700;color:var(--ink-mid);margin-bottom:6px">Route Insights</div>`;
+      if(longLegs.length){
+        html+=longLegs.map(l=>`<div style="font-size:11px;color:var(--warning);margin-bottom:3px">⚠️ ${(l.dist/1000).toFixed(1)}km drive from ${esc(l.from)} → ${esc(l.to)}</div>`).join('');
+      }
+      if(savingKm>1){
+        html+=`<div style="font-size:11px;color:var(--info);margin-top:4px">💡 Optimised route could save ~${savingKm.toFixed(1)}km (${Math.round(savingKm/40*60)}min) — but may require schedule changes</div>`;
+      }
+      html+=`</div>`;
+    }
 
     // Unlocated clients
     if(unlocatedStops.length){
@@ -2371,12 +2397,22 @@ async function renderRoutePlanner(){
     L.circleMarker([baseLat,baseLng],{radius:8,color:'#1A1A1A',fillColor:'#1A1A1A',fillOpacity:1,weight:2})
       .bindPopup('<strong>Base</strong>').addTo(rpRouteLayer);
 
-    // Route line
-    const routeCoords=[[baseLat,baseLng],...optimised.map(s=>[s.lat,s.lng])];
-    L.polyline(routeCoords,{color:'var(--orange)',weight:3,opacity:0.7,dashArray:'8,8'}).addTo(rpRouteLayer);
+    // Route line (actual schedule order, not optimised)
+    const routeCoords=[[baseLat,baseLng],...locatedStops.map(s=>[s.lat,s.lng])];
+    L.polyline(routeCoords,{color:'#F26B21',weight:3,opacity:0.7,dashArray:'8,8'}).addTo(rpRouteLayer);
 
-    // Stop pins
-    optimised.forEach((s,i)=>{
+    // Highlight long legs in red
+    let prevCoord=[baseLat,baseLng];
+    locatedStops.forEach(s=>{
+      const dist=haversine(prevCoord[0],prevCoord[1],s.lat,s.lng);
+      if(dist>5000){
+        L.polyline([prevCoord,[s.lat,s.lng]],{color:'#dc2626',weight:4,opacity:0.8}).addTo(rpRouteLayer);
+      }
+      prevCoord=[s.lat,s.lng];
+    });
+
+    // Stop pins (schedule order)
+    locatedStops.forEach((s,i)=>{
       const marker=L.circleMarker([s.lat,s.lng],{radius:14,color:'#fff',fillColor:'#F26B21',fillOpacity:1,weight:2})
         .bindPopup(`<strong>${i+1}. ${esc(s.clientClean)}</strong><br>${s.suburb||''}<br>${s.time||''} · ${esc(s.service||'')}`)
         .addTo(rpRouteLayer);
