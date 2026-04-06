@@ -378,9 +378,19 @@ function buildChart(containerId,labelId,data,h=110){
 
 // ── SHARED: Build shifts from walk data (used by Dashboard + Profitability) ──
 function buildShiftsFromWalks(walks,settings){
+  // Only group by known walkers — ICS sometimes puts dog names in walker field
+  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
+  const isKnownWalker=name=>KNOWN_WALKERS.some(k=>name.toLowerCase().includes(k.split(' ')[0].toLowerCase()));
+
   const walkerGroups={};
   walks.forEach(w=>{
-    const walker=w.walker||'Unknown';
+    let walker=w.walker||'Unknown';
+    // If walker is not a known walker (likely a dog name), reassign to a known walker on same date
+    if(!isKnownWalker(walker)){
+      // Find a known walker who has walks on the same date
+      const knownOnDate=walks.find(x=>x.date===w.date&&x.walker&&isKnownWalker(x.walker));
+      walker=knownOnDate?knownOnDate.walker:KNOWN_WALKERS[0];
+    }
     const key=walker+'_'+w.date;
     if(!walkerGroups[key]) walkerGroups[key]={walks:[],walker,date:w.date};
     walkerGroups[key].walks.push(w);
