@@ -3878,7 +3878,18 @@ async function renderClientLTV(){
                   </div>
                 </td>
               </tr>`;
-            }).join('')}</tbody>
+            }).join('')}
+            <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--cream)">
+              <td><strong>Total</strong></td>
+              <td>${Object.values(cohorts).reduce((s,d)=>s+d.started,0)}</td>
+              <td style="color:var(--success)">${Object.values(cohorts).reduce((s,d)=>s+(d.byType.regular.total||0),0)}</td>
+              <td style="color:var(--purple)">${Object.values(cohorts).reduce((s,d)=>s+(d.byType.adhoc.total||0),0)}</td>
+              <td>${Object.values(cohorts).reduce((s,d)=>s+d.active,0)}</td>
+              <td style="color:var(--danger)">${Object.values(cohorts).reduce((s,d)=>s+d.churned,0)}</td>
+              <td>${(()=>{const regT=Object.values(cohorts).reduce((s,d)=>s+(d.byType.regular.total||0),0);const regA=Object.values(cohorts).reduce((s,d)=>s+(d.byType.regular.active||0),0);return regT>0?(regA/regT*100).toFixed(0)+'%':'—'})()}</td>
+              <td>$${Object.values(cohorts).reduce((s,d)=>s+d.totalRev,0).toLocaleString()}</td>
+            </tr>
+            </tbody>
           </table>
         </div>
       </div>
