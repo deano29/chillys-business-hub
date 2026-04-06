@@ -1392,9 +1392,13 @@ async function renderReports(){
     </div>`).join('');
 
   // ── WALKER UTILISATION (real TTP data, this month) ──
+  // Only count known walkers — ICS sometimes puts dog names in the walker field
+  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
   const walkerMap={};
   thisMonthWalks.forEach(w=>{
-    const name=w.walker||'Unknown';
+    const raw=w.walker||'Unknown';
+    const name=KNOWN_WALKERS.find(k=>raw.toLowerCase().includes(k.split(' ')[0].toLowerCase()))||null;
+    if(!name) return;
     if(!walkerMap[name]) walkerMap[name]={walks:0,hours:0,revenue:0};
     walkerMap[name].walks++;
     if(w.start&&w.end) walkerMap[name].hours+=(new Date(w.end)-new Date(w.start))/3600000;
