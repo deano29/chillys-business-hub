@@ -22,6 +22,25 @@ module.exports = async function handler(req, res) {
   const referrals = loadJSON('referrals.json');
   const pricingByClient = loadJSON('pricing-by-client.json');
   const clientLocations = loadJSON('client-locations.json');
+  const clientTypes = loadJSON('client-types.json');
+
+  // Handle POST to save client type
+  if (req.method === 'POST') {
+    try {
+      const { clientName, clientType } = req.body || {};
+      if (!clientName || !['regular', 'project', 'adhoc', ''].includes(clientType)) {
+        return res.status(400).json({ error: 'Invalid client name or type' });
+      }
+      const types = clientTypes || {};
+      if (clientType) types[clientName] = clientType;
+      else delete types[clientName];
+      const typesPath = path.join(DATA_DIR, 'client-types.json');
+      fs.writeFileSync(typesPath, JSON.stringify(types, null, 2));
+      return res.json({ ok: true, clientTypes: types });
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to save' });
+    }
+  }
 
   res.json({
     revenueMonthly: revenueMonthly || [],
@@ -30,6 +49,7 @@ module.exports = async function handler(req, res) {
     referrals: referrals || {},
     pricingByClient: pricingByClient || {},
     clientLocations: clientLocations || [],
+    clientTypes: clientTypes || {},
     hasData: !!(revenueMonthly && revenueMonthly.length),
   });
 };

@@ -3656,6 +3656,7 @@ async function renderClientLTV(){
     fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null),
   ]);
   const ttpClientRevenue=summary?.revenueByClient||{};
+  const clientTypesMap=summary?.clientTypes||{};
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
@@ -3665,6 +3666,14 @@ async function renderClientLTV(){
   // Build active client names set from live TTP data (strip dog names)
   const cleanClientName=s=>(s||'').replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim().toLowerCase();
   const activeClientNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanClientName(c.name)));
+
+  // Client type lookup helper
+  function getClientType(name){
+    const clean=name.trim();
+    return clientTypesMap[clean]||clientTypesMap[clean.toLowerCase()]||'';
+  }
+  const typeLabel=t=>t==='regular'?'Regular':t==='project'?'Project':t==='adhoc'?'Ad Hoc':'Untagged';
+  const typeColor=t=>t==='regular'?'var(--success)':t==='project'?'var(--info)':t==='adhoc'?'var(--purple)':'var(--ink-xlight)';
 
   // Build client value map — clean client names to merge dog-name variants
   const clientMap={};
@@ -3706,7 +3715,8 @@ async function renderClientLTV(){
     const walksPerWeek=tenureMonths>0?c.walks/(tenureMonths*4.3):0;
     // Match against live TTP client status
     const isActive=activeClientNames.has(c.name.toLowerCase());
-    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive};
+    const clientType=getClientType(c.name);
+    return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive,clientType};
   }).sort((a,b)=>b.revenue-a.revenue);
 
   const activeClients=clientList.filter(c=>c.isActive);
@@ -3732,15 +3742,24 @@ async function renderClientLTV(){
   });
   const avgFirst3=first3MonthRev.length>0?first3MonthRev.reduce((s,v)=>s+v,0)/first3MonthRev.length:avgLTV*0.3;
 
-  // Cohort data (by start month)
+  // Cohort data (by start month) with type breakdown
   const cohorts={};
   clientList.forEach(c=>{
     if(!c.firstWalk) return;
     const cohort=c.firstWalk.substring(0,7);
-    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0};
-    cohorts[cohort].started++;
-    if(c.isActive) cohorts[cohort].active++;
-    cohorts[cohort].totalRev+=c.revenue;
+    if(!cohorts[cohort]) cohorts[cohort]={started:0,active:0,totalRev:0,clients:[],byType:{regular:{total:0,active:0},project:{total:0,active:0},adhoc:{total:0,active:0},'':{'total':0,'active':0}}};
+    const co=cohorts[cohort];
+    co.started++;
+    if(c.isActive) co.active++;
+    co.totalRev+=c.revenue;
+    co.clients.push(c);
+    const t=c.clientType||'';
+    if(co.byType[t]){co.byType[t].total++;if(c.isActive)co.byType[t].active++;}
+  });
+  // Calculate retention for regulars only
+  Object.values(cohorts).forEach(co=>{
+    co.regularRetention=co.byType.regular.total>0?(co.byType.regular.active/co.byType.regular.total)*100:null;
+    co.overallRetention=co.started>0?(co.active/co.started)*100:0;
   });
 
   el.innerHTML=`
@@ -3787,19 +3806,45 @@ async function renderClientLTV(){
     <!-- Client Cohorts -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-body">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">📊 Client Cohorts</h4>
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:4px">📊 Client Cohorts</h4>
+        <p style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Retention % based on Regular clients only (excludes Projects &amp; Ad Hoc). Click a row to expand.</p>
         <div style="overflow-x:auto">
           <table class="enq-list-table">
-            <thead><tr><th>Cohort</th><th>Started</th><th>Still Active</th><th>Retention</th><th>Total Revenue</th><th>Avg LTV</th></tr></thead>
+            <thead><tr><th>Cohort</th><th>Started</th><th>Regular</th><th>Project</th><th>Ad Hoc</th><th>Still Active</th><th>Retention</th><th>Revenue</th></tr></thead>
             <tbody>${Object.entries(cohorts).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12).map(([month,d])=>{
-              const ret=d.started>0?(d.active/d.started)*100:0;
-              return `<tr>
+              const regRet=d.regularRetention;
+              const retDisplay=regRet!==null?regRet.toFixed(0)+'%':d.overallRetention.toFixed(0)+'%*';
+              const retColor=regRet!==null?(regRet>=70?'var(--success)':regRet>=40?'var(--warning)':'var(--danger)'):(d.overallRetention>=70?'var(--success)':d.overallRetention>=40?'var(--warning)':'var(--danger)');
+              const untagged=d.byType['']?.total||0;
+              return `<tr style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
                 <td><strong>${month}</strong></td>
-                <td>${d.started}</td>
+                <td>${d.started}${untagged>0?` <span style="font-size:9px;color:var(--ink-xlight)">(${untagged} untagged)</span>`:''}</td>
+                <td style="color:var(--success)">${d.byType.regular.total||'—'}</td>
+                <td style="color:var(--info)">${d.byType.project.total||'—'}</td>
+                <td style="color:var(--purple)">${d.byType.adhoc.total||'—'}</td>
                 <td>${d.active}</td>
-                <td style="color:${ret>=70?'var(--success)':ret>=40?'var(--warning)':'var(--danger)'}">${ret.toFixed(0)}%</td>
+                <td style="color:${retColor};font-weight:700">${retDisplay}</td>
                 <td>$${d.totalRev.toFixed(0)}</td>
-                <td>$${d.started>0?(d.totalRev/d.started).toFixed(0):0}</td>
+              </tr>
+              <tr style="display:none;background:var(--cream)">
+                <td colspan="8" style="padding:12px">
+                  <div style="display:flex;gap:12px;margin-bottom:8px;font-size:11px;flex-wrap:wrap">
+                    ${d.byType.regular.total?`<span style="color:var(--success);font-weight:600">Regular: ${d.byType.regular.active}/${d.byType.regular.total} active</span>`:''}
+                    ${d.byType.project.total?`<span style="color:var(--info);font-weight:600">Project: ${d.byType.project.total} (${d.byType.project.active} active)</span>`:''}
+                    ${d.byType.adhoc.total?`<span style="color:var(--purple);font-weight:600">Ad Hoc: ${d.byType.adhoc.total} (${d.byType.adhoc.active} active)</span>`:''}
+                    ${untagged?`<span style="color:var(--ink-xlight)">Untagged: ${untagged}</span>`:''}
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    ${d.clients.sort((a,b)=>b.revenue-a.revenue).map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+                      <span style="width:120px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span>
+                      <span style="font-size:9px;padding:1px 6px;border-radius:10px;background:${c.clientType?typeColor(c.clientType):'var(--cream-dark)'};color:${c.clientType?'#fff':'var(--ink-xlight)'}">${typeLabel(c.clientType)}</span>
+                      <span style="color:${c.isActive?'var(--success)':'var(--danger)'}">●</span>
+                      <span style="color:var(--ink-light)">${c.walks} walks</span>
+                      <span style="font-weight:600">$${c.revenue.toFixed(0)}</span>
+                      <span style="color:var(--ink-xlight)">$${c.avgPerMonth.toFixed(0)}/mo</span>
+                    </div>`).join('')}
+                  </div>
+                </td>
               </tr>`;
             }).join('')}</tbody>
           </table>
@@ -3813,14 +3858,19 @@ async function renderClientLTV(){
         <h4 style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Client Rankings by Lifetime Value</h4>
         <div style="overflow-x:auto">
           <table class="enq-list-table">
-            <thead><tr><th>#</th><th>Client</th><th>Status</th><th>Tenure</th><th>Total Walks</th><th>Walks/Week</th><th>Lifetime Revenue</th><th>Monthly Avg</th></tr></thead>
-            <tbody>${clientList.slice(0,20).map((c,i)=>`<tr>
+            <thead><tr><th>#</th><th>Client</th><th>Type</th><th>Status</th><th>Tenure</th><th>Walks</th><th>Lifetime Revenue</th><th>Monthly Avg</th></tr></thead>
+            <tbody>${clientList.slice(0,30).map((c,i)=>`<tr>
               <td><strong>${i+1}</strong></td>
               <td><strong>${esc(c.name)}</strong></td>
+              <td><select onchange="saveClientType('${esc(c.name)}',this.value)" style="font-size:10px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--white)">
+                <option value="" ${!c.clientType?'selected':''}>—</option>
+                <option value="regular" ${c.clientType==='regular'?'selected':''}>Regular</option>
+                <option value="project" ${c.clientType==='project'?'selected':''}>Project</option>
+                <option value="adhoc" ${c.clientType==='adhoc'?'selected':''}>Ad Hoc</option>
+              </select></td>
               <td><span style="color:${c.isActive?'var(--success)':'var(--danger)'};font-size:11px">${c.isActive?'● Active':'○ Inactive'}</span></td>
               <td>${c.tenureMonths}mo</td>
               <td>${c.walks}</td>
-              <td>${c.walksPerWeek.toFixed(1)}</td>
               <td style="font-weight:700">$${c.revenue.toFixed(0)}</td>
               <td>$${c.avgPerMonth.toFixed(0)}</td>
             </tr>`).join('')}</tbody>
@@ -3829,6 +3879,13 @@ async function renderClientLTV(){
       </div>
     </div>
   `;
+}
+
+async function saveClientType(clientName,clientType){
+  try{
+    await fetch('/api/data/summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientName,clientType})});
+    showToast(clientName+' → '+(clientType||'untagged'),'✅');
+  }catch{showToast('Failed to save type','⚠️');}
 }
 
 // ── GROWTH SIMULATOR ──
