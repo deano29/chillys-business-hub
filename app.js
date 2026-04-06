@@ -3482,7 +3482,8 @@ async function renderRevenueForecast(){
   const monthlyGoal=parseFloat(targets.monthlyGoal)||8000;
   const momGrowthTarget=parseFloat(targets.momGrowth)||10;
 
-  function walkRevenue(w){return getClientPrice(w.client,w.service);}
+  // Use real TTP revenue where available, else estimate
+  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service);}
   function monthStr(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
   function monthName(ms){const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const [y,m]=ms.split('-');return mn[parseInt(m)-1]+' '+y;}
 
@@ -3647,13 +3648,19 @@ async function renderClientLTV(){
   const now=new Date();
   const nowStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
-  function walkRevenue(w){return getClientPrice(w.client,w.service);}
+  // Use real TTP revenue where available, else estimate
+  function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service);}
 
-  // Build client value map
+  // Build active client names set from live TTP data (strip dog names)
+  const cleanClientName=s=>(s||'').replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim().toLowerCase();
+  const activeClientNames=new Set(clients.filter(c=>c.status==='active').map(c=>cleanClientName(c.name)));
+
+  // Build client value map — clean client names to merge dog-name variants
   const clientMap={};
   walks.forEach(w=>{
-    const name=(w.client||'').replace(/\\+$/g,'').trim();
-    if(!name||name==='Potential Client (general)') return;
+    const rawName=(w.client||'').trim();
+    const name=rawName.replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim();
+    if(!name||name==='Potential Client (general)'||name==='Dean Haimes') return;
     if(!clientMap[name]) clientMap[name]={name,walks:0,revenue:0,firstWalk:null,lastWalk:null,months:new Set(),futureWalks:0};
     const c=clientMap[name];
     const rev=walkRevenue(w);
@@ -3674,7 +3681,8 @@ async function renderClientLTV(){
     const tenureMonths=firstDate?Math.max(1,Math.round((now-firstDate)/(30.44*86400000))):0;
     const avgPerMonth=tenureMonths>0?c.revenue/tenureMonths:c.revenue;
     const walksPerWeek=tenureMonths>0?c.walks/(tenureMonths*4.3):0;
-    const isActive=c.futureWalks>0||c.lastWalk>=nowStr.substring(0,7);
+    // Match against live TTP client status
+    const isActive=activeClientNames.has(c.name.toLowerCase());
     return {...c,monthsActive,tenureMonths,avgPerMonth,walksPerWeek,isActive};
   }).sort((a,b)=>b.revenue-a.revenue);
 
