@@ -67,8 +67,8 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // For 'all' range, merge with historical data
-    const source = range === 'all' ? mergeWithHistory(events) : events;
+    // Merge with historical data for all ranges
+    const source = mergeWithHistory(events);
     const filtered = filterByRange(source, now, range);
 
     // Sort by start time
