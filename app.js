@@ -337,6 +337,7 @@ function navigate(v){
   if(v==='routes')renderRoutes();
   if(v==='inbox')renderInbox();
   if(v==='coverage')renderCoverage();
+  if(v==='routeplanner')renderRoutePlanner();
   if(v==='parks')renderParksPage();
   if(v==='templates')renderTemplates();
   if(v==='reports')renderReports();
@@ -2199,6 +2200,241 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(el=>closeModal(el.id));
 });
+
+// ── DAILY ROUTE PLANNER ──
+let rpMap=null;
+let rpRouteLayer=null;
+let rpAllWalks=null;
+
+function rpNavDay(offset){
+  const input=document.getElementById('rp-nav-date');
+  const d=new Date(input.value+'T00:00:00');
+  d.setDate(d.getDate()+offset);
+  input.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  renderRoutePlanner();
+}
+
+async function renderRoutePlanner(){
+  const dateInput=document.getElementById('rp-nav-date');
+  if(!dateInput.value) dateInput.value=new Date().toISOString().split('T')[0];
+  const selectedDate=dateInput.value;
+  const walkerFilter=document.getElementById('rp-walker-filter')?.value||'';
+  const statsEl=document.getElementById('rp-nav-stats');
+  const listEl=document.getElementById('rp-route-list');
+
+  // Fetch walks if not cached
+  if(!rpAllWalks){
+    rpAllWalks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  }
+
+  // Fetch client locations if not loaded
+  if(!covClientLocations.length){
+    try{
+      const summary=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null);
+      covClientLocations=(summary?.clientLocations||[]).filter(c=>c.lat&&c.lng);
+    }catch{}
+  }
+
+  // Filter walks for selected date
+  const KNOWN_WALKERS=['Jessica Lauritz','Alex Cass'];
+  const isKnown=name=>KNOWN_WALKERS.some(k=>(name||'').toLowerCase().includes(k.split(' ')[0].toLowerCase()));
+  let dayWalks=rpAllWalks.filter(w=>w.date===selectedDate);
+  // Assign unknown walkers to known ones (same fix as buildShiftsFromWalks)
+  dayWalks=dayWalks.map(w=>{
+    if(!isKnown(w.walker)){
+      const known=dayWalks.find(x=>x.date===w.date&&isKnown(x.walker));
+      return {...w,walker:known?known.walker:KNOWN_WALKERS[0]};
+    }
+    return w;
+  });
+  if(walkerFilter) dayWalks=dayWalks.filter(w=>(w.walker||'').toLowerCase().includes(walkerFilter.toLowerCase()));
+
+  // Sort by time
+  dayWalks.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+
+  // Match walks to client locations
+  const cleanName=s=>(s||'').replace(/\s*\(.*$/,'').replace(/\+$/g,'').trim().toLowerCase();
+  const locMap={};
+  covClientLocations.forEach(c=>{locMap[cleanName(c.name)]=c});
+
+  const stops=dayWalks.map(w=>{
+    const loc=locMap[cleanName(w.client)];
+    return {
+      ...w,
+      clientClean:(w.client||'').replace(/\s*\(.*$/,'').trim(),
+      lat:loc?.lat||null,
+      lng:loc?.lng||null,
+      suburb:loc?.suburb||'',
+      petNames:loc?.petNames||'',
+      hasLocation:!!(loc?.lat),
+    };
+  });
+
+  const locatedStops=stops.filter(s=>s.hasLocation);
+  const unlocatedStops=stops.filter(s=>!s.hasLocation);
+  const baseLat=getBaseLat(),baseLng=getBaseLng();
+
+  // Optimise route (nearest neighbour from base)
+  const optimised=optimiseRoute(locatedStops,baseLat,baseLng);
+
+  // Calculate distances
+  function routeDistance(route){
+    let dist=0;
+    let prev={lat:baseLat,lng:baseLng};
+    route.forEach(s=>{
+      dist+=haversine(prev.lat,prev.lng,s.lat,s.lng);
+      prev=s;
+    });
+    return dist;
+  }
+  const currentDist=routeDistance(locatedStops);
+  const optimisedDist=routeDistance(optimised);
+  const savingKm=Math.max(0,(currentDist-optimisedDist)/1000);
+  const savingMins=Math.round(savingKm/40*60);
+  const totalKm=optimisedDist/1000;
+  const totalMins=Math.round(totalKm/40*60);
+  const suburbs=[...new Set(stops.map(s=>s.suburb).filter(Boolean))];
+
+  // Stats
+  if(statsEl){
+    const dayName=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'short'});
+    statsEl.innerHTML=`
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${dayWalks.length}</div><div class="rp-weekly-lbl">Walks</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${suburbs.length}</div><div class="rp-weekly-lbl">Suburbs</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">${totalKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Est. Travel</div></div>
+      <div class="rp-weekly-stat"><div class="rp-weekly-val">~${totalMins}min</div><div class="rp-weekly-lbl">Drive Time</div></div>
+      ${savingKm>0.5?`<div class="rp-weekly-stat" style="border-color:var(--success)"><div class="rp-weekly-val" style="color:var(--success)">-${savingKm.toFixed(1)}km</div><div class="rp-weekly-lbl">Saving vs Current</div></div>`:''}
+    `;
+  }
+
+  // Route list
+  if(!dayWalks.length){
+    listEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No walks scheduled for this date</div>';
+  }else{
+    let html='<div style="padding:8px 12px;background:var(--cream);border-radius:var(--radius-sm);margin-bottom:8px;font-size:11px;font-weight:600;color:var(--ink-light)">Suggested Route Order</div>';
+
+    // Base start
+    html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-light)">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">🏠</div>
+      <div><div style="font-size:13px;font-weight:700">Base</div><div style="font-size:11px;color:var(--ink-light)">Start point</div></div>
+    </div>`;
+
+    let prev={lat:baseLat,lng:baseLng};
+    optimised.forEach((s,i)=>{
+      const dist=haversine(prev.lat,prev.lng,s.lat,s.lng);
+      const distLabel=dist<1000?Math.round(dist)+'m':(dist/1000).toFixed(1)+'km';
+      const driveMins=Math.round(dist/1000/40*60);
+
+      html+=`<div style="padding:2px 12px 2px 24px;font-size:10px;color:var(--ink-xlight)">↓ ${distLabel} · ~${driveMins}min</div>`;
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="if(rpMap)rpMap.setView([${s.lat},${s.lng}],15)">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700">${esc(s.clientClean)}</div>
+          <div style="font-size:11px;color:var(--ink-light)">${s.suburb?s.suburb+' · ':''}${s.time||''} · ${esc(s.service||'')}</div>
+        </div>
+        <div style="font-size:11px;color:var(--ink-muted);text-align:right">${s.walker?esc(s.walker.split(' ')[0]):''}</div>
+      </div>`;
+      prev=s;
+    });
+
+    // Unlocated clients
+    if(unlocatedStops.length){
+      html+=`<div style="padding:10px 12px;margin-top:8px;background:var(--warning-bg);border-radius:var(--radius-sm);border:1px solid var(--warning)">
+        <div style="font-size:11px;font-weight:700;color:var(--warning);margin-bottom:6px">⚠ ${unlocatedStops.length} client${unlocatedStops.length>1?'s':''} need addresses</div>
+        ${unlocatedStops.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+          <span>${esc(s.clientClean)}</span>
+          <input type="text" placeholder="Enter address..." style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px" id="rp-addr-${esc(s.clientClean.replace(/\s/g,'_'))}">
+          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px" onclick="addRouteAddress('${esc(s.clientClean)}')">Add</button>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    listEl.innerHTML=html;
+  }
+
+  // Map
+  setTimeout(()=>{
+    if(!rpMap){
+      rpMap=L.map('rp-map',{zoomControl:true}).setView([baseLat,baseLng],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'&copy; OSM',maxZoom:19
+      }).addTo(rpMap);
+    }
+
+    // Clear previous route
+    if(rpRouteLayer){rpMap.removeLayer(rpRouteLayer)}
+    rpRouteLayer=L.layerGroup().addTo(rpMap);
+
+    if(!locatedStops.length){rpMap.invalidateSize();return}
+
+    // Base pin
+    L.circleMarker([baseLat,baseLng],{radius:8,color:'#1A1A1A',fillColor:'#1A1A1A',fillOpacity:1,weight:2})
+      .bindPopup('<strong>Base</strong>').addTo(rpRouteLayer);
+
+    // Route line
+    const routeCoords=[[baseLat,baseLng],...optimised.map(s=>[s.lat,s.lng])];
+    L.polyline(routeCoords,{color:'var(--orange)',weight:3,opacity:0.7,dashArray:'8,8'}).addTo(rpRouteLayer);
+
+    // Stop pins
+    optimised.forEach((s,i)=>{
+      const marker=L.circleMarker([s.lat,s.lng],{radius:14,color:'#fff',fillColor:'#F26B21',fillOpacity:1,weight:2})
+        .bindPopup(`<strong>${i+1}. ${esc(s.clientClean)}</strong><br>${s.suburb||''}<br>${s.time||''} · ${esc(s.service||'')}`)
+        .addTo(rpRouteLayer);
+      // Number label
+      L.marker([s.lat,s.lng],{icon:L.divIcon({className:'',html:`<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;pointer-events:none">${i+1}</div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(rpRouteLayer);
+    });
+
+    // Fit bounds
+    const bounds=L.latLngBounds(routeCoords);
+    rpMap.fitBounds(bounds,{padding:[30,30]});
+    rpMap.invalidateSize();
+  },100);
+}
+
+function optimiseRoute(stops,startLat,startLng){
+  if(stops.length<=1) return [...stops];
+  const remaining=[...stops];
+  const result=[];
+  let current={lat:startLat,lng:startLng};
+
+  while(remaining.length){
+    let nearestIdx=0,nearestDist=Infinity;
+    remaining.forEach((s,i)=>{
+      const d=haversine(current.lat,current.lng,s.lat,s.lng);
+      if(d<nearestDist){nearestDist=d;nearestIdx=i}
+    });
+    const next=remaining.splice(nearestIdx,1)[0];
+    result.push(next);
+    current=next;
+  }
+  return result;
+}
+
+async function addRouteAddress(clientName){
+  const inputId='rp-addr-'+clientName.replace(/\s/g,'_');
+  const input=document.getElementById(inputId);
+  if(!input||!input.value.trim()) return;
+
+  const addr=input.value.trim()+', VIC, Australia';
+  input.disabled=true;
+
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1&countrycodes=au`,{headers:{'User-Agent':'ChillysBusinessHub/1.0'}});
+    const data=await res.json();
+    if(data.length){
+      const loc={name:clientName,lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon),suburb:'',petNames:''};
+      covClientLocations.push(loc);
+      showToast('Address added for '+clientName,'📍');
+      renderRoutePlanner();
+    }else{
+      showToast('Could not find that address','⚠️');
+      input.disabled=false;
+    }
+  }catch{
+    showToast('Geocoding failed','⚠️');
+    input.disabled=false;
+  }
+}
 
 // ── COVERAGE MAP ──
 // Pre-geocoded client locations from /api/data/summary (clientLocations)

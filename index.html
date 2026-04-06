@@ -49,6 +49,7 @@
     </div>
     <div class="nav-section">
       <div class="nav-label">Tools</div>
+      <div class="nav-item" data-view="routeplanner"><span class="ni">🛣️</span><span class="nl">Route Planner</span></div>
       <div class="nav-item" data-view="routes"><span class="ni">📊</span><span class="nl">Profitability</span></div>
       <div class="nav-item" data-view="coverage"><span class="ni">🗺️</span><span class="nl">Coverage Map</span></div>
       <div class="nav-item" data-view="parks"><span class="ni">🌳</span><span class="nl">Off-Leash Parks</span></div>
@@ -395,7 +396,35 @@
       </div>
     </div>
 
-    <!-- ── ROUTE PLANNER ── -->
+    <!-- ── DAILY ROUTE PLANNER ── -->
+    <div class="view" id="view-routeplanner">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-ghost btn-sm" onclick="rpNavDay(-1)">← Prev</button>
+          <input type="date" id="rp-nav-date" onchange="renderRoutePlanner()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:Inter,sans-serif;font-weight:600">
+          <button class="btn btn-ghost btn-sm" onclick="rpNavDay(1)">Next →</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('rp-nav-date').value=new Date().toISOString().split('T')[0];renderRoutePlanner()">Today</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="rp-walker-filter" onchange="renderRoutePlanner()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:Inter,sans-serif">
+            <option value="">All Walkers</option>
+            <option value="Jessica Lauritz">Jess</option>
+            <option value="Alex Cass">Alex</option>
+          </select>
+        </div>
+      </div>
+      <div id="rp-nav-stats" style="display:flex;gap:12px;margin-bottom:14px"></div>
+      <div class="cov-layout">
+        <div class="cov-sidebar" style="min-width:320px">
+          <div id="rp-route-list" style="display:flex;flex-direction:column;gap:0;overflow-y:auto;max-height:calc(100vh - 280px)"></div>
+        </div>
+        <div class="cov-map-wrap">
+          <div id="rp-map" style="height:100%;width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PROFITABILITY ── -->
     <div class="view" id="view-routes">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div class="pipeline-filters" id="rp-tabs">
