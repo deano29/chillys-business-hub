@@ -1722,7 +1722,12 @@ const MSG_TYPES=[
   {id:'info',label:'Service Info',icon:'📋',desc:'Detailed services and pricing',stages:['new','contacted','qualified']},
   {id:'close',label:'Close the Deal',icon:'🎯',desc:'Nudge a qualified lead to commit',stages:['qualified']},
   {id:'reengage',label:'Re-engage',icon:'💬',desc:'Win back a quiet or dropping client',stages:['contacted','qualified']},
+  {id:'uncontactable',label:'Can\'t Reach You',icon:'📱',desc:'Tried calling/messaging, no response',stages:['uncontactable']},
+  {id:'uncontactable2',label:'Final Attempt',icon:'👋',desc:'Last try before closing out',stages:['uncontactable']},
+  {id:'notinterested',label:'Door Open',icon:'🚪',desc:'Respect their decision, leave door open',stages:['not-interested']},
+  {id:'winback',label:'Win Back',icon:'🔄',desc:'Re-approach after time has passed',stages:['not-interested','closed-lost','archived']},
   {id:'notsuitable',label:'Not the Right Fit',icon:'🙏',desc:'Polite decline',stages:['not-suitable','closed-lost']},
+  {id:'closedwon',label:'Welcome Aboard',icon:'🎉',desc:'Confirm conversion and next steps',stages:['closed-won']},
 ];
 
 function getSmartContext(e){
@@ -1912,6 +1917,69 @@ No pressure at all — just wanted to check in.
 
 ${ctx.walker}
 ${ctx.biz}`;
+
+  }else if(msgType==='uncontactable'){
+    draft=`Hey ${ctx.name},
+
+I've tried reaching out a couple of times about walks for ${dn?d:'your dog'} but haven't been able to get through.
+
+If you're still interested, just reply here or give me a call whenever suits — happy to work around your schedule.
+
+No stress if the timing's off. Just didn't want you to think we'd forgotten about you.
+
+${ctx.walker}
+0430 921 951`;
+
+  }else if(msgType==='uncontactable2'){
+    draft=`Hey ${ctx.name},
+
+Just me one last time. I've tried a few times but no luck getting through.
+
+I'll close this off for now, but if you ever want to revisit walks for ${dn?d:'your dog'}, my number's below — no expiry on the offer.
+
+All the best!
+
+${ctx.walker}
+0430 921 951`;
+
+  }else if(msgType==='notinterested'){
+    draft=`Hey ${ctx.name},
+
+Totally understand — appreciate you letting me know.
+
+If anything changes down the track or ${dn?d+' needs':'you need'} a hand, we're here. No need to re-explain anything, I've got all your details saved.
+
+Hope ${dn?d+' is':'you\'re'} going well!
+
+${ctx.walker}`;
+
+  }else if(msgType==='winback'){
+    draft=`Hey ${ctx.name},
+
+It's been a while — hope you and ${dn?d:'your dog'} are doing well!
+
+Just wanted to reach out as we've had a few spots open up${ctx.suburb?' in '+ctx.suburb:''}. If things have changed and walks are back on the radar, I'd love to help.
+
+No pressure — just thought I'd put it out there.
+
+${ctx.walker}
+${ctx.biz}`;
+
+  }else if(msgType==='closedwon'){
+    draft=`Hey ${ctx.name},
+
+So great to have ${dn?d:'you'} on board! Welcome to the pack.
+
+Quick next steps:
+1. Fill in ${dn?d+"'s":'the'} profile — [LINK]
+2. Sign T&Cs — [LINK]
+3. First walk: [DATE] at [TIME]
+
+You'll get a login to our app where you can see walk updates, photos and invoices after each session.
+
+Any questions at all, just text me.
+
+${ctx.walker}`;
 
   }else if(msgType==='notsuitable'){
     draft=`Hey ${ctx.name},
