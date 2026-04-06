@@ -2203,12 +2203,8 @@ let covActiveTab='clients';
 
 function setCovFilter(f){
   covFilter=f;
-  document.querySelectorAll('#cov-filters .filter-pill').forEach(el=>{
-    const map={'All Clients':'all','Active':'active','Inactive':'inactive'};
-    const label=el.textContent.replace(/[🐕💤🌳]/g,'').trim();
-    // Don't touch the parks toggle pill
-    if(label==='Off-Leash Parks') return;
-    el.classList.toggle('active',map[label]===f);
+  document.querySelectorAll('#cov-filters .filter-pill[data-covf]').forEach(el=>{
+    el.classList.toggle('active',el.dataset.covf===f);
   });
   renderCovPins();
   renderCovSidebar();
@@ -2253,12 +2249,13 @@ async function renderCoverage(){
       try{offLeashParks=await fetch('/api/parks/offleash').then(r=>r.ok?r.json():[]).catch(()=>[]);}catch{offLeashParks=[];}
     }
 
-    // Determine active/inactive by matching against TTP clients array
-    const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>(c.name||'').replace(/\+$/g,'').trim().toLowerCase()));
-    covClientLocations.forEach(loc=>{
-      loc._active=activeNames.has((loc.name||'').trim().toLowerCase());
-    });
   }
+
+  // Determine active/inactive by matching against TTP clients array (recalc each render)
+  const activeNames=new Set(clients.filter(c=>c.status==='active').map(c=>(c.name||'').replace(/\+$/g,'').trim().toLowerCase()));
+  covClientLocations.forEach(loc=>{
+    loc._active=activeNames.has((loc.name||'').trim().toLowerCase());
+  });
 
   // Init map
   setTimeout(()=>{

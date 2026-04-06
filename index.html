@@ -447,9 +447,9 @@
     <div class="view" id="view-coverage">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="display:flex;gap:6px;flex-wrap:wrap" id="cov-filters">
-          <div class="filter-pill active" onclick="setCovFilter('all')">All Clients</div>
-          <div class="filter-pill" onclick="setCovFilter('active')">🐕 Active</div>
-          <div class="filter-pill" onclick="setCovFilter('inactive')">💤 Inactive</div>
+          <div class="filter-pill active" data-covf="all" onclick="setCovFilter('all')">All Clients</div>
+          <div class="filter-pill" data-covf="active" onclick="setCovFilter('active')">🐕 Active</div>
+          <div class="filter-pill" data-covf="inactive" onclick="setCovFilter('inactive')">💤 Inactive</div>
           <div class="filter-pill" onclick="toggleOffLeashParks()" id="cov-parks-toggle" style="background:var(--success-bg);color:var(--success);border-color:var(--success)">🌳 Off-Leash Parks</div>
         </div>
       </div>
