@@ -2232,13 +2232,48 @@ const CALL_SCRIPT=[
 
 let callScriptState={};
 
+function parseCallNotesFromText(notes){
+  // Parse a previously saved "--- Call Notes ---" block back into checklist state
+  const state={};
+  if(!notes)return state;
+  const match=notes.match(/--- Call Notes.*?---\n([\s\S]*?)(?=\n---|\s*$)/);
+  if(!match)return state;
+  const block=match[1];
+  // Build reverse lookup: question text → question id
+  const qLookup={};
+  CALL_SCRIPT.forEach(g=>g.questions.forEach(q=>{qLookup[q.q]=q}));
+
+  const lines=block.split('\n');
+  lines.forEach(line=>{
+    const trimmed=line.trim();
+    // Check format: "  ✓ Question?"
+    const checkMatch=trimmed.match(/^✓\s+(.+)/);
+    if(checkMatch){
+      const q=qLookup[checkMatch[1]];
+      if(q) state[q.id]='yes';
+      return;
+    }
+    // Check format: "  Question? Answer"
+    const textMatch=trimmed.match(/^(.+\?)\s+(.+)/);
+    if(textMatch){
+      const q=qLookup[textMatch[1]];
+      if(q) state[q.id]=textMatch[2];
+    }
+  });
+  return state;
+}
+
 function initCallScript(enqId){
   const section=document.getElementById('call-script-section');
   const body=document.getElementById('call-script-body');
   if(!section||!body)return;
   section.style.display='block';
-  // Load saved state for this enquiry
-  callScriptState=load('cw_cs_'+enqId,{});
+  // Load saved state: localStorage first, then parse from Notion notes as fallback
+  callScriptState=load('cw_cs_'+enqId,null);
+  if(!callScriptState||!Object.keys(callScriptState).length){
+    const e=enquiries.find(x=>x.id===enqId);
+    callScriptState=parseCallNotesFromText(e?.notes||'')||{};
+  }
 
   let totalQ=0,answeredQ=0;
   body.innerHTML=CALL_SCRIPT.map(g=>{
