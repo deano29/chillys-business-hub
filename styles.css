@@ -277,6 +277,9 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .sh-booking .sh-remove{background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:4px}
 .enq-card{background:var(--white);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border);cursor:pointer;transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.02)}
 .enq-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-2px);border-color:var(--orange-light)}
+.enq-card[draggable="true"]{cursor:grab}
+.enq-card[draggable="true"]:active{cursor:grabbing}
+.k-col-dragover{background:var(--orange-light);outline:2px dashed var(--orange);outline-offset:-2px;transition:background .15s ease}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;letter-spacing:-.1px}
 .enq-dog{font-size:11px;color:var(--ink-light);margin-bottom:8px}
 .enq-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}

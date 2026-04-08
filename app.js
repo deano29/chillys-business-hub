@@ -891,7 +891,7 @@ function renderPipeline(){
       const cards=filtered.filter(e=>e.stage===s.id);
       const visible=cards.slice(0,MAX_VISIBLE);
       const hidden=cards.length-MAX_VISIBLE;
-      return `<div class="k-col">
+      return `<div class="k-col" data-stage="${s.id}" ondragover="onEnqDragOver(event)" ondragleave="onEnqDragLeave(event)" ondrop="onEnqDrop(event,'${s.id}')">
         <div class="k-col-head">
           <div class="k-stage-dot" style="background:${s.color}"></div>
           <div class="k-stage-title">${s.label}</div>
@@ -912,13 +912,52 @@ function expandColumn(btn,stageId){
   container.innerHTML+=cards.slice(5).map(renderEnqCard).join('');
 }
 
+// ── DRAG & DROP ──
+let dragEnqId=null;
+function onEnqDragStart(ev){
+  dragEnqId=ev.currentTarget.dataset.enqId;
+  ev.dataTransfer.effectAllowed='move';
+  ev.currentTarget.style.opacity='0.4';
+  // Restore opacity after drag ends
+  ev.currentTarget.addEventListener('dragend',function(){this.style.opacity='1';},{once:true});
+}
+function onEnqDragOver(ev){
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect='move';
+  const col=ev.currentTarget.closest('.k-col');
+  if(col)col.classList.add('k-col-dragover');
+}
+function onEnqDragLeave(ev){
+  const col=ev.currentTarget.closest('.k-col');
+  if(col)col.classList.remove('k-col-dragover');
+}
+function onEnqDrop(ev,newStage){
+  ev.preventDefault();
+  const col=ev.currentTarget.closest('.k-col');
+  if(col)col.classList.remove('k-col-dragover');
+  if(!dragEnqId)return;
+  const enq=enquiries.find(e=>e.id===dragEnqId);
+  if(!enq||enq.stage===newStage){dragEnqId=null;return;}
+  const oldStage=enq.stage;
+  enq.stage=newStage;
+  save('cw_enq',enquiries);
+  renderPipeline();updateBadges();
+  logEvent('Stage changed',`${enq.name}: ${STAGES.find(s=>s.id===oldStage)?.label} → ${STAGES.find(s=>s.id===newStage)?.label}`);
+  showToast(`${enq.name} → ${STAGES.find(s=>s.id===newStage)?.label}`,'📋');
+  // Sync to Notion
+  authFetch('/api/notion/enquiries/'+dragEnqId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:newStage})}).catch(()=>{});
+  if(newStage==='qualified') fireWebhook('stage-onboarding',enq);
+  if(newStage==='closed-won') fireWebhook('client-converted',enq);
+  dragEnqId=null;
+}
+
 function renderEnqCard(e){
   const fs=fuStatus(e.followup);
   const fuHtml=fs?`<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${fs==='overdue'?'var(--danger-bg)':fs==='today'?'var(--warning-bg)':'var(--cream-dark)'};color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ Overdue':fs==='today'?'Due today':'📅 '+fmtDate(e.followup)}</span>`:'';
   const da=daysAgo(e.dateAdded);
   const lcd=getLastContactDate(e);
   const lastContact=lcd?`<span style="font-size:10px;color:var(--ink-muted)">Last contact: ${fmtDate(lcd)}</span>`:'<span style="font-size:10px;color:var(--danger)">No contact logged</span>';
-  return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
+  return `<div class="enq-card" draggable="true" data-enq-id="${e.id}" ondragstart="onEnqDragStart(event)" onclick="openEditEnquiry('${e.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
       <div class="enq-name">${esc(e.name)}</div>
       <span style="font-size:10px;color:var(--ink-muted);white-space:nowrap;flex-shrink:0">${da}</span>
