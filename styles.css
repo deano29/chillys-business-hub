@@ -648,7 +648,6 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 
   /* Auth overlay */
   #auth-overlay{padding:20px}
-  #clerk-auth{width:100%;max-width:400px}
 
   /* Close sidebar on nav click */
 }
