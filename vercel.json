@@ -1,4 +1,8 @@
 {
+  "functions": {
+    "api/notion/enquiries.js": { "maxDuration": 30 },
+    "api/notion/clients.js": { "maxDuration": 30 }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],

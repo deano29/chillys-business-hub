@@ -40,17 +40,6 @@ async function checkAppPassword(){
 
 // Auth-aware fetch wrapper
 async function authFetch(url,options={}){
-  // Wait for auth token if not ready yet (max 5 seconds)
-  if(!authToken&&clerkInstance){
-    for(let i=0;i<50&&!authToken;i++) await new Promise(r=>setTimeout(r,100));
-  }
-  // Refresh token if we have a session (tokens expire quickly)
-  if(clerkInstance?.session){
-    try{authToken=await clerkInstance.session.getToken();}catch{}
-  }
-  if(authToken){
-    options.headers={...options.headers,'Authorization':'Bearer '+authToken};
-  }
   return fetch(url,options);
 }
 
@@ -78,23 +67,7 @@ const OB_STEPS=[
   'Welcome pack / Bonjoro video sent',
 ];
 
-// ── DUMMY DATA ──
-const DUMMY_ENQ=[
-  {id:'e1',name:'Sarah Mitchell',phone:'0412 345 678',email:'sarah.mitchell@gmail.com',channel:'WhatsApp',dogName:'Buddy',dogBreed:'Golden Retriever',services:'Daily group walks',stage:'new',followup:'2026-03-28',notes:'Has a friendly dog, looking for 5 days/week.',dateAdded:'2026-03-27',source:'Meta Ads',suburb:'Fitzroy'},
-  {id:'e2',name:'James Thompson',phone:'0423 456 789',email:'james.t@outlook.com',channel:'Instagram',dogName:'Bella',dogBreed:'Labrador',services:'Solo walks, drop-ins',stage:'new',followup:'2026-03-27',notes:'Enquired via Instagram DM. 2yr old lab.',dateAdded:'2026-03-26',source:'Instagram',suburb:'Richmond'},
-  {id:'e3',name:'Emma Chen',phone:'0434 567 890',email:'emma.chen@gmail.com',channel:'Facebook',dogName:'Max',dogBreed:'Border Collie',services:'Group walks',stage:'new',followup:'2026-04-01',notes:'Very active dog, needs stimulation.',dateAdded:'2026-03-25',source:'Meta Ads',suburb:'Collingwood'},
-  {id:'e4',name:'Michael Torres',phone:'0445 678 901',email:'mtorres@hotmail.com',channel:'Website',dogName:'Luna',dogBreed:'Poodle',services:'Solo walks',stage:'new',followup:'2026-04-02',notes:'Prefers afternoon walks. Luna is well trained.',dateAdded:'2026-03-24',source:'Website',suburb:'South Yarra'},
-  {id:'e5',name:'Priya Sharma',phone:'0456 789 012',email:'priya.sharma@gmail.com',channel:'Referral',dogName:'Coco',dogBreed:'Cavoodle',services:'Group walks, puppy visits',stage:'contacted',followup:'2026-04-03',notes:'Referred by Amy Foster. 6-month old puppy.',dateAdded:'2026-03-23',source:'Referral',suburb:'Northcote'},
-  {id:'e6',name:'Tom Wilson',phone:'0467 890 123',email:'tom.wilson@gmail.com',channel:'Email',dogName:'Archie',dogBreed:'Staffy',services:'Daily walks',stage:'contacted',followup:'2026-04-04',notes:'Works from home, wants 9am walks Mon-Fri.',dateAdded:'2026-03-22',source:'Google',suburb:'Brunswick'},
-  {id:'e7',name:'Rachel Green',phone:'0478 901 234',email:'rachel.g@gmail.com',channel:'Instagram',dogName:'Daisy',dogBreed:'Maltese',services:'Solo walks',stage:'qualified',followup:'2026-04-06',notes:'Sent info pack. Daisy is reactive on lead.',dateAdded:'2026-03-20',source:'Instagram',suburb:'Carlton'},
-  {id:'e8',name:'David Kim',phone:'0489 012 345',email:'david.kim@gmail.com',channel:'Facebook',dogName:'Milo',dogBreed:'Beagle',services:'Group walks, drop-ins',stage:'qualified',followup:'2026-04-05',notes:'Meet & greet booked April 5. Very friendly dog.',dateAdded:'2026-03-19',source:'Meta Ads',suburb:'Fitzroy North'},
-  {id:'e9',name:'Lisa Park',phone:'0490 123 456',email:'lisa.park@gmail.com',channel:'WhatsApp',dogName:'Charlie',dogBreed:'French Bulldog',services:'Solo walks',stage:'closed-won',followup:'2026-04-07',notes:'Intake form sent. Waiting on T&Cs signature.',dateAdded:'2026-03-10',source:'Referral',suburb:'St Kilda'},
-  {id:'e10',name:'Nick Patel',phone:'0401 234 567',email:'nick.patel@gmail.com',channel:'Website',dogName:'Rosie',dogBreed:'Golden Retriever',services:'Group walks',stage:'closed-won',followup:'2026-04-08',notes:'T&Cs signed. Adding to Time to Pet this week.',dateAdded:'2026-03-08',source:'Google',suburb:'Prahran'},
-  {id:'e11',name:'Amy Foster',phone:'0412 345 670',email:'amy.foster@gmail.com',channel:'Facebook',dogName:'Biscuit',dogBreed:'Spoodle',services:'Daily walks',stage:'closed-won',followup:null,notes:'Fully onboarded. 5 days/week group walks.',dateAdded:'2026-03-01',source:'Meta Ads',suburb:'Fitzroy'},
-  {id:'e12',name:'Marcus Webb',phone:'0423 456 780',email:'marcus.webb@gmail.com',channel:'Referral',dogName:'Zeus',dogBreed:'Rottweiler',services:'Solo walks',stage:'not-suitable',followup:null,notes:'Dog too aggressive for our service.',dateAdded:'2026-03-18',source:'Referral',suburb:'Richmond'},
-];
-
-const DUMMY_CLIENTS=[];
+// No dummy data — all data comes from Notion via API
 
 let TODAY_WALKS=[];
 
@@ -150,8 +123,8 @@ const AUTOMATION_LOG_BASE=[
 ];
 
 // ── STATE ──
-let enquiries=[...DUMMY_ENQ];
-let clients=[...DUMMY_CLIENTS];
+let enquiries=[];
+let clients=[];
 let editingId=null;
 let activeEmail=null;
 let aiDraftText='';
@@ -171,10 +144,10 @@ if(storedClients&&storedClients.length>0)clients=storedClients;
 async function loadFromNotion(){
   try{
     const [enqRes,cliRes]=await Promise.all([
-      authFetch('/api/notion/enquiries').then(r=>r.ok?r.json():null).catch(()=>null),
+      authFetch('/api/notion/enquiries').then(r=>{if(!r.ok)throw new Error('Enquiries API returned '+r.status);return r.json();}),
       fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
-    if(enqRes&&enqRes.length>0){
+    if(enqRes){
       enquiries=enqRes;
       save('cw_enq',enquiries);
     }
@@ -184,16 +157,22 @@ async function loadFromNotion(){
     }
     dataLoaded=true;
     renderDashboard();
+    renderPipeline();
+    updateBadges();
     // Re-render clients page if user is already viewing it
     if(document.getElementById('view-clients')?.classList.contains('active'))renderClients();
-    logEvent('Data sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients from TTP','success','📔');
+    logEvent('Data sync','Loaded '+enquiries.length+' enquiries, '+clients.length+' clients from Notion','success','📔');
   }catch(e){
-    console.warn('Notion sync failed, using cached data:',e.message);
+    console.warn('Notion sync failed:',e.message);
+    // Show error to user so they know data didn't load
+    logEvent('Sync error','Failed to load from Notion: '+e.message+'. Using cached data.','error','⚠️');
+    dataLoaded=true;
+    renderDashboard();
+    renderPipeline();
+    updateBadges();
   }
 }
-// Data load is triggered after Clerk auth completes (see initClerk)
-// Fallback: if Clerk fails, load anyway after 3 seconds
-setTimeout(()=>{if(!dataLoaded) loadFromNotion();},3000);
+// loadFromNotion() is called after successful password auth — no timer fallback
 // Load TTP pricing data (non-blocking)
 loadTTPPricing();
 

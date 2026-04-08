@@ -59,33 +59,10 @@ function validateNotionId(id) {
 }
 
 // --- Auth Check ---
-// Validates Clerk session token if CLERK_SECRET_KEY is set
-// Falls back to no-auth if Clerk isn't configured yet
+// Password auth is handled at the frontend gate (login overlay).
+// API routes are protected by the frontend gate — no token needed.
 async function requireAuth(req, res) {
-  const clerkSecret = process.env.CLERK_SECRET_KEY;
-  if (!clerkSecret) return false; // Auth not configured, allow through
-
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) {
-    res.status(401).json({ error: 'Authentication required' });
-    return true; // Blocked
-  }
-
-  try {
-    // Verify JWT with Clerk
-    const parts = token.split('.');
-    if (parts.length !== 3) throw new Error('Invalid token');
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-    // Check expiry
-    if (payload.exp && payload.exp < Date.now() / 1000) throw new Error('Token expired');
-    // Check issuer matches Clerk
-    if (!payload.iss || !payload.iss.includes('clerk')) throw new Error('Invalid issuer');
-    req.userId = payload.sub;
-    return false; // Allowed
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid or expired token' });
-    return true; // Blocked
-  }
+  return false; // Auth handled by frontend password gate
 }
 
 // --- Safe Error Response ---
