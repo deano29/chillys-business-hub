@@ -187,6 +187,19 @@ function cleanClientName(s){return (s||'').replace(/\s*\(.*$/,'').replace(/\+$/g
 function isRealClient(name){const n=cleanClientName(name).toLowerCase();return n&&!n.includes('potential client')&&n!=='dean haimes'}
 function walkRevenue(w){return w.totalRevenue>0?w.totalRevenue:getClientPrice(w.client,w.service)}
 
+function getLastContactDate(e){
+  // Use Last Contacted field if set
+  if(e.followup)return e.followup;
+  // Fallback: parse most recent log entry from notes e.g. "[7 Apr 2026 9:06 am] Called"
+  if(!e.notes)return null;
+  const match=e.notes.match(/\[(\d{1,2})\s(\w+)\s(\d{4})/);
+  if(!match)return null;
+  const months={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  const m=months[match[2]];
+  if(m===undefined)return null;
+  return match[3]+'-'+String(m+1).padStart(2,'0')+'-'+match[1].padStart(2,'0');
+}
+
 function showToast(msg,emoji='✅'){
   const el=document.getElementById('toast');
   el.innerHTML=`<span>${emoji}</span> ${msg}`;
@@ -852,7 +865,7 @@ function renderPipeline(){
           <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span></td>
           <td style="font-weight:600">${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
           <td style="font-size:11px;color:var(--ink-muted)">${da}</td>
-          <td style="font-size:11px;${e.followup?'color:var(--ink-light)':'color:var(--danger);font-weight:600'}">${e.followup?fmtDate(e.followup):'None'}</td>
+          <td style="font-size:11px;${getLastContactDate(e)?'color:var(--ink-light)':'color:var(--danger);font-weight:600'}">${getLastContactDate(e)?fmtDate(getLastContactDate(e)):'None'}</td>
           <td>${fs?`<span style="color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}; font-weight:${fs==='overdue'?'700':'500'}">${fs==='overdue'?'⚠️ ':''}${e.followup?fmtDate(e.followup):fs}</span>`:'—'}</td>
         </tr>`}).join('')}</tbody></table>`
       :'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No enquiries found</div>';
@@ -903,7 +916,8 @@ function renderEnqCard(e){
   const fs=fuStatus(e.followup);
   const fuHtml=fs?`<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${fs==='overdue'?'var(--danger-bg)':fs==='today'?'var(--warning-bg)':'var(--cream-dark)'};color:${fs==='overdue'?'var(--danger)':fs==='today'?'var(--warning)':'var(--ink-light)'}">${fs==='overdue'?'⚠️ Overdue':fs==='today'?'Due today':'📅 '+fmtDate(e.followup)}</span>`:'';
   const da=daysAgo(e.dateAdded);
-  const lastContact=e.followup?`<span style="font-size:10px;color:var(--ink-muted)">Last contact: ${fmtDate(e.followup)}</span>`:'<span style="font-size:10px;color:var(--danger)">No contact logged</span>';
+  const lcd=getLastContactDate(e);
+  const lastContact=lcd?`<span style="font-size:10px;color:var(--ink-muted)">Last contact: ${fmtDate(lcd)}</span>`:'<span style="font-size:10px;color:var(--danger)">No contact logged</span>';
   return `<div class="enq-card" onclick="openEditEnquiry('${e.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
       <div class="enq-name">${esc(e.name)}</div>
