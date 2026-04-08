@@ -1,51 +1,42 @@
-// ── CLERK AUTH ──
-let clerkInstance=null;
+// ── PASSWORD AUTH ──
 let authToken=null;
 
-async function initClerk(){
-  // Wait for Clerk SDK to load (it loads async via the script tag)
-  let attempts=0;
-  while(!window.Clerk&&attempts<50){await new Promise(r=>setTimeout(r,100));attempts++;}
-
+async function checkAppPassword(){
+  const input=document.getElementById('pw-input');
+  const error=document.getElementById('pw-error');
+  const pw=input?.value||'';
+  if(!pw){error.style.display='block';error.textContent='Enter a password';return}
   try{
-    const clerk=window.Clerk;
-    if(!clerk||!clerk.load) throw new Error('Clerk SDK not available');
-
-    // If not already loaded, load it
-    if(!clerk.user&&!clerk.loaded) await clerk.load();
-
-    clerkInstance=clerk;
-
-    if(!clerk.user){
-      // Show sign-in UI
-      clerk.mountSignIn(document.getElementById('clerk-auth'));
-      // Wait for sign-in
-      await new Promise(resolve=>{
-        clerk.addListener(({user})=>{if(user) resolve();});
-      });
+    const res=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const data=await res.json();
+    if(data.ok){
+      localStorage.setItem('cw_app_pw',pw);
+      document.getElementById('auth-overlay').style.display='none';
+      loadFromNotion();
+    }else{
+      error.style.display='block';error.textContent='Wrong password';
+      input.style.borderColor='#ef4444';
     }
-    // User is signed in — get token and show app
-    authToken=await clerk.session?.getToken();
-    document.getElementById('auth-overlay').style.display='none';
-    // Now load data (auth token is ready)
-    loadFromNotion();
-    // Refresh token periodically (tokens expire after ~60s)
-    setInterval(async()=>{
-      if(clerkInstance?.session) authToken=await clerkInstance.session.getToken();
-    },50000);
-    // Add user info to sidebar
-    const userPill=document.querySelector('.user-pill');
-    if(userPill&&clerk.user){
-      userPill.innerHTML=`<span style="font-size:12px">👤 ${clerk.user.firstName||clerk.user.emailAddresses?.[0]?.emailAddress||'User'}</span>
-        <button onclick="clerkInstance.signOut().then(()=>location.reload())" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--ink-light);margin-left:8px">Sign out</button>`;
-    }
-  }catch(e){
-    console.warn('Clerk init failed, running without auth:',e.message);
-    document.getElementById('auth-overlay').style.display='none';
-    loadFromNotion();// Load without auth as fallback
-  }
+  }catch{error.style.display='block';error.textContent='Connection error'}
 }
-initClerk();
+
+// Auto-login if password saved
+(async function initAuth(){
+  const saved=localStorage.getItem('cw_app_pw');
+  if(saved){
+    try{
+      const res=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:saved})});
+      const data=await res.json();
+      if(data.ok){
+        document.getElementById('auth-overlay').style.display='none';
+        loadFromNotion();
+        return;
+      }
+    }catch{}
+  }
+  // If no saved password or it's wrong, show the login screen
+  // (overlay is already visible by default)
+})();
 
 // Auth-aware fetch wrapper
 async function authFetch(url,options={}){
