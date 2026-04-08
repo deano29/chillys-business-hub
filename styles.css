@@ -279,6 +279,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .enq-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-2px);border-color:var(--orange-light)}
 .enq-card[draggable="true"]{cursor:grab}
 .enq-card[draggable="true"]:active{cursor:grabbing}
+.enq-card-action{font-size:11px!important;padding:3px 10px!important;opacity:.7;transition:opacity .15s}
+.enq-card-action:hover{opacity:1}
 .k-col-dragover{background:var(--orange-light);outline:2px dashed var(--orange);outline-offset:-2px;transition:background .15s ease}
 .enq-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;letter-spacing:-.1px}
 .enq-dog{font-size:11px;color:var(--ink-light);margin-bottom:8px}

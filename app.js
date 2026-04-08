@@ -970,6 +970,9 @@ function renderEnqCard(e){
       ${fuHtml}
       ${e.phone?`<span style="font-size:10px;color:var(--ink-muted)">${esc(e.phone)}</span>`:''}
     </div>
+    <div style="margin-top:8px;border-top:1px solid var(--border-light);padding-top:7px">
+      <button class="btn btn-ghost btn-sm enq-card-action" onclick="event.stopPropagation();openAiDraft('${e.id}')">🤖 AI Draft</button>
+    </div>
   </div>`;
 }
 
