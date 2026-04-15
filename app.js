@@ -78,22 +78,67 @@ const EMAILS=[
 ];
 
 const TEMPLATES=[
-  {id:'t1',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'First Response',
-   body:`Hey {name}!\n\nThanks for reaching out about {dog_name}. I'm Jess from Chilly's.\n\nWe do group walks, solo walks and adventure days across Melbourne's south-east. Happy to chat about what'd suit {dog_name} best.\n\nWhat area are you in and how many days a week were you thinking?\n\nJess`},
-  {id:'t2',cat:'info',catLabel:'Info Pack',catClass:'tc-info',name:'Pricing & Info',
-   body:`Hey {name}!\n\nHere's a quick rundown:\n\n- Group walk (60 min) — $55\n- Solo walk (45 min) — $60\n- 2hr adventure — $75\n- Home visit (20 min) — $30\n\nWe do a free meet & greet first so {dog_name} can meet us at home. No commitment.\n\nWant me to lock one in?\n\nJess`},
-  {id:'t3',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Follow-up',
-   body:`Hey {name}, just checking in!\n\nStill keen to get {dog_name} out with us? Happy to answer any questions.\n\nNo rush — just didn't want my message to get buried.\n\nJess`},
-  {id:'t4',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Booked',
-   body:`Hey {name}!\n\nLocked in your meet & greet:\n\n[DATE] at [TIME]\n[ADDRESS]\n\nI'll come to you — takes about 20 mins. We'll meet {dog_name}, have a chat and go from there.\n\nSee you then!\n\nJess`},
-  {id:'t5',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome!',
-   body:`Hey {name}!\n\nSo good to meet {dog_name} — we're excited to get started!\n\nQuick next steps:\n1. Fill in {dog_name}'s profile: [LINK]\n2. Sign the T&Cs: [LINK]\n3. First walk: [DATE] at [TIME]\n\nYou'll get a login to our app where you can see walk updates, photos and invoices.\n\nAny questions just text me.\n\nJess`},
-  {id:'t6',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Not the Right Fit',
-   body:`Hey {name},\n\nThanks so much for thinking of us for {dog_name}.\n\nUnfortunately we're not the best fit right now — but I can recommend a few great walkers in your area if you'd like?\n\nAll the best with {dog_name}!\n\nJess`},
-  {id:'t7',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Second Follow-up',
-   body:`Hey {name}!\n\nJust me again. Totally understand if the timing isn't right — just wanted to make sure you got my earlier message about {dog_name}.\n\nIf you ever want to revisit, we're here. No expiry on the offer!\n\nJess`},
-  {id:'t8',cat:'first',catLabel:'First Response',catClass:'tc-first',name:'Quick Callback Missed',
-   body:`Hey {name}!\n\nSorry I missed you — tried calling just now about {dog_name}.\n\nGive me a buzz back when you're free or just reply here and I'll sort you out.\n\nJess\n0430 921 951`},
+  // ── NEW STAGE ──
+  {id:'t1',cat:'first',catLabel:'First Touch',catClass:'tc-first',name:'First Response',stages:['new'],
+   body:`Hey {name}!\n\nIt's Jess from Chilly's Dog Adventures. So glad you found us!\n\nWe'd love to get {dog_name} out and about with our crew. We do group walks, solo walks and big adventure days around Melbourne's inner south-east.\n\nWhat area are you in? And how many days a week were you thinking for {dog_name}?\n\nChat soon!\nJess\n0430 921 951`},
+  {id:'t2',cat:'first',catLabel:'First Touch',catClass:'tc-first',name:'Missed Call Callback',stages:['new'],
+   body:`Hey {name}!\n\nJust tried to give you a buzz about {dog_name} but missed you! No stress at all.\n\nGive me a call back whenever suits or just reply here and we can sort it out that way too.\n\nLooking forward to hearing about {dog_name}!\n\nJess\n0430 921 951`},
+  {id:'t3',cat:'first',catLabel:'First Touch',catClass:'tc-first',name:'Quick Intro (Short)',stages:['new'],
+   body:`Hey {name}! Jess here from Chilly's.\n\nGot your enquiry about {dog_name}, thanks so much for getting in touch! Would love to have a quick chat about what you're after.\n\nWhen's a good time to call?\n\nJess`},
+
+  // ── CONTACTED STAGE ──
+  {id:'t4',cat:'info',catLabel:'Info',catClass:'tc-info',name:'Pricing & Services',stages:['contacted','new'],
+   body:`Hey {name}!\n\nHere's the rundown on what we offer for {dog_name}:\n\nGroup walk (60 min) $55\nSolo walk (45 min) $60\n2hr adventure day $75\nHome visit / drop-in (20 min) $30\n\nWe always do a free meet and greet first so {dog_name} can suss us out at home. Zero commitment, just a chance to say g'day.\n\nReckon any of those sound good? Happy to chat more!\n\nJess`},
+  {id:'t5',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Gentle Follow-up',stages:['contacted'],
+   body:`Hey {name}!\n\nJust checking in on {dog_name}! Totally no rush, just didn't want my message to get lost in the mix.\n\nStill keen to chat about walks? Happy to answer any questions you've got.\n\nJess`},
+  {id:'t6',cat:'followup',catLabel:'Follow-up',catClass:'tc-followup',name:'Second Nudge',stages:['contacted'],
+   body:`Hey {name}!\n\nJust me again! Completely understand if the timing's not right.\n\nJust wanted to make sure you saw my earlier message about {dog_name}. We'd really love to meet you both.\n\nNo expiry on the offer, so whenever you're ready, we're here!\n\nJess`},
+
+  // ── QUALIFIED STAGE ──
+  {id:'t7',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Invite',stages:['qualified'],
+   body:`Hey {name}!\n\nSo keen to meet {dog_name}! How about we lock in a meet and greet?\n\nI'll pop over to yours, takes about 20 mins. {dog_name} gets to meet me on home turf, we have a chat, and you can see if we're the right fit. No pressure at all.\n\nWhat day works best for you?\n\nJess`},
+  {id:'t8',cat:'meet',catLabel:'Meet & Greet',catClass:'tc-meet',name:'Meet & Greet Confirmed',stages:['qualified'],
+   body:`Hey {name}!\n\nYou're all locked in!\n\n[DATE] at [TIME]\n[ADDRESS]\n\nI'll come to you. We'll meet {dog_name}, have a chat about what they like (and what they're not so keen on!) and go from there.\n\nCan't wait to meet your pup!\n\nJess`},
+  {id:'t9',cat:'close',catLabel:'Closing',catClass:'tc-close',name:'Ready to Get Started?',stages:['qualified'],
+   body:`Hey {name}!\n\nSo lovely meeting {dog_name} the other day! Such a gorgeous pup.\n\nWould you like to lock in a start date? We've got spots open and {dog_name} would be such a great fit with our crew.\n\nJust let me know and I'll get everything sorted!\n\nJess`},
+
+  // ── CLOSED WON STAGE ──
+  {id:'t10',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Welcome Aboard!',stages:['closed-won'],
+   body:`Hey {name}!\n\nSo excited to have {dog_name} joining the Chilly's family!\n\nHere's what happens next:\n\n1. Fill in {dog_name}'s profile: [LINK]\n2. Sign our T&Cs: [LINK]\n3. First walk is booked for [DATE] at [TIME]\n\nYou'll get a login to our app where you can see walk updates, photos and GPS tracks. You're going to love it.\n\nAny questions at all, just text me!\n\nJess`},
+  {id:'t11',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'Onboarding Reminder',stages:['closed-won'],
+   body:`Hey {name}!\n\nJust a gentle nudge on a couple of bits before {dog_name}'s first walk:\n\nProfile form: [LINK]\nT&Cs: [LINK]\n\nOnly takes a few mins and then we're all set to go! Super excited to get {dog_name} out there.\n\nJess`},
+  {id:'t12',cat:'welcome',catLabel:'Onboarding',catClass:'tc-welcome',name:'First Walk Day!',stages:['closed-won'],
+   body:`Hey {name}!\n\n{dog_name}'s first walk is tomorrow! Just a few things:\n\nPickup: [TIME]\nDrop off: roughly [TIME]\n\nMake sure {dog_name} has their harness on and lead by the door. I'll send you photos and updates during the walk so you can see them having the best time.\n\nSo pumped for this!\n\nJess`},
+
+  // ── UNCONTACTABLE STAGE ──
+  {id:'t13',cat:'close',catLabel:'Closing',catClass:'tc-close',name:'Tried to Reach You',stages:['uncontactable'],
+   body:`Hey {name}!\n\nI've tried to get in touch a couple of times about {dog_name} but haven't been able to reach you. Totally understand if life's been hectic!\n\nIf you're still keen, just shoot me a message whenever. No rush at all.\n\nJess\n0430 921 951`},
+  {id:'t14',cat:'close',catLabel:'Closing',catClass:'tc-close',name:'Final Attempt',stages:['uncontactable'],
+   body:`Hey {name}!\n\nJust one last check in about {dog_name}. I'll leave the ball in your court from here, but if you ever want to pick things back up, you can reach me anytime.\n\nHope {dog_name} is doing well! Would love to meet them one day.\n\nAll the best,\nJess`},
+
+  // ── NOT SUITABLE STAGE ──
+  {id:'t15',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Polite Decline',stages:['not-suitable'],
+   body:`Hey {name},\n\nThanks so much for getting in touch about {dog_name}. Really appreciate you thinking of us.\n\nAfter having a think, I don't reckon we're quite the right fit for what {dog_name} needs right now. I want to make sure every pup gets the best care and I'd rather be upfront than take on something I can't do properly.\n\nI know a few great walkers who might be better suited though, happy to pass on their details?\n\nWishing you and {dog_name} all the best!\n\nJess`},
+  {id:'t16',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'Recommend Alternatives',stages:['not-suitable'],
+   body:`Hey {name}!\n\nAs chatted, here are a couple of walkers I'd recommend for {dog_name}:\n\n[WALKER NAME] [PHONE/LINK]\n[WALKER NAME] [PHONE/LINK]\n\nThey're both really lovely and experienced. Tell them Jess from Chilly's sent you!\n\nHope {dog_name} finds their perfect match.\n\nJess`},
+
+  // ── NOT INTERESTED STAGE ──
+  {id:'t17',cat:'decline',catLabel:'Decline',catClass:'tc-decline',name:'All Good, Door Open',stages:['not-interested'],
+   body:`Hey {name}!\n\nTotally understand! No worries at all.\n\nIf anything changes down the track or you ever want to get {dog_name} out for a walk, just give me a buzz. We're not going anywhere!\n\nHope you and {dog_name} have a great one.\n\nJess`},
+  {id:'t18',cat:'winback',catLabel:'Re-engage',catClass:'tc-winback',name:'Circle Back Later',stages:['not-interested'],
+   body:`Hey {name}!\n\nJess from Chilly's here! We chatted a while back about {dog_name}.\n\nJust thought I'd say g'day and see if things have changed at all? We've got some new adventure routes that {dog_name} would absolutely love.\n\nNo pressure, just wanted to touch base!\n\nJess`},
+
+  // ── CLOSED LOST STAGE ──
+  {id:'t19',cat:'close',catLabel:'Closing',catClass:'tc-close',name:'Graceful Close',stages:['closed-lost'],
+   body:`Hey {name}!\n\nTotally understand things didn't work out this time around. Just wanted to say thanks for chatting with us about {dog_name}.\n\nIf you ever need a walker down the track, we'd love to hear from you. No hard feelings at all!\n\nAll the best with {dog_name}.\n\nJess`},
+  {id:'t20',cat:'winback',catLabel:'Re-engage',catClass:'tc-winback',name:'Win Back',stages:['closed-lost'],
+   body:`Hey {name}!\n\nIt's Jess from Chilly's. Hope you and {dog_name} are going well!\n\nI know it's been a while but just wanted to let you know we're still around and would absolutely love to have {dog_name} join us. We've been doing some awesome new routes lately.\n\nFancy giving it another go? Happy to do another free meet and greet.\n\nJess`},
+
+  // ── ARCHIVED STAGE ──
+  {id:'t21',cat:'winback',catLabel:'Re-engage',catClass:'tc-winback',name:'Check In After a While',stages:['archived'],
+   body:`Hey {name}!\n\nLong time no chat! Jess from Chilly's here.\n\nJust wondering how {dog_name} is going? We'd still love to get them out with us if you're ever thinking about it again.\n\nHope you're both doing great!\n\nJess`},
+  {id:'t22',cat:'winback',catLabel:'Re-engage',catClass:'tc-winback',name:'Seasonal Re-engage',stages:['archived'],
+   body:`Hey {name}!\n\nJess from Chilly's here! With the weather warming up, our pups are absolutely loving their walks at the moment.\n\nWould {dog_name} be keen to get back out there? We've got spots open and the crew would love a new adventure buddy.\n\nNo stress if not, just thought of you!\n\nJess`},
 ];
 
 const INTEGRATIONS=[
@@ -801,6 +846,7 @@ function renderAcItem(item){
 let pipelineFilter='all';
 let pipelineViewMode='cards';
 let showClosedStages=false;
+let templateFilter='all';
 const CLOSED_STAGES=['closed-won','not-suitable','closed-lost','uncontactable','not-interested','archived'];
 const ACTIVE_STAGES=STAGES.filter(s=>!CLOSED_STAGES.includes(s.id));
 
@@ -1373,7 +1419,21 @@ function openEmail(id){
 
 // ── TEMPLATES ──
 function renderTemplates(){
-  document.getElementById('templates-list').innerHTML=TEMPLATES.map(t=>{
+  // Render stage filter pills
+  const filtersEl=document.getElementById('tmpl-stage-filters');
+  if(filtersEl){
+    const stagesWithTemplates=STAGES.filter(s=>TEMPLATES.some(t=>t.stages.includes(s.id)));
+    filtersEl.innerHTML=`<div class="filter-pill${templateFilter==='all'?' active':''}" onclick="setTemplateFilter('all')">All <strong>${TEMPLATES.length}</strong></div>`+
+      stagesWithTemplates.map(s=>{
+        const count=TEMPLATES.filter(t=>t.stages.includes(s.id)).length;
+        return `<div class="filter-pill${templateFilter===s.id?' active':''}" onclick="setTemplateFilter('${s.id}')">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:4px"></span>${s.label} <strong>${count}</strong>
+        </div>`;
+      }).join('');
+  }
+  // Filter templates by selected stage
+  const filtered=templateFilter==='all'?TEMPLATES:TEMPLATES.filter(t=>t.stages.includes(templateFilter));
+  document.getElementById('templates-list').innerHTML=filtered.length?filtered.map(t=>{
     const bodyHtml=t.body.replace(/\{(\w+)\}/g,'<span class="merge-field">{$1}</span>').replace(/\n/g,'<br>');
     return `<div class="tmpl-card">
       <div class="tmpl-head" onclick="toggleTmpl('${t.id}')">
@@ -1390,8 +1450,9 @@ function renderTemplates(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join(''):'<div style="text-align:center;padding:40px;color:var(--ink-xlight)">No templates for this stage</div>';
 }
+function setTemplateFilter(f){templateFilter=f;renderTemplates();}
 
 function toggleTmpl(id){
   document.getElementById('tb-'+id).classList.toggle('open');

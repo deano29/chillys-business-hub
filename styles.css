@@ -397,6 +397,8 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--ink);dis
 .tc-meet{background:var(--purple-bg);color:var(--purple)}
 .tc-welcome{background:var(--success-bg);color:var(--success)}
 .tc-decline{background:var(--danger-bg);color:var(--danger)}
+.tc-close{background:#ecfdf5;color:#059669}
+.tc-winback{background:#eef2ff;color:#4f46e5}
 .tmpl-name{font-weight:600;font-size:14px;flex:1;color:var(--ink)}
 .tmpl-toggle{color:var(--ink-xlight);font-size:13px;transition:transform .2s}
 .tmpl-toggle.open{transform:rotate(180deg)}
