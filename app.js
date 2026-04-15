@@ -2194,14 +2194,44 @@ ${ctx.biz}`;
   logEvent('Smart reply generated',`${ctx.fullName||'Unknown'} — ${msgType}`,'success','✨');
 }
 
+let aiDraftStageFilter=null; // null = auto (use enquiry stage)
 function openAiDraft(enqId){
   currentAiEnqId=enqId;
   const e=enquiries.find(x=>x.id===enqId);
   const ctx=getSmartContext(e);
   const stage=e?.stage||'new';
+  aiDraftStageFilter=stage;
+  renderAiDraftBody(e,ctx,stage);
+  openModal('modal-ai-draft');
+}
 
-  // Auto-recommend message type based on stage
-  const recommended=MSG_TYPES.find(t=>t.stages.includes(stage))||MSG_TYPES[0];
+function renderAiDraftBody(e,ctx,activeFilter){
+  const stage=e?.stage||'new';
+  // Stage filter pills
+  const stagesWithTmpls=STAGES.filter(s=>TEMPLATES.some(t=>t.stages.includes(s.id)));
+  const filterPills=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    ${stagesWithTmpls.map(s=>{
+      const isActive=activeFilter===s.id;
+      return `<div class="filter-pill${isActive?' active':''}" onclick="switchAiDraftFilter('${s.id}')">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:3px"></span>${s.label}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  // Templates matching filter
+  const matched=TEMPLATES.filter(t=>t.stages.includes(activeFilter));
+
+  // Template cards
+  const tmplCards=matched.length?matched.map(t=>{
+    const filled=e?fillTemplate(t.body,e):t.body;
+    return `<div class="ai-tmpl-card" onclick="selectAiTemplate('${t.id}')" id="ai-tc-${t.id}" style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;border:1px solid var(--border-light);cursor:pointer;transition:all .15s">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+        <span class="tmpl-cat ${t.catClass}">${t.catLabel}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--ink)">${esc(t.name)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--ink-light);line-height:1.5;margin-top:6px">${esc(filled.split('\n').slice(0,3).join(' ').substring(0,120))}...</div>
+    </div>`;
+  }).join(''):'<div style="text-align:center;padding:20px;color:var(--ink-xlight)">No templates for this stage</div>';
 
   document.getElementById('ai-draft-body').innerHTML=`
     ${e?`<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;border:1px solid var(--border-light)">
@@ -2211,21 +2241,35 @@ function openAiDraft(enqId){
         ${ctx.suburb?`<span>· 📍 ${esc(ctx.suburb)}</span>`:''}
         ${ctx.source?`<span>· via ${esc(ctx.source)}</span>`:''}
         ${ctx.services?`<span>· ${esc(ctx.services)}</span>`:''}
-        ${ctx.preferredDays?`<span>· ${esc(ctx.preferredDays)}</span>`:''}
         ${ctx.daysSinceEnquiry>0?`<span>· ${ctx.daysSinceEnquiry}d ago</span>`:''}
       </div>
-      ${ctx.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light)">📝 ${esc(ctx.notes.substring(0,150))}${ctx.notes.length>150?'...':''}</div>`:''}
-      ${ctx.isExistingClient?`<div style="font-size:11px;color:var(--success);margin-top:4px">✅ Also a TTP client — ${ctx.ttpClient.futureWalks||0} upcoming walks</div>`:''}
     </div>`:''}
-    <div style="margin-bottom:14px">
-      <label style="font-size:11px;font-weight:600;color:var(--ink-light)">Message Type</label>
-      <select id="smart-msg-type" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:Inter,sans-serif">
-        ${MSG_TYPES.map(t=>`<option value="${t.id}" ${t.id===recommended.id?'selected':''}>${t.icon} ${t.label} — ${t.desc}</option>`).join('')}
-      </select>
-    </div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin-bottom:8px">Preview — click Generate to create</div>
-    <div class="ai-preview" id="ai-draft-preview" style="white-space:pre-wrap;min-height:120px;color:var(--ink-xlight);font-style:italic">Click "✨ Generate" to create a personalised reply using all available context.</div>`;
-  openModal('modal-ai-draft');
+    <div style="font-size:11px;font-weight:600;color:var(--ink-light);margin-bottom:8px">Pick a template for this stage:</div>
+    ${filterPills}
+    <div id="ai-tmpl-list">${tmplCards}</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-xlight);margin:14px 0 8px">Message Preview</div>
+    <div class="ai-preview" id="ai-draft-preview" style="white-space:pre-wrap;min-height:100px;color:var(--ink-xlight);font-style:italic;background:var(--white);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:14px">Click a template above to preview the message with {name}'s details filled in.</div>`;
+}
+
+function switchAiDraftFilter(stageId){
+  aiDraftStageFilter=stageId;
+  const e=currentAiEnqId?enquiries.find(x=>x.id===currentAiEnqId):null;
+  const ctx=e?getSmartContext(e):{};
+  renderAiDraftBody(e,ctx,stageId);
+}
+
+function selectAiTemplate(tmplId){
+  const t=TEMPLATES.find(x=>x.id===tmplId);if(!t)return;
+  const e=enquiries.find(x=>x.id===currentAiEnqId);
+  const filled=e?fillTemplate(t.body,e):t.body;
+  aiDraftText=filled;
+  // Highlight selected card
+  document.querySelectorAll('.ai-tmpl-card').forEach(c=>c.style.borderColor='var(--border-light)');
+  const card=document.getElementById('ai-tc-'+tmplId);
+  if(card)card.style.borderColor='var(--orange)';
+  // Show in preview
+  const preview=document.getElementById('ai-draft-preview');
+  if(preview){preview.textContent=filled;preview.style.color='var(--ink)';preview.style.fontStyle='normal';}
 }
 
 function openAiDraftNew(){
@@ -2242,7 +2286,7 @@ function openAiDraftFromEmail(emailId){
 }
 
 function copyAiDraft(){
-  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
+  if(!aiDraftText){showToast('Pick a template first','⚠️');return;}
   navigator.clipboard.writeText(aiDraftText).then(()=>{
     logEvent('Smart reply copied','Copied to clipboard','info','✨');
     showToast('Copied!','📋');
@@ -2251,12 +2295,20 @@ function copyAiDraft(){
 }
 
 function sendAiDraftEmail(){
-  if(!aiDraftText){showToast('Generate a draft first','⚠️');return;}
+  if(!aiDraftText){showToast('Pick a template first','⚠️');return;}
   const e=enquiries.find(x=>x.id===currentAiEnqId);
   const to=e?.email||'';
   const dog=e?.dogName||'';
   const subject=dog?`Re: Dog Walking — ${dog}`:'Re: Dog Walking Enquiry';
   composeEmail(to,subject,aiDraftText);
+  closeModal('modal-ai-draft');
+}
+
+function sendAiDraftWhatsApp(){
+  if(!aiDraftText){showToast('Pick a template first','⚠️');return;}
+  const e=enquiries.find(x=>x.id===currentAiEnqId);
+  const phone=e?.phone?e.phone.replace(/\s/g,'').replace(/^0/,'+61'):'';
+  window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(aiDraftText));
   closeModal('modal-ai-draft');
 }
 
