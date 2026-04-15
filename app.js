@@ -2276,11 +2276,40 @@ function openAddEnquiry(){
   document.getElementById('btn-ai-draft-enq').style.display='none';
   document.getElementById('log-contact-group').style.display='none';
   document.getElementById('call-script-section').style.display='none';
+  document.getElementById('enq-templates-section').style.display='none';
   ['f-name','f-phone','f-email','f-dogname','f-breed','f-services','f-followup','f-notes','f-suburb'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-stage').value='new';
   document.getElementById('f-channel').value='WhatsApp';
   document.getElementById('f-source').value='Meta Ads';
   openModal('modal-enq');
+}
+
+// ── ENQUIRY MODAL TEMPLATES ──
+function initEnqTemplates(enq){
+  const section=document.getElementById('enq-templates-section');
+  const body=document.getElementById('enq-templates-body');
+  const countEl=document.getElementById('et-count');
+  const matched=TEMPLATES.filter(t=>t.stages.includes(enq.stage));
+  if(!matched.length){section.style.display='none';return;}
+  section.style.display='block';
+  body.style.display='none'; // start collapsed
+  countEl.textContent=matched.length;
+  body.innerHTML=matched.map(t=>{
+    const filled=fillTemplate(t.body,enq);
+    const bodyHtml=filled.replace(/\n/g,'<br>');
+    return `<div style="background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;border:1px solid var(--border-light)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="tmpl-cat ${t.catClass}">${t.catLabel}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--ink)">${esc(t.name)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--ink-mid);line-height:1.7;white-space:pre-wrap;background:var(--white);border-radius:6px;padding:10px;margin-bottom:8px">${bodyHtml}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText(\`${filled.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`);showToast('Copied!','📋')">📋 Copy</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="window.open('https://wa.me/${enq.phone?enq.phone.replace(/\\s/g,'').replace(/^0/,'+61'):''}?text='+encodeURIComponent(\`${filled.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`))">💬 WhatsApp</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="composeEmail('${esc(enq.email||'')}','${esc(t.name)}',\`${filled.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">✉️ Email</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── CALL SCRIPT CHECKLIST ──
@@ -2466,6 +2495,7 @@ function openEditEnquiry(id){
   document.getElementById('f-suburb').value=e.suburb||'';
   document.getElementById('f-source').value=e.source||'Meta Ads';
   initCallScript(id);
+  initEnqTemplates(e);
   openModal('modal-enq');
 }
 
