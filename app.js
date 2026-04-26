@@ -191,7 +191,24 @@ async function loadFromNotion(){
       fetch('/api/walks/clients').then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
     if(enqRes){
-      enquiries=enqRes;
+      // Recover any local-only enquiries (saved offline or when Notion POST failed)
+      const isLocalId=id=>typeof id==='string'&&/^e\d+$/.test(id);
+      const localOnly=(enquiries||[]).filter(e=>isLocalId(e.id));
+      const recovered=[];
+      for(const e of localOnly){
+        try{
+          const r=await authFetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)});
+          if(r.ok){
+            recovered.push(await r.json());
+            logEvent('Recovered enquiry','Synced "'+e.name+'" to Notion','success','💾');
+          }else{
+            logEvent('Recovery failed','Could not sync "'+e.name+'" ('+r.status+')','error','⚠️');
+          }
+        }catch(err){
+          logEvent('Recovery failed','Could not sync "'+e.name+'": '+err.message,'error','⚠️');
+        }
+      }
+      enquiries=recovered.length?[...enqRes,...recovered]:enqRes;
       save('cw_enq',enquiries);
     }
     if(cliRes&&cliRes.length>0){
@@ -2593,12 +2610,17 @@ function saveEnquiry(){
     authFetch('/api/notion/enquiries/'+editingId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
   }else{
     logEvent('Enquiry added',`${name} → ${STAGES[0].label} (via ${data.channel})`,'success','📥');
-    // Create in Notion, use returned ID
-    authFetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
-      .then(r=>r.ok?r.json():null).then(saved=>{if(saved){data.id=saved.id;save('cw_enq',enquiries);}}).catch(()=>{});
     enquiries.push(data);
     fireWebhook('new-enquiry',data);
     showToast('Enquiry added to pipeline 🎉');
+    // Create in Notion, use returned ID. Surface failures so the user knows it'll retry on next load.
+    authFetch('/api/notion/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+      .then(r=>{if(!r.ok)throw new Error('Notion returned '+r.status);return r.json();})
+      .then(saved=>{if(saved){data.id=saved.id;save('cw_enq',enquiries);}})
+      .catch(err=>{
+        showToast('Saved locally — Notion sync failed, will retry on next load','⚠️');
+        logEvent('Sync error','Could not save "'+name+'" to Notion: '+err.message+'. Kept locally for retry.','error','⚠️');
+      });
   }
   save('cw_enq',enquiries);
   closeModal('modal-enq');
