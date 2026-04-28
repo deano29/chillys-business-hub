@@ -125,6 +125,10 @@
         <div class="pipeline-filters" id="pipeline-filters"></div>
         <div style="display:flex;gap:8px;align-items:center">
           <div class="enq-search-wrap"><input type="text" id="enq-search" placeholder="Search leads..." oninput="renderPipeline()"></div>
+          <select id="enq-sort" onchange="setEnqSort(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer">
+            <option value="newest">📅 Newest first</option>
+            <option value="distance">🧭 Nearest hub</option>
+          </select>
           <div class="view-toggle" id="view-toggle">
             <button class="vt-btn active" onclick="setViewMode('cards')" title="Card view">▦</button>
             <button class="vt-btn" onclick="setViewMode('list')" title="List view">☰</button>
@@ -132,6 +136,13 @@
           <button class="btn btn-ghost btn-sm" onclick="openAiDraftNew()">🤖 AI Draft</button>
           <button class="btn btn-primary btn-sm" onclick="openAddEnquiry()">+ Add Enquiry</button>
         </div>
+      </div>
+      <div class="pipeline-filters" id="enq-distance-filters" style="margin:8px 0 0;display:none">
+        <div class="filter-pill active" data-dist="all" onclick="setEnqDistanceFilter('all')">All distances</div>
+        <div class="filter-pill" data-dist="5" onclick="setEnqDistanceFilter('5')">≤5km</div>
+        <div class="filter-pill" data-dist="10" onclick="setEnqDistanceFilter('10')">≤10km</div>
+        <div class="filter-pill" data-dist="20" onclick="setEnqDistanceFilter('20')">≤20km</div>
+        <div class="filter-pill" data-dist="20+" onclick="setEnqDistanceFilter('20+')">Far &gt;20km</div>
       </div>
       <div class="kanban-wrap"><div class="kanban" id="kanban-board"></div></div>
     </div>

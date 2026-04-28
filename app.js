@@ -867,14 +867,163 @@ let templateFilter='all';
 const CLOSED_STAGES=['closed-won','not-suitable','closed-lost','uncontactable','not-interested','archived'];
 const ACTIVE_STAGES=STAGES.filter(s=>!CLOSED_STAGES.includes(s.id));
 
+// ── DISTANCE-FROM-HUB FILTER & SORT ──
+let enqSortMode=load('cw_enq_sort','newest'); // 'newest' | 'distance'
+let enqDistanceFilter='all'; // 'all' | '5' | '10' | '20' | '20+'
+const SUBURB_GEO_TTL_MS=30*24*60*60*1000;
+const _suburbGeoMem=new Map(); // lower-case key → {lat,lng} or null
+const _suburbGeoQueueSet=new Set();
+let _suburbGeoBusy=false;
+let _suburbGeoCacheLoaded=false;
+let _clientSuburbMap=null;
+
+// Melbourne postcode → suburb (copy of enrich-suburbs.js POSTCODE_MAP, used for fallback when suburb is empty)
+const POSTCODE_TO_SUBURB={
+  3000:'Melbourne CBD',3002:'East Melbourne',3003:'West Melbourne',3004:'St Kilda Road',3006:'Southbank',3008:'Docklands',
+  3011:'Footscray',3012:'Brooklyn',3013:'Yarraville',3015:'Newport',3016:'Williamstown',3018:'Altona',
+  3019:'Braybrook',3020:'Albion',3021:'St Albans',3024:'Wyndham Vale',3025:'Altona North',3028:'Spotswood',3029:'Truganina',3030:'Point Cook',
+  3031:'Flemington',3032:'Ascot Vale',3033:'Keilor East',3034:'Avondale Heights',3036:'Keilor',3038:'Keilor Downs',
+  3039:'Moonee Ponds',3040:'Essendon',3041:'Strathmore',3042:'Airport West',3043:'Tullamarine',3044:'Pascoe Vale',
+  3046:'Glenroy',3047:'Broadmeadows',3048:'Coolaroo',3049:'Attwood',3050:'Royal Melbourne Hospital',
+  3051:'North Melbourne',3052:'Parkville',3053:'Carlton',3054:'Carlton North',3055:'Brunswick West',3056:'Brunswick',
+  3057:'Brunswick East',3058:'Coburg',3059:'Greenvale',3060:'Fawkner',3061:'Campbellfield',3064:'Craigieburn',
+  3065:'Fitzroy',3066:'Collingwood',3067:'Abbotsford',3068:'Clifton Hill',3070:'Northcote',3071:'Thornbury',
+  3072:'Preston',3073:'Reservoir',3074:'Thomastown',3075:'Lalor',3076:'Epping',3078:'Alphington',3079:'Ivanhoe',
+  3081:'Heidelberg',3082:'Mill Park',3083:'Bundoora',3084:'Rosanna',3085:'Macleod',3087:'Watsonia',
+  3088:'Greensborough',3089:'Diamond Creek',3094:'Montmorency',3095:'Eltham',
+  3101:'Kew',3102:'Kew East',3103:'Balwyn',3104:'Balwyn North',3105:'Bulleen',3106:'Templestowe',
+  3107:'Templestowe Lower',3108:'Doncaster',3109:'Doncaster East',3111:'Donvale',3113:'Warrandyte',3114:'Park Orchards',
+  3121:'Richmond',3122:'Hawthorn',3123:'Hawthorn East',3124:'Camberwell',3125:'Burwood',3126:'Canterbury',
+  3127:'Surrey Hills',3128:'Box Hill',3129:'Box Hill North',3130:'Blackburn',3131:'Nunawading',3132:'Mitcham',
+  3133:'Vermont',3134:'Ringwood',3135:'Ringwood East',3136:'Croydon',3137:'Kilsyth',3138:'Mooroolbark',
+  3140:'Lilydale',3141:'South Yarra',3142:'Toorak',3143:'Armadale',3144:'Malvern',3145:'Malvern East',
+  3146:'Glen Iris',3147:'Ashburton',3148:'Chadstone',3149:'Mount Waverley',3150:'Glen Waverley',
+  3151:'Burwood East',3152:'Wantirna',3153:'Bayswater',3155:'Boronia',3156:'Ferntree Gully',3160:'Belgrave',
+  3161:'Caulfield North',3162:'Caulfield',3163:'Carnegie',3164:'Caulfield South',3165:'Bentleigh East',3166:'Hughesdale',
+  3167:'Oakleigh East',3168:'Clayton',3169:'Clarinda',3170:'Mulgrave',3171:'Springvale',3172:'Dingley Village',
+  3173:'Keysborough',3174:'Noble Park',3175:'Dandenong',3177:'Doveton',3178:'Rowville',3179:'Scoresby',
+  3180:'Knoxfield',3181:'Prahran',3182:'St Kilda',3183:'Balaclava',3184:'Brighton',3185:'Elsternwick',
+  3186:'Oakleigh',3187:'Brighton East',3188:'Hampton',3189:'Moorabbin',3190:'Highett',3191:'Sandringham',
+  3192:'Cheltenham',3193:'Beaumaris',3194:'Mentone',3195:'Cheltenham',3196:'Edithvale',3197:'Patterson Lakes',
+  3198:'Seaford',3199:'Frankston',3200:'Frankston North',3201:'Carrum Downs',3202:'Heatherton',
+  3204:'Bentleigh',3205:'South Melbourne',3206:'Albert Park',3207:'Port Melbourne',
+  3350:'Ballarat',3429:'Sunbury',3437:'Lancefield',3442:'Woodend',3550:'Bendigo',3555:'Kangaroo Flat',
+  3630:'Shepparton',3690:'Wodonga',3750:'Wollert',3752:'South Morang',3754:'Doreen',3765:'Montrose',
+  3802:'Endeavour Hills',3803:'Hallam',3805:'Narre Warren',3806:'Berwick',3810:'Pakenham',3844:'Traralgon',
+  3925:'Wonthaggi',3929:'Flinders',3930:'Mount Eliza',3931:'Mornington',3942:'Rye',3977:'Cranbourne'
+};
+
+function loadSuburbGeoCache(){
+  if(_suburbGeoCacheLoaded)return;
+  _suburbGeoCacheLoaded=true;
+  const cache=load('cw_suburb_geo',{});
+  const now=Date.now();
+  Object.entries(cache).forEach(([k,v])=>{
+    if(v && (now-(v.ts||0))<SUBURB_GEO_TTL_MS){
+      _suburbGeoMem.set(k, (v.lat!=null && v.lng!=null) ? {lat:v.lat,lng:v.lng} : null);
+    }
+  });
+}
+function persistSuburbGeo(key,coords){
+  const cache=load('cw_suburb_geo',{});
+  cache[key]={lat:coords?.lat??null,lng:coords?.lng??null,ts:Date.now()};
+  save('cw_suburb_geo',cache);
+}
+function buildSuburbCoordsFromClients(){
+  if(_clientSuburbMap)return _clientSuburbMap;
+  if(typeof covClientLocations==='undefined' || !covClientLocations.length)return null;
+  const map={};
+  covClientLocations.forEach(c=>{
+    if(!c.suburb||!c.lat||!c.lng)return;
+    const k=c.suburb.toLowerCase().trim();
+    if(!map[k]){map[k]={lat:c.lat,lng:c.lng,n:1};return;}
+    map[k].lat=(map[k].lat*map[k].n+c.lat)/(map[k].n+1);
+    map[k].lng=(map[k].lng*map[k].n+c.lng)/(map[k].n+1);
+    map[k].n++;
+  });
+  _clientSuburbMap=map;
+  return map;
+}
+function resolveSuburbCoords(suburb,postCode){
+  loadSuburbGeoCache();
+  let key=(suburb||'').toLowerCase().trim();
+  if(!key && postCode){
+    const sub=POSTCODE_TO_SUBURB[parseInt(postCode,10)];
+    if(sub) key=sub.toLowerCase().trim();
+  }
+  if(!key) return null;
+  if(_suburbGeoMem.has(key)) return _suburbGeoMem.get(key);
+  const cm=buildSuburbCoordsFromClients();
+  if(cm && cm[key]){
+    const c={lat:cm[key].lat,lng:cm[key].lng};
+    _suburbGeoMem.set(key,c);
+    return c;
+  }
+  enqueueSuburbGeocode(key);
+  return null;
+}
+function enqueueSuburbGeocode(key){
+  if(_suburbGeoMem.has(key))return;
+  if(_suburbGeoQueueSet.has(key))return;
+  _suburbGeoQueueSet.add(key);
+  if(!_suburbGeoBusy) processSuburbGeoQueue();
+}
+async function processSuburbGeoQueue(){
+  _suburbGeoBusy=true;
+  while(_suburbGeoQueueSet.size){
+    const key=_suburbGeoQueueSet.values().next().value;
+    _suburbGeoQueueSet.delete(key);
+    if(_suburbGeoMem.has(key))continue;
+    try{
+      const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(key)},+VIC,+Australia&format=json&limit=1&countrycodes=au`;
+      const r=await fetch(url,{headers:{'User-Agent':'ChillysBusinessHub/1.0'}});
+      const data=r.ok?await r.json():null;
+      const coords=(data&&data[0])?{lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)}:null;
+      _suburbGeoMem.set(key,coords);
+      persistSuburbGeo(key,coords);
+    }catch{
+      _suburbGeoMem.set(key,null);
+      persistSuburbGeo(key,null);
+    }
+    await new Promise(r=>setTimeout(r,1100));
+  }
+  _suburbGeoBusy=false;
+  if(document.getElementById('view-enquiries')?.classList.contains('active')) renderPipeline();
+}
+function getEnqDistance(e){
+  const c=resolveSuburbCoords(e.suburb,e.postCode);
+  if(!c) return Infinity;
+  return haversine(getBaseLat(),getBaseLng(),c.lat,c.lng);
+}
+function formatDistance(m){
+  if(!isFinite(m)) return '';
+  return m<1000 ? Math.round(m)+'m' : (m/1000).toFixed(1)+'km';
+}
+
 function getFilteredEnquiries(){
   const search=(document.getElementById('enq-search')?.value||'').toLowerCase().trim();
   let list=enquiries;
   if(search){
     list=list.filter(e=>(e.name||'').toLowerCase().includes(search)||(e.suburb||'').toLowerCase().includes(search)||(e.source||'').toLowerCase().includes(search)||(e.dogName||'').toLowerCase().includes(search)||(e.email||'').toLowerCase().includes(search)||(e.phone||'').toLowerCase().includes(search));
   }
+  // Annotate with distance from hub (used by both the chip on cards and distance sort/filter)
+  list=list.map(e=>({...e,_distM:getEnqDistance(e)}));
+  if(enqSortMode==='distance'){
+    if(enqDistanceFilter!=='all'){
+      list=list.filter(e=>{
+        if(!isFinite(e._distM)) return false;
+        const km=e._distM/1000;
+        if(enqDistanceFilter==='5') return km<=5;
+        if(enqDistanceFilter==='10') return km<=10;
+        if(enqDistanceFilter==='20') return km<=20;
+        if(enqDistanceFilter==='20+') return km>20;
+        return true;
+      });
+    }
+    return list.sort((a,b)=>(isFinite(a._distM)?a._distM:Infinity)-(isFinite(b._distM)?b._distM:Infinity));
+  }
   // Sort newest first
-  return [...list].sort((a,b)=>(b.dateAdded||'').localeCompare(a.dateAdded||''));
+  return list.sort((a,b)=>(b.dateAdded||'').localeCompare(a.dateAdded||''));
 }
 
 function daysAgo(dateStr){
@@ -889,6 +1038,14 @@ function daysAgo(dateStr){
 
 function renderPipeline(){
   const filtered=getFilteredEnquiries();
+  // Toggle distance filter pills row + sync sort dropdown
+  const distRow=document.getElementById('enq-distance-filters');
+  if(distRow) distRow.style.display=enqSortMode==='distance'?'flex':'none';
+  const sortSel=document.getElementById('enq-sort');
+  if(sortSel && sortSel.value!==enqSortMode) sortSel.value=enqSortMode;
+  document.querySelectorAll('#enq-distance-filters .filter-pill').forEach(p=>{
+    p.classList.toggle('active', p.dataset.dist===enqDistanceFilter);
+  });
   // Build filter pills
   const filtersEl=document.getElementById('pipeline-filters');
   if(filtersEl){
@@ -915,8 +1072,9 @@ function renderPipeline(){
     board.className='kanban-grid';
     const stagesToShow=pipelineFilter==='all'?(showClosedStages?STAGES:ACTIVE_STAGES):STAGES.filter(s=>s.id===pipelineFilter);
     const rows=stagesToShow.flatMap(s=>filtered.filter(e=>e.stage===s.id));
+    const showDist=enqSortMode==='distance';
     board.innerHTML=rows.length?`<table class="enq-list-table">
-      <thead><tr><th>Name</th><th>Dog</th><th>Suburb</th><th>Stage</th><th>Added</th><th></th><th>Last Contact</th><th>Follow-up</th></tr></thead>
+      <thead><tr><th>Name</th><th>Dog</th><th>Suburb</th>${showDist?'<th>Distance</th>':''}<th>Stage</th><th>Added</th><th></th><th>Last Contact</th><th>Follow-up</th></tr></thead>
       <tbody>${rows.map(e=>{
         const s=STAGES.find(s=>s.id===e.stage);
         const fs=fuStatus(e.followup);
@@ -925,6 +1083,7 @@ function renderPipeline(){
           <td><strong>${esc(e.name)}</strong>${e.phone?`<div style="font-size:11px;color:var(--ink-light)">${esc(e.phone)}</div>`:''}</td>
           <td>${esc(e.dogName||'—')}</td>
           <td>${esc(e.suburb||'—')}</td>
+          ${showDist?`<td style="font-weight:600">${isFinite(e._distM)?formatDistance(e._distM):'—'}</td>`:''}
           <td><span class="enq-list-stage" style="background:${s?.color||'#999'}">${s?.label||e.stage}</span></td>
           <td style="font-weight:600">${e.dateAdded?fmtDate(e.dateAdded):'—'}</td>
           <td style="font-size:11px;color:var(--ink-muted)">${da}</td>
@@ -967,6 +1126,14 @@ function renderPipeline(){
 }
 function setPipelineFilter(f){pipelineFilter=f;renderPipeline();}
 function setViewMode(m){pipelineViewMode=m;renderPipeline();}
+function setEnqSort(mode){
+  enqSortMode=(mode==='distance')?'distance':'newest';
+  save('cw_enq_sort',enqSortMode);
+  if(enqSortMode==='distance') loadSuburbGeoCache();
+  if(enqSortMode!=='distance') enqDistanceFilter='all';
+  renderPipeline();
+}
+function setEnqDistanceFilter(f){enqDistanceFilter=f;renderPipeline();}
 function expandColumn(btn,stageId){
   const filtered=getFilteredEnquiries();
   const cards=filtered.filter(e=>e.stage===stageId);
@@ -1025,7 +1192,7 @@ function renderEnqCard(e){
       <div class="enq-name">${esc(e.name)}</div>
       <span style="font-size:10px;color:var(--ink-muted);white-space:nowrap;flex-shrink:0">${da}</span>
     </div>
-    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' · '+esc(e.dogBreed):''}`:''}${e.suburb?` · 📍${esc(e.suburb)}`:''}</div>
+    <div class="enq-dog">${e.dogName?`🐶 ${esc(e.dogName)}${e.dogBreed?' · '+esc(e.dogBreed):''}`:''}${e.suburb?` · 📍${esc(e.suburb)}`:''}${isFinite(e._distM)?` · 🧭 ${formatDistance(e._distM)}`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
       ${lastContact}
     </div>
@@ -1865,6 +2032,8 @@ function saveSettings(section){
   logEvent('Settings updated',section||'all','info','⚙️');
   // Refresh dashboard revenue when route/pricing settings change
   if(section==='routes'||section==='base') renderDashboard();
+  // Re-render Enquiries so distance-from-hub chips reflect new base location
+  if(section==='base' && document.getElementById('view-enquiries')?.classList.contains('active')) renderPipeline();
 }
 function loadSettings(){
   const s=load('cw_settings',{});
