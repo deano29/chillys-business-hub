@@ -1814,6 +1814,7 @@ function reportTab(tab){
   if(tab==='by-service')renderByService();
   if(tab==='by-suburb')renderBySuburb();
   if(tab==='retention')renderRetention();
+  if(tab==='investor')renderInvestorView();
 }
 
 function reportTableWrap(title,subtitle,theadHtml,tbodyHtml){
@@ -2123,6 +2124,417 @@ async function renderRetention(){
   </div>`;
 
   panel.innerHTML=html;
+}
+
+// ── INVESTOR VIEW ──
+function inv_addMonths(monthStr,n){
+  const [y,m]=monthStr.split('-').map(Number);
+  const d=new Date(y,m-1+n,1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function inv_fmtMoney(n){return n==null||!isFinite(n)?'—':'$'+Math.round(n).toLocaleString();}
+function inv_fmtPct(n,digits=0){return n==null||!isFinite(n)?'—':n.toFixed(digits)+'%';}
+function inv_threshold(val,thresholds){
+  // thresholds: {green: fn, amber: fn, red: fn} — return color var
+  if(val==null||!isFinite(val)) return 'var(--ink-xlight)';
+  if(thresholds.green(val)) return 'var(--success)';
+  if(thresholds.amber(val)) return 'var(--warning)';
+  return 'var(--danger)';
+}
+
+function inv_buildClientMap(walks){
+  // Build: cleanName → {firstWalk, lastWalk, monthsSet, walks, revenue}
+  const m={};
+  walks.forEach(w=>{
+    if(w.status&&w.status!=='completed') return;
+    const name=cleanClientName(w.client||'');
+    if(!name||name.toLowerCase().includes('potential client')) return;
+    if(!m[name]) m[name]={name,firstWalk:null,lastWalk:null,months:new Set(),walks:0,revenue:0};
+    const c=m[name];
+    if(!c.firstWalk||w.date<c.firstWalk) c.firstWalk=w.date;
+    if(!c.lastWalk||w.date>c.lastWalk) c.lastWalk=w.date;
+    c.months.add(w.date.substring(0,7));
+    c.walks++;
+    c.revenue+=walkRevenue(w);
+  });
+  return m;
+}
+
+function inv_churnRate(clientMap,daysAgo=30){
+  // Churn = % of clients active in the [now-2*daysAgo, now-daysAgo] window who haven't walked since
+  const now=new Date();
+  const dEarly=new Date(now.getTime()-2*daysAgo*86400000);
+  const dMid=new Date(now.getTime()-daysAgo*86400000);
+  const baseline=new Set();
+  const recent=new Set();
+  Object.values(clientMap).forEach(c=>{
+    if(!c.lastWalk||!c.firstWalk) return;
+    const last=new Date(c.lastWalk+'T00:00:00');
+    const first=new Date(c.firstWalk+'T00:00:00');
+    if(last>=dEarly&&last<=dMid){
+      baseline.add(c.name); // last walk fell in baseline window → active then but not since
+    } else if(last>=dMid){
+      // Walked in the recent window. They were also active in baseline if they joined before dMid.
+      if(first<=dMid) baseline.add(c.name);
+      recent.add(c.name);
+    }
+  });
+  if(baseline.size===0) return null;
+  let churned=0;
+  baseline.forEach(n=>{if(!recent.has(n)) churned++;});
+  return (churned/baseline.size)*100;
+}
+
+function inv_concentration(clientList){
+  const sorted=[...clientList].sort((a,b)=>b.revenue-a.revenue);
+  const total=sorted.reduce((s,c)=>s+c.revenue,0);
+  const top1=sorted.slice(0,1).reduce((s,c)=>s+c.revenue,0);
+  const top5=sorted.slice(0,5).reduce((s,c)=>s+c.revenue,0);
+  const top10=sorted.slice(0,10).reduce((s,c)=>s+c.revenue,0);
+  return {
+    total,
+    top1Pct:total?top1/total*100:0,
+    top5Pct:total?top5/total*100:0,
+    top10Pct:total?top10/total*100:0,
+    top1Name:sorted[0]?.name||'—',
+    sorted,
+  };
+}
+
+function inv_buildCohorts(clientMap){
+  const cohorts={};
+  Object.values(clientMap).forEach(c=>{
+    if(!c.firstWalk) return;
+    const cohort=c.firstWalk.substring(0,7);
+    if(!cohorts[cohort]) cohorts[cohort]={cohort,clients:[],total:0};
+    cohorts[cohort].clients.push(c);
+    cohorts[cohort].total++;
+  });
+  // For each cohort, compute retention at M+1, M+3, M+6, M+12
+  const now=new Date();
+  const nowKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const result=Object.values(cohorts).map(co=>{
+    const r={cohort:co.cohort,total:co.total};
+    [1,3,6,12].forEach(n=>{
+      const targetKey=inv_addMonths(co.cohort,n);
+      // Only meaningful if target is in the past (or current)
+      if(targetKey>nowKey){r['m'+n]=null;return;}
+      // Lenient retention: client has at least one walk in target month OR later
+      const stillActive=co.clients.filter(c=>{
+        return [...c.months].some(mKey=>mKey>=targetKey);
+      }).length;
+      r['m'+n]=co.total>0?(stillActive/co.total)*100:null;
+    });
+    return r;
+  }).sort((a,b)=>a.cohort.localeCompare(b.cohort));
+  // Hide tiny cohorts (1 client) and the most-recent cohort if it's still in the current month
+  return result.filter(r=>r.total>=2&&r.cohort<nowKey);
+}
+
+function inv_grossMargin(walks,monthKey){
+  const monthWalks=walks.filter(w=>w.date&&w.date.substring(0,7)===monthKey&&(w.status?w.status==='completed':true));
+  if(!monthWalks.length) return null;
+  const revenue=monthWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  if(!revenue) return null;
+  const empRate=Number(getSetting('s-rate-employee',30))||30;
+  const superRate=(Number(getSetting('s-super-rate',11.5))||11.5)/100;
+  const costPerKm=Number(getSetting('s-cost-km',0.78))||0.78;
+  // Approximate: 0.75h per walk × employee rate × (1+super), + 3km travel × cost/km
+  const labourPerWalk=empRate*0.75*(1+superRate);
+  const travelPerWalk=costPerKm*3;
+  const totalCost=monthWalks.length*(labourPerWalk+travelPerWalk);
+  return ((revenue-totalCost)/revenue)*100;
+}
+
+function inv_forecast(revenueMonthly,monthsForward=6){
+  const sorted=[...(revenueMonthly||[])].filter(m=>m.revenue>0).sort((a,b)=>a.month.localeCompare(b.month));
+  if(!sorted.length) return [];
+  const recent=sorted.slice(-3);
+  // MoM growth from last 3 months, clamped
+  let growth=0;
+  if(recent.length>=2){
+    const ratios=[];
+    for(let i=1;i<recent.length;i++){
+      if(recent[i-1].revenue>0) ratios.push((recent[i].revenue/recent[i-1].revenue)-1);
+    }
+    growth=ratios.length?ratios.reduce((s,r)=>s+r,0)/ratios.length:0;
+    growth=Math.max(-0.2,Math.min(0.3,growth));
+  }
+  const lastMonth=sorted[sorted.length-1].month;
+  const result=[];
+  let prev=sorted[sorted.length-1].revenue;
+  for(let i=1;i<=monthsForward;i++){
+    const projMonth=inv_addMonths(lastMonth,i);
+    const projRev=prev*(1+growth);
+    result.push({month:projMonth,revenue:projRev,projected:true});
+    prev=projRev;
+  }
+  return {forecast:result,growth};
+}
+
+function inv_ltvByChannel(enquiriesList,clientMap,revenueByClient){
+  const channels={};
+  enquiriesList.forEach(e=>{
+    if(e.stage!=='closed-won') return;
+    const source=normaliseSource(e.source);
+    if(!channels[source]) channels[source]={source,customers:0,revenue:0,totalTenureMonths:0};
+    const cleanName=cleanClientName(e.name||'');
+    let ltv=revenueByClient[cleanName]||revenueByClient[cleanName+' ']||0;
+    if(!ltv){
+      const k=Object.keys(revenueByClient).find(k=>k.trim().toLowerCase()===cleanName.toLowerCase());
+      if(k) ltv=revenueByClient[k];
+    }
+    const c=clientMap[cleanName];
+    let tenureMonths=0;
+    if(c&&c.firstWalk){
+      const first=new Date(c.firstWalk+'T00:00:00');
+      tenureMonths=Math.max(1,Math.round((Date.now()-first.getTime())/(30.44*86400000)));
+    }
+    channels[source].customers++;
+    channels[source].revenue+=ltv;
+    channels[source].totalTenureMonths+=tenureMonths;
+  });
+  return Object.values(channels).map(ch=>{
+    const avgLTV=ch.customers>0?ch.revenue/ch.customers:0;
+    const avgTenure=ch.customers>0?ch.totalTenureMonths/ch.customers:0;
+    const avgMonthly=avgTenure>0?avgLTV/avgTenure:0;
+    return {...ch,avgLTV,avgTenure,avgMonthly};
+  });
+}
+
+async function renderInvestorView(){
+  const panel=document.getElementById('rp-investor');
+  if(!panel) return;
+  panel.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading investor view...</div>';
+
+  const [walks,summary,ttpClients]=await Promise.all([
+    fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    getSummary(),
+    fetch('/api/walks/clients').then(r=>r.ok?r.json():[]).catch(()=>[]),
+  ]);
+  const revenueByClient=summary?.revenueByClient||{};
+  const revenueMonthly=summary?.revenueMonthly||[];
+
+  const now=new Date();
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Build canonical client map from walks (for cohort + concentration + tenure)
+  const clientMap=inv_buildClientMap(walks);
+  // Override revenue with TTP totals where available (source of truth)
+  const revKeysLower={};
+  Object.entries(revenueByClient).forEach(([k,v])=>{revKeysLower[k.trim().toLowerCase()]=v;});
+  Object.values(clientMap).forEach(c=>{
+    const exact=revenueByClient[c.name]||revenueByClient[c.name+' ']||0;
+    const lower=revKeysLower[c.name.toLowerCase()];
+    const ttpRev=exact||lower||0;
+    if(ttpRev>0) c.revenue=ttpRev;
+  });
+  const clientList=Object.values(clientMap);
+
+  // ── METRICS ──
+  // Recurring revenue (3-mo rolling avg)
+  const sortedMonthly=[...revenueMonthly].filter(m=>m.revenue>0).sort((a,b)=>a.month.localeCompare(b.month));
+  const last3=sortedMonthly.slice(-3);
+  const recurringRev=last3.length?last3.reduce((s,m)=>s+m.revenue,0)/last3.length:null;
+
+  // Active clients + 30-day delta
+  const activeClients=ttpClients.filter(c=>c.status==='active').length;
+  // Approx 30d-ago active = clients whose last walk was within 30 days of (now-30d), i.e. last walk between now-60d and now-30d, plus those still active
+  const d30=new Date(now.getTime()-30*86400000);
+  const d60=new Date(now.getTime()-60*86400000);
+  const activeAt30dAgo=clientList.filter(c=>{
+    if(!c.lastWalk) return false;
+    const last=new Date(c.lastWalk+'T00:00:00');
+    return last>=d60; // had at least one walk in last 60 days as of 30 days ago
+  }).length;
+  const activeDelta=activeClients-activeAt30dAgo;
+
+  // Avg tenure (active clients only)
+  const tenureDays=ttpClients.filter(c=>c.status==='active'&&c.firstWalk).map(c=>{
+    const first=new Date(c.firstWalk+'T00:00:00');
+    return Math.floor((now-first)/86400000);
+  });
+  const avgTenureDays=tenureDays.length?Math.round(tenureDays.reduce((s,d)=>s+d,0)/tenureDays.length):null;
+  const avgTenureMonths=avgTenureDays!=null?Math.round(avgTenureDays/30):null;
+
+  // Gross margin (last full month)
+  const lastFullMonthD=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const lastFullMonthKey=`${lastFullMonthD.getFullYear()}-${String(lastFullMonthD.getMonth()+1).padStart(2,'0')}`;
+  const grossMargin=inv_grossMargin(walks,lastFullMonthKey);
+
+  // Churn rate 30d
+  const churn30=inv_churnRate(clientMap,30);
+
+  // Customer concentration
+  const conc=inv_concentration(clientList);
+
+  // Forecast
+  const fcResult=inv_forecast(revenueMonthly,6);
+  const forecastTotal=fcResult.forecast?fcResult.forecast.reduce((s,m)=>s+m.revenue,0):null;
+  const momGrowth=fcResult.growth?fcResult.growth*100:null;
+
+  // Channel unit economics
+  const channelEcon=inv_ltvByChannel(enquiries,clientMap,revenueByClient);
+  // Blended LTV:CAC
+  let blendedLTV=0,blendedSpend=0,blendedCustomers=0;
+  channelEcon.forEach(ch=>{
+    const spendId=PAID_SOURCES[ch.source];
+    if(!spendId) return;
+    const spend=Number(getSetting(spendId,0))||0;
+    if(spend<=0) return;
+    blendedLTV+=ch.revenue;
+    blendedSpend+=spend;
+    blendedCustomers+=ch.customers;
+  });
+  const blendedLTVperCust=blendedCustomers>0?blendedLTV/blendedCustomers:0;
+  const blendedCAC=blendedCustomers>0?blendedSpend/blendedCustomers:0;
+  const blendedLTVCAC=blendedCAC>0?blendedLTVperCust/blendedCAC:null;
+
+  // ── HEADLINE KPIs ──
+  const kpiHTML=`<div class="kpi-grid" style="margin-bottom:18px">
+    <div class="kpi-card"><div class="kpi-label">Recurring Revenue</div><div class="kpi-value">${inv_fmtMoney(recurringRev)}</div><div class="kpi-change">3-month rolling avg</div></div>
+    <div class="kpi-card"><div class="kpi-label">Active Clients</div><div class="kpi-value">${activeClients}</div><div class="kpi-change" style="color:${activeDelta>=0?'var(--success)':'var(--danger)'}">${activeDelta>=0?'↑':'↓'} ${Math.abs(activeDelta)} vs 30d ago</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Tenure</div><div class="kpi-value">${avgTenureMonths!=null?avgTenureMonths+' mo':'—'}</div><div class="kpi-change">Active clients</div></div>
+    <div class="kpi-card"><div class="kpi-label">Gross Margin</div><div class="kpi-value" style="color:${inv_threshold(grossMargin,{green:v=>v>=50,amber:v=>v>=30})}">${inv_fmtPct(grossMargin,0)}</div><div class="kpi-change">${monthNames[lastFullMonthD.getMonth()]} ${lastFullMonthD.getFullYear()} · estimated</div></div>
+    <div class="kpi-card"><div class="kpi-label">Churn Rate (30d)</div><div class="kpi-value" style="color:${inv_threshold(churn30,{green:v=>v<=2,amber:v=>v<=5})}">${inv_fmtPct(churn30,1)}</div><div class="kpi-change">Lost clients last 30 days</div></div>
+    <div class="kpi-card"><div class="kpi-label">LTV : CAC</div><div class="kpi-value" style="color:${inv_threshold(blendedLTVCAC,{green:v=>v>=3,amber:v=>v>=1})}">${blendedLTVCAC!=null?blendedLTVCAC.toFixed(1)+':1':'—'}</div><div class="kpi-change">${blendedSpend>0?'Blended paid channels':'Set ad spend in Settings'}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Top-5 Concentration</div><div class="kpi-value" style="color:${inv_threshold(conc.top5Pct,{green:v=>v<30,amber:v=>v<50})}">${inv_fmtPct(conc.top5Pct,0)}</div><div class="kpi-change">% revenue from top 5 clients</div></div>
+    <div class="kpi-card"><div class="kpi-label">6-mo Forecast</div><div class="kpi-value">${inv_fmtMoney(forecastTotal)}</div><div class="kpi-change">${momGrowth!=null?(momGrowth>=0?'↑ ':'↓ ')+Math.abs(momGrowth).toFixed(1)+'% MoM':'Projected'}</div></div>
+  </div>`;
+
+  // ── REVENUE TREND + FORECAST ──
+  const trendData=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const mKey=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const ttp=revenueMonthly.find(m=>m.month===mKey);
+    trendData.push({month:monthNames[d.getMonth()],val:ttp?Math.round(ttp.revenue):0});
+  }
+  fcResult.forecast.forEach(f=>{
+    const [y,m]=f.month.split('-').map(Number);
+    trendData.push({month:monthNames[m-1]+'*',val:Math.round(f.revenue)});
+  });
+
+  const trendHTML=`<div class="card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Revenue Trend & Forecast</h3><span style="font-size:11px;color:var(--ink-xlight)">6 actual + 6 projected (* = forecast)</span></div>
+    <div class="card-body" style="padding-bottom:10px"><div id="inv-trend-chart"></div><div id="inv-trend-labels" class="chart-labels"></div></div>
+  </div>`;
+
+  // ── CONCENTRATION TABLE ──
+  const concRows=conc.sorted.slice(0,10).map((c,i)=>{
+    const pct=conc.total?(c.revenue/conc.total)*100:0;
+    const tenureM=c.firstWalk?Math.max(1,Math.round((now-new Date(c.firstWalk+'T00:00:00'))/(30.44*86400000))):0;
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${inv_fmtMoney(c.revenue)}</td>
+      <td><span style="font-weight:700;color:${i===0&&pct>=15?'var(--danger)':pct>=10?'var(--warning)':'var(--ink-mid)'}">${pct.toFixed(1)}%</span></td>
+      <td>${tenureM} mo</td>
+      <td>${c.walks}</td>
+    </tr>`;
+  }).join('');
+  const concHTML=`<div class="card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Customer Concentration</h3><span style="font-size:11px;color:var(--ink-xlight)">Top 10 by lifetime revenue · ${clientList.length} total clients</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="report-table">
+        <thead><tr><th>#</th><th>Client</th><th>Revenue</th><th>% of Total</th><th>Tenure</th><th>Walks</th></tr></thead>
+        <tbody>${concRows||'<tr><td colspan="6" style="text-align:center;color:var(--ink-xlight);padding:20px">No client data</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  // ── COHORT RETENTION ──
+  const cohorts=inv_buildCohorts(clientMap);
+  const cohortRows=cohorts.map(co=>{
+    const cellHTML=(v)=>{
+      if(v==null) return '<td style="color:var(--ink-xlight)">—</td>';
+      const color=v>=80?'var(--success)':v>=50?'var(--warning)':'var(--danger)';
+      const bg=v>=80?'rgba(22,163,74,.10)':v>=50?'rgba(245,158,11,.10)':'rgba(239,68,68,.10)';
+      return `<td style="background:${bg};color:${color};font-weight:700">${v.toFixed(0)}%</td>`;
+    };
+    const [y,m]=co.cohort.split('-').map(Number);
+    const lbl=`${monthNames[m-1]} ${y}`;
+    return `<tr>
+      <td><strong>${lbl}</strong></td>
+      <td>${co.total}</td>
+      ${cellHTML(co.m1)}
+      ${cellHTML(co.m3)}
+      ${cellHTML(co.m6)}
+      ${cellHTML(co.m12)}
+    </tr>`;
+  }).join('');
+  const cohortHTML=`<div class="card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Cohort Retention</h3><span style="font-size:11px;color:var(--ink-xlight)">% of cohort still active at each milestone</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="report-table">
+        <thead><tr><th>Cohort</th><th>Started</th><th>M+1</th><th>M+3</th><th>M+6</th><th>M+12</th></tr></thead>
+        <tbody>${cohortRows||'<tr><td colspan="6" style="text-align:center;color:var(--ink-xlight);padding:20px">Not enough cohort history yet</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  // ── CHANNEL UNIT ECONOMICS ──
+  const econRows=channelEcon.sort((a,b)=>b.revenue-a.revenue).map(ch=>{
+    const spendId=PAID_SOURCES[ch.source];
+    const spend=spendId?Number(getSetting(spendId,0))||0:0;
+    const isPaid=!!spendId&&spend>0;
+    const cac=isPaid&&ch.customers>0?spend/ch.customers:null;
+    const ltvCac=cac&&ch.avgLTV>0?ch.avgLTV/cac:null;
+    const payback=cac&&ch.avgMonthly>0?cac/ch.avgMonthly:null;
+    const ltvCacColor=inv_threshold(ltvCac,{green:v=>v>=3,amber:v=>v>=1});
+    return `<tr>
+      <td><strong>${esc(ch.source)}</strong></td>
+      <td>${ch.customers}</td>
+      <td>${inv_fmtMoney(ch.avgLTV)}</td>
+      <td>${isPaid?inv_fmtMoney(spend):'<span style="color:var(--ink-xlight)">—</span>'}</td>
+      <td>${cac!=null?inv_fmtMoney(cac):'<span style="color:var(--ink-xlight)">—</span>'}</td>
+      <td><span style="font-weight:700;color:${ltvCacColor}">${ltvCac!=null?ltvCac.toFixed(1)+':1':'<span style="color:var(--ink-xlight)">—</span>'}</span></td>
+      <td>${payback!=null?payback.toFixed(1)+' mo':'<span style="color:var(--ink-xlight)">—</span>'}</td>
+    </tr>`;
+  }).join('');
+  const econHTML=`<div class="card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Unit Economics by Channel</h3><span style="font-size:11px;color:var(--ink-xlight)">Lifetime values · spend from Settings</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="report-table">
+        <thead><tr><th>Channel</th><th>Customers</th><th>Avg LTV</th><th>Spend</th><th>CAC</th><th>LTV:CAC</th><th>Payback</th></tr></thead>
+        <tbody>${econRows||'<tr><td colspan="7" style="text-align:center;color:var(--ink-xlight);padding:20px">No converted enquiries yet</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  // ── HEALTH FLAGS ──
+  const flags=[];
+  if(conc.top1Pct>=15) flags.push(`⚠️ Top client (${esc(conc.top1Name)}) = ${conc.top1Pct.toFixed(1)}% of revenue — concentration risk`);
+  if(conc.top5Pct>=50) flags.push(`⚠️ Top-5 clients = ${conc.top5Pct.toFixed(0)}% of revenue — high concentration`);
+  if(churn30!=null&&churn30>5) flags.push(`⚠️ Churn rate at ${churn30.toFixed(1)}% — investigate retention`);
+  if(grossMargin!=null&&grossMargin<30) flags.push(`⚠️ Gross margin under 30% — review pricing or costs`);
+  if(blendedLTVCAC!=null&&blendedLTVCAC<1) flags.push(`⚠️ LTV:CAC below 1:1 — paid acquisition is losing money`);
+  if(avgTenureMonths!=null&&avgTenureMonths<6) flags.push(`⚠️ Avg tenure under 6 months — review retention strategy`);
+  if(blendedLTVCAC!=null&&blendedLTVCAC>=3) flags.push(`✅ LTV:CAC at ${blendedLTVCAC.toFixed(1)}:1 — healthy unit economics`);
+  if(grossMargin!=null&&grossMargin>=50) flags.push(`✅ Gross margin at ${grossMargin.toFixed(0)}% — strong profitability`);
+  if(activeDelta>0) flags.push(`✅ Active clients up ${activeDelta} vs 30 days ago`);
+  if(!flags.length) flags.push('✅ All key metrics are within healthy ranges.');
+  const flagsHTML=`<div class="card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Health Flags</h3><span style="font-size:11px;color:var(--ink-xlight)">Auto-generated from current metrics</span></div>
+    <div class="card-body"><ul style="margin:0;padding-left:20px;line-height:1.8;font-size:13px">${flags.map(f=>`<li>${f}</li>`).join('')}</ul></div>
+  </div>`;
+
+  // ── METHODOLOGY FOOTNOTE ──
+  const noteHTML=`<div style="font-size:11px;color:var(--ink-xlight);margin-top:6px;line-height:1.6">
+    <div>• <strong>Recurring Revenue</strong> = average of last 3 complete months.</div>
+    <div>• <strong>Gross Margin</strong> is estimated using Settings → Route Settings (employee rate, super, travel cost).</div>
+    <div>• <strong>Churn (30d)</strong> = % of clients active in the prior 30-day window who haven't walked since.</div>
+    <div>• <strong>Cohort retention</strong> = % of clients from a starting month who walked at least once at or after the milestone month.</div>
+    <div>• <strong>LTV:CAC</strong> uses lifetime revenue per converted enquiry. Set ad spend in Settings → Lead Acquisition Spend.</div>
+    <div>• <strong>Forecast</strong> projects last 3-month MoM growth forward 6 months (clamped −20% to +30%).</div>
+  </div>`;
+
+  panel.innerHTML=kpiHTML+trendHTML+flagsHTML+concHTML+cohortHTML+econHTML+noteHTML;
+
+  // Render chart
+  if(trendData.length){
+    buildChart('inv-trend-chart','inv-trend-labels',trendData,120);
+  }
 }
 
 // ── SETTINGS ──
