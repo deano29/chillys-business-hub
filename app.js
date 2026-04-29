@@ -2082,6 +2082,34 @@ async function renderRetention(){
     </div>
   </div>`;
 
+  // ── PER-CLIENT FREQUENCY TREND (last 4 weeks vs prior 4 weeks) ──
+  const trendMap={}; // cleanName -> {recent, prior, deltaPct}
+  const cutoffRecent=new Date(now.getTime()-28*86400000);
+  const cutoffPrior=new Date(now.getTime()-56*86400000);
+  allWalks.forEach(w=>{
+    if(w.status&&w.status!=='completed') return;
+    const name=cleanClientName(w.client||'').toLowerCase();
+    if(!name) return;
+    const wd=new Date((w.date||'')+'T00:00:00');
+    if(isNaN(wd)) return;
+    if(!trendMap[name]) trendMap[name]={recent:0,prior:0};
+    if(wd>=cutoffRecent&&wd<=now) trendMap[name].recent++;
+    else if(wd>=cutoffPrior&&wd<cutoffRecent) trendMap[name].prior++;
+  });
+  Object.values(trendMap).forEach(t=>{
+    if(t.prior>0) t.deltaPct=((t.recent-t.prior)/t.prior)*100;
+    else if(t.recent>0) t.deltaPct=100; // brand new in recent window
+    else t.deltaPct=null;
+  });
+  function freqTrendChip(clientName){
+    const t=trendMap[cleanClientName(clientName||'').toLowerCase()];
+    if(!t||t.deltaPct==null||(t.recent===0&&t.prior===0)) return '';
+    if(t.recent===0&&t.prior>0) return `<span title="${t.prior} walks in prior 4 weeks, none in last 4 weeks" style="color:var(--danger);font-weight:700;margin-left:4px">↓↓</span>`;
+    if(t.deltaPct>=20) return `<span title="${t.recent} walks last 4 weeks vs ${t.prior} prior" style="color:var(--success);font-weight:700;margin-left:4px">↑</span>`;
+    if(t.deltaPct<=-20) return `<span title="${t.recent} walks last 4 weeks vs ${t.prior} prior" style="color:var(--danger);font-weight:700;margin-left:4px">↓</span>`;
+    return `<span title="${t.recent} walks last 4 weeks vs ${t.prior} prior" style="color:var(--ink-xlight);font-weight:600;margin-left:4px">→</span>`;
+  }
+
   // ── CLIENT TABLE (sorted by risk) ──
   // Sort: dropped off first, then at-risk, then active by daysAhead ascending
   const sortedClients=[...ttpClients].sort((a,b)=>{
@@ -2123,7 +2151,7 @@ async function renderRetention(){
       <td>${c.lastWalk?fmtDate(c.lastWalk):'—'}</td>
       <td style="color:${c.status==='no-upcoming'?'var(--danger)':'var(--ink-light)'}">${daysSinceLastWalk}</td>
       <td style="font-weight:700;color:${c.daysAhead>=14?'var(--success)':c.daysAhead>=7?'var(--info)':c.daysAhead>0?'var(--warning)':'var(--danger)'}">${c.daysAhead>0?c.daysAhead+'d':'—'}</td>
-      <td>${c.walksPerWeek>0?c.walksPerWeek.toFixed(1)+'/wk':'—'}</td>
+      <td>${c.walksPerWeek>0?c.walksPerWeek.toFixed(1)+'/wk':'—'}${freqTrendChip(c.name)}</td>
       <td>${c.totalWalks||0}</td>
       <td>${tenure}</td>
       <td style="font-size:11px;color:var(--ink-light)">${esc(c.services||'—')}</td>
