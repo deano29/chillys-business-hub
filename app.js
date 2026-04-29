@@ -363,7 +363,7 @@ function getObNextAction(e){
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
-  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',reviews:'Review Collection',
+  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',reviews:'Review Collection',weekly:'Weekly Review',
 };
 
 function navigate(v){
@@ -395,6 +395,7 @@ function navigate(v){
   if(v==='compliance')renderCompliance();
   if(v==='playbooks')renderPlaybooks();
   if(v==='reviews')renderReviews();
+  if(v==='weekly')renderWeekly();
   updateBadges();
 }
 
@@ -2754,6 +2755,249 @@ async function renderInvestorView(){
   }
 }
 
+// ── WEEKLY REVIEW ──
+let weeklyWindow='last';
+let _weeklySnapshot=null;
+function setWeeklyWindow(w){weeklyWindow=w;renderWeekly();}
+
+function weeklyDateRange(which){
+  const now=new Date();
+  const day=now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // Calculate last Monday (start of "this week")
+  const offsetToMon=day===0?-6:1-day;
+  const thisMon=new Date(now);thisMon.setHours(0,0,0,0);thisMon.setDate(now.getDate()+offsetToMon);
+  const thisSun=new Date(thisMon);thisSun.setDate(thisMon.getDate()+6);thisSun.setHours(23,59,59,999);
+  const lastMon=new Date(thisMon);lastMon.setDate(thisMon.getDate()-7);
+  const lastSun=new Date(thisSun);lastSun.setDate(thisSun.getDate()-7);
+  if(which==='current') return {start:thisMon,end:now,label:'This week so far',endLabel:thisSun};
+  return {start:lastMon,end:lastSun,label:'Last week (Mon–Sun)',endLabel:lastSun};
+}
+
+async function renderWeekly(){
+  const el=document.getElementById('weekly-content');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Building weekly review…</div>';
+  const sel=document.getElementById('weekly-window');
+  if(sel) sel.value=weeklyWindow;
+
+  const [walks,summary]=await Promise.all([
+    fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    getSummary(),
+  ]);
+  const range=weeklyDateRange(weeklyWindow);
+  const priorRange={start:new Date(range.start.getTime()-7*86400000),end:new Date(range.start.getTime()-1)};
+  const fmtDateLocal=d=>d?d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+  const dateStr=s=>s.toISOString().slice(0,10);
+
+  // Walks this period
+  const inRange=(w,r)=>{const d=new Date((w.date||'')+'T00:00:00');return !isNaN(d)&&d>=r.start&&d<=r.end;};
+  const wkWalks=walks.filter(w=>inRange(w,range)&&(w.status?w.status==='completed':true));
+  const priorWalks=walks.filter(w=>inRange(w,priorRange)&&(w.status?w.status==='completed':true));
+  const upcoming=walks.filter(w=>{
+    const d=new Date((w.date||'')+'T00:00:00');
+    const next7=new Date(Date.now()+7*86400000);
+    return !isNaN(d)&&d>=new Date()&&d<=next7;
+  });
+
+  const wkRevenue=wkWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const priorRevenue=priorWalks.reduce((s,w)=>s+walkRevenue(w),0);
+  const revDelta=priorRevenue>0?((wkRevenue-priorRevenue)/priorRevenue)*100:null;
+
+  // Enquiries this period
+  const enqInWindow=enquiries.filter(e=>{
+    if(!e.dateAdded) return false;
+    const d=new Date(e.dateAdded+'T00:00:00');
+    return !isNaN(d)&&d>=range.start&&d<=range.end;
+  });
+  const newEnq=enqInWindow.length;
+  const convertedThisWeek=enqInWindow.filter(e=>e.stage==='closed-won').length;
+  const enqBySource={};
+  enqInWindow.forEach(e=>{const s=normaliseSource(e.source);enqBySource[s]=(enqBySource[s]||0)+1;});
+
+  // Follow-ups due this coming week
+  const next7=new Date(Date.now()+7*86400000);
+  const todayStr=new Date().toISOString().slice(0,10);
+  const followups=enquiries.filter(e=>{
+    if(!e.followup) return false;
+    return e.followup<=dateStr(next7);
+  }).sort((a,b)=>(a.followup||'').localeCompare(b.followup||'')).slice(0,8);
+
+  // Compliance items expiring next 30 days
+  const compItems=loadCompliance();
+  const expiringSoon=compItems.filter(it=>{
+    if(!it.expiry) return false;
+    const e=new Date(it.expiry+'T00:00:00');
+    const days=Math.floor((e-new Date())/86400000);
+    return days<=30;
+  }).sort((a,b)=>a.expiry.localeCompare(b.expiry));
+
+  // Churn risk: clients with frequency drop or gone silent
+  const clientMap=inv_buildClientMap(walks);
+  const cutoffRecent=new Date(Date.now()-28*86400000);
+  const cutoffPrior=new Date(Date.now()-56*86400000);
+  const trendByClient={};
+  walks.forEach(w=>{
+    if(w.status&&w.status!=='completed') return;
+    const name=cleanClientName(w.client||'');
+    if(!name) return;
+    const wd=new Date((w.date||'')+'T00:00:00');
+    if(isNaN(wd)) return;
+    if(!trendByClient[name]) trendByClient[name]={recent:0,prior:0};
+    if(wd>=cutoffRecent) trendByClient[name].recent++;
+    else if(wd>=cutoffPrior&&wd<cutoffRecent) trendByClient[name].prior++;
+  });
+  const churnFlags=Object.entries(trendByClient).filter(([n,t])=>{
+    if(t.prior>=4&&t.recent===0) return true; // went silent
+    if(t.prior>=4&&t.recent<t.prior*0.5) return true; // halved
+    return false;
+  }).map(([name,t])=>({name,prior:t.prior,recent:t.recent})).slice(0,8);
+
+  // Reviews completed this period
+  const reviews=loadReviews();
+  const reviewsThisWeek=reviews.filter(r=>{
+    if(!r.completed||!r.completedAt) return false;
+    const d=new Date(r.completedAt);
+    return d>=range.start&&d<=range.end;
+  });
+  const reviewsAskedThisWeek=reviews.filter(r=>{
+    if(!r.requestedAt) return false;
+    const d=new Date(r.requestedAt);
+    return d>=range.start&&d<=range.end;
+  });
+
+  // Health flags
+  const flags=[];
+  if(revDelta!=null&&revDelta>=15) flags.push(`✅ Revenue up ${revDelta.toFixed(0)}% vs prior week`);
+  if(revDelta!=null&&revDelta<=-15) flags.push(`⚠️ Revenue down ${Math.abs(revDelta).toFixed(0)}% vs prior week — investigate`);
+  if(churnFlags.length>=3) flags.push(`⚠️ ${churnFlags.length} clients showing reduced frequency — see churn risk list`);
+  if(expiringSoon.some(it=>{const d=new Date(it.expiry+'T00:00:00');return d<new Date();})) flags.push(`❌ Compliance items expired — action required`);
+  if(newEnq===0) flags.push(`⚠️ No new enquiries this week`);
+  if(newEnq>=5) flags.push(`✅ ${newEnq} new enquiries this week`);
+  if(reviewsThisWeek.length>0) flags.push(`✅ ${reviewsThisWeek.length} review${reviewsThisWeek.length>1?'s':''} completed this week`);
+  if(!flags.length) flags.push('Nothing urgent — keep doing what you\'re doing.');
+
+  const fmtMoney=n=>'$'+Math.round(n||0).toLocaleString();
+  const deltaChip=revDelta==null?'':`<span style="color:${revDelta>=0?'var(--success)':'var(--danger)'};font-weight:600">${revDelta>=0?'↑':'↓'} ${Math.abs(revDelta).toFixed(0)}% vs prior week</span>`;
+
+  const html=`
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-body" style="padding:18px 22px">
+        <div style="font-size:11px;color:var(--ink-xlight);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${esc(range.label)}</div>
+        <div style="font-size:18px;font-weight:700">${fmtDateLocal(range.start)} → ${fmtDateLocal(range.end)}</div>
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      <div class="kpi-card"><div class="kpi-label">Revenue</div><div class="kpi-value">${fmtMoney(wkRevenue)}</div><div class="kpi-change">${deltaChip||'No prior week data'}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Walks Completed</div><div class="kpi-value">${wkWalks.length}</div><div class="kpi-change">${priorWalks.length} prior week</div></div>
+      <div class="kpi-card"><div class="kpi-label">New Enquiries</div><div class="kpi-value">${newEnq}</div><div class="kpi-change">${convertedThisWeek} converted</div></div>
+      <div class="kpi-card"><div class="kpi-label">Walks Booked Ahead</div><div class="kpi-value">${upcoming.length}</div><div class="kpi-change">Next 7 days</div></div>
+    </div>
+
+    <div class="reports-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <div class="card">
+        <div class="card-header"><h3>📥 Enquiries by Source</h3><span style="font-size:11px;color:var(--ink-xlight)">${newEnq} this week</span></div>
+        <div class="card-body">${
+          Object.keys(enqBySource).length
+            ? Object.entries(enqBySource).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px"><span>${esc(s)}</span><strong>${n}</strong></div>`).join('')
+            : '<div style="color:var(--ink-xlight);font-size:13px;text-align:center;padding:20px">No new enquiries this week</div>'
+        }</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>🌟 Reviews</h3><span style="font-size:11px;color:var(--ink-xlight)">${reviewsThisWeek.length} completed · ${reviewsAskedThisWeek.length} asked</span></div>
+        <div class="card-body">${
+          reviewsThisWeek.length
+            ? reviewsThisWeek.map(r=>`<div style="padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px"><strong>${esc(r.name)}</strong> · ${new Date(r.completedAt).toLocaleDateString('en-AU')}</div>`).join('')
+            : '<div style="color:var(--ink-xlight);font-size:13px;text-align:center;padding:20px">No reviews completed this week</div>'
+        }</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>🚩 Health Flags</h3></div>
+      <div class="card-body"><ul style="margin:0;padding-left:20px;line-height:1.9;font-size:13px">${flags.map(f=>`<li>${f}</li>`).join('')}</ul></div>
+    </div>
+
+    <div class="reports-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <div class="card">
+        <div class="card-header"><h3>📅 Follow-ups This Week</h3><span style="font-size:11px;color:var(--ink-xlight)">${followups.length} due / overdue</span></div>
+        <div class="card-body">${
+          followups.length
+            ? followups.map(e=>{
+                const due=new Date(e.followup+'T00:00:00');
+                const overdue=e.followup<todayStr;
+                const color=overdue?'var(--danger)':e.followup===todayStr?'var(--warning)':'var(--ink-light)';
+                return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px"><span><strong>${esc(e.name)}</strong>${e.suburb?' · '+esc(e.suburb):''}</span><span style="color:${color};font-weight:600">${overdue?'⚠️ Overdue ':''}${due.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}</span></div>`;
+              }).join('')
+            : '<div style="color:var(--ink-xlight);font-size:13px;text-align:center;padding:20px">No follow-ups due in the next 7 days</div>'
+        }</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>⚠️ Churn Risk</h3><span style="font-size:11px;color:var(--ink-xlight)">Reduced frequency last 4 weeks</span></div>
+        <div class="card-body">${
+          churnFlags.length
+            ? churnFlags.map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px"><span><strong>${esc(c.name)}</strong></span><span style="color:var(--danger);font-weight:600">${c.recent} walks vs ${c.prior} prior</span></div>`).join('')
+            : '<div style="color:var(--ink-xlight);font-size:13px;text-align:center;padding:20px">No clients flagged 🎉</div>'
+        }</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>🛡️ Compliance — Expiring Next 30 Days</h3><span style="font-size:11px;color:var(--ink-xlight)">${expiringSoon.length} item${expiringSoon.length===1?'':'s'}</span></div>
+      <div class="card-body">${
+        expiringSoon.length
+          ? expiringSoon.map(it=>{
+              const days=Math.floor((new Date(it.expiry+'T00:00:00')-new Date())/86400000);
+              const color=days<0?'var(--danger)':days<=14?'var(--warning)':'var(--ink-light)';
+              return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px"><span><strong>${esc(it.name)}</strong>${it.holder?' · '+esc(it.holder):''}</span><span style="color:${color};font-weight:600">${days<0?'Expired':days+' days'}</span></div>`;
+            }).join('')
+          : '<div style="color:var(--ink-xlight);font-size:13px;text-align:center;padding:20px">Nothing expiring 🎉</div>'
+      }</div>
+    </div>
+
+    <div style="font-size:11px;color:var(--ink-xlight);margin-top:6px;line-height:1.6">
+      Generated ${new Date().toLocaleString('en-AU')} · Configure Make.com webhook in Settings to email this digest weekly.
+    </div>
+  `;
+  el.innerHTML=html;
+
+  // Save snapshot for webhook send
+  _weeklySnapshot={
+    rangeLabel:range.label,
+    rangeStart:range.start.toISOString(),
+    rangeEnd:range.end.toISOString(),
+    revenue:wkRevenue,
+    revenuePrior:priorRevenue,
+    revenueDeltaPct:revDelta,
+    walks:wkWalks.length,
+    walksPrior:priorWalks.length,
+    upcomingWalks:upcoming.length,
+    newEnquiries:newEnq,
+    convertedThisWeek,
+    enquiriesBySource:enqBySource,
+    followupsCount:followups.length,
+    followups:followups.map(f=>({name:f.name,suburb:f.suburb,due:f.followup})),
+    churnRiskCount:churnFlags.length,
+    churnRisk:churnFlags,
+    complianceExpiringCount:expiringSoon.length,
+    complianceExpiring:expiringSoon.map(it=>({name:it.name,holder:it.holder,expiry:it.expiry})),
+    reviewsCompleted:reviewsThisWeek.length,
+    reviewsAsked:reviewsAskedThisWeek.length,
+    flags,
+    generatedAt:new Date().toISOString(),
+  };
+}
+
+function sendWeeklyReview(){
+  if(!_weeklySnapshot){renderWeekly().then(sendWeeklyReview);return;}
+  const url=getWebhookUrl('wh-weekly-review');
+  if(!url){
+    showToast('Set the Weekly Review webhook in Settings first','⚠️');
+    return;
+  }
+  fireWebhook('weekly-review',_weeklySnapshot);
+  showToast('Weekly review sent to webhook','📤');
+}
+
 // ── REVIEWS ──
 let reviewsFilter='eligible';
 const REVIEW_MIN_WALKS=10;
@@ -3533,7 +3777,7 @@ function exportMetricsSnapshot(walks,summary,ttpClients){
 const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
-  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks','wh-review-request'],
+  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks','wh-review-request','wh-weekly-review'],
   base:['s-base-lat','s-base-lng'],
   routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo'],
   adSpend:['s-spend-meta','s-spend-google']

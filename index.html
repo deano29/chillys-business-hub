@@ -61,6 +61,7 @@
       <div class="nav-item" data-view="compliance"><span class="ni">🛡️</span><span class="nl">Compliance</span><span class="nav-badge" id="badge-compliance" style="display:none"></span></div>
       <div class="nav-item" data-view="playbooks"><span class="ni">📘</span><span class="nl">Playbooks</span></div>
       <div class="nav-item" data-view="reviews"><span class="ni">🌟</span><span class="nl">Reviews</span><span class="nav-badge" id="badge-reviews" style="display:none"></span></div>
+      <div class="nav-item" data-view="weekly"><span class="ni">📰</span><span class="nl">Weekly Review</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-item" data-view="settings"><span class="ni">⚙️</span><span class="nl">Settings</span></div>
@@ -361,6 +362,7 @@
             <div class="form-group"><label>Fetch New Leads (FB/Instagram)</label><input id="wh-fetch-leads" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Fetch Today's Walks (Google Calendar)</label><input id="wh-fetch-walks" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Send Review Request</label><input id="wh-review-request" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Weekly Business Review</label><input id="wh-weekly-review" placeholder="https://hook.eu1.make.com/..."></div>
           </div>
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
         </div>
@@ -533,6 +535,24 @@
           <div id="coverage-map" style="height:100%;width:100%"></div>
         </div>
       </div>
+    </div>
+
+    <!-- ── WEEKLY REVIEW ── -->
+    <div class="view" id="view-weekly">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="weekly-window" onchange="setWeeklyWindow(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer">
+            <option value="last">Last full week (Mon–Sun)</option>
+            <option value="current">This week so far</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="renderWeekly()">🔄 Refresh</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="window.print()">📥 Save as PDF</button>
+          <button class="btn btn-primary btn-sm" onclick="sendWeeklyReview()">📤 Send via Webhook</button>
+        </div>
+      </div>
+      <div id="weekly-content"></div>
     </div>
 
     <!-- ── REVIEWS ── -->
