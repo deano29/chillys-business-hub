@@ -870,6 +870,7 @@ const ACTIVE_STAGES=STAGES.filter(s=>!CLOSED_STAGES.includes(s.id));
 // ── DISTANCE-FROM-HUB FILTER & SORT ──
 let enqSortMode=load('cw_enq_sort','newest'); // 'newest' | 'distance'
 let enqDistanceFilter='all'; // 'all' | '5' | '10' | '20' | '20+'
+let enqSourceFilter='all'; // 'all' | exact source string
 const SUBURB_GEO_TTL_MS=30*24*60*60*1000;
 const _suburbGeoMem=new Map(); // lower-case key → {lat,lng} or null
 const _suburbGeoQueueSet=new Set();
@@ -1006,6 +1007,9 @@ function getFilteredEnquiries(){
   if(search){
     list=list.filter(e=>(e.name||'').toLowerCase().includes(search)||(e.suburb||'').toLowerCase().includes(search)||(e.source||'').toLowerCase().includes(search)||(e.dogName||'').toLowerCase().includes(search)||(e.email||'').toLowerCase().includes(search)||(e.phone||'').toLowerCase().includes(search));
   }
+  if(enqSourceFilter!=='all'){
+    list=list.filter(e=>(e.source||'Unknown')===enqSourceFilter);
+  }
   // Annotate with distance from hub (used by both the chip on cards and distance sort/filter)
   list=list.map(e=>({...e,_distM:getEnqDistance(e)}));
   if(enqSortMode==='distance'){
@@ -1046,6 +1050,16 @@ function renderPipeline(){
   document.querySelectorAll('#enq-distance-filters .filter-pill').forEach(p=>{
     p.classList.toggle('active', p.dataset.dist===enqDistanceFilter);
   });
+  // Populate source filter dropdown with live counts
+  const sourceSel=document.getElementById('enq-source-filter');
+  if(sourceSel){
+    const counts={};
+    enquiries.forEach(e=>{const s=e.source||'Unknown';counts[s]=(counts[s]||0)+1;});
+    const sortedSources=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    if(enqSourceFilter!=='all' && !counts[enqSourceFilter]) enqSourceFilter='all';
+    sourceSel.innerHTML=`<option value="all">All sources (${enquiries.length})</option>`+
+      sortedSources.map(([s,n])=>`<option value="${esc(s)}"${s===enqSourceFilter?' selected':''}>${esc(s)} (${n})</option>`).join('');
+  }
   // Build filter pills
   const filtersEl=document.getElementById('pipeline-filters');
   if(filtersEl){
@@ -1134,6 +1148,7 @@ function setEnqSort(mode){
   renderPipeline();
 }
 function setEnqDistanceFilter(f){enqDistanceFilter=f;renderPipeline();}
+function setEnqSource(s){enqSourceFilter=s;renderPipeline();}
 function expandColumn(btn,stageId){
   const filtered=getFilteredEnquiries();
   const cards=filtered.filter(e=>e.stage===stageId);

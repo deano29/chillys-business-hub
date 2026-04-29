@@ -125,6 +125,9 @@
         <div class="pipeline-filters" id="pipeline-filters"></div>
         <div style="display:flex;gap:8px;align-items:center">
           <div class="enq-search-wrap"><input type="text" id="enq-search" placeholder="Search leads..." oninput="renderPipeline()"></div>
+          <select id="enq-source-filter" onchange="setEnqSource(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer" title="Filter by lead source">
+            <option value="all">All sources</option>
+          </select>
           <select id="enq-sort" onchange="setEnqSort(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer">
             <option value="newest">📅 Newest first</option>
             <option value="distance">🧭 Nearest hub</option>
