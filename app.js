@@ -1813,7 +1813,10 @@ async function getSummary(){
   _summaryCache=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null);
   return _summaryCache;
 }
-const PAID_SOURCES={'Meta Ads':'s-spend-meta','Google':'s-spend-google','Instagram':'s-spend-instagram','Facebook':'s-spend-facebook'};
+const PAID_SOURCES={'Meta Ads':'s-spend-meta','Google':'s-spend-google'};
+// Meta runs Facebook + Instagram ads under one budget — collapse all three into "Meta Ads"
+const META_SOURCES=new Set(['Meta Ads','Instagram','Facebook']);
+function normaliseSource(s){return META_SOURCES.has(s)?'Meta Ads':(s||'Unknown');}
 function inSourceWindow(dateStr,monthsBack){
   if(monthsBack==='all') return true;
   if(!dateStr) return false;
@@ -1843,10 +1846,10 @@ async function renderBySource(){
   const inWin=e=>inSourceWindow(e.dateAdded,bySourceWindow);
   const winEnq=enquiries.filter(inWin);
 
-  // Aggregate by source
+  // Aggregate by source (Facebook + Instagram fold into Meta Ads since they share one budget)
   const map={};
   winEnq.forEach(e=>{
-    const s=e.source||'Unknown';
+    const s=normaliseSource(e.source);
     if(!map[s]) map[s]={total:0,converted:0,revenue:0};
     map[s].total++;
     if(e.stage==='closed-won'){
@@ -2115,7 +2118,7 @@ const SETTINGS_FIELDS={
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
   base:['s-base-lat','s-base-lng'],
   routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo'],
-  adSpend:['s-spend-meta','s-spend-google','s-spend-instagram','s-spend-facebook']
+  adSpend:['s-spend-meta','s-spend-google']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
