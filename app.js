@@ -363,7 +363,7 @@ function getObNextAction(e){
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
-  reports:'Reports & KPIs',settings:'Settings',
+  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',
 };
 
 function navigate(v){
@@ -392,6 +392,7 @@ function navigate(v){
   if(v==='templates')renderTemplates();
   if(v==='reports')renderReports();
   if(v==='settings')renderSettings();
+  if(v==='compliance')renderCompliance();
   updateBadges();
 }
 
@@ -403,6 +404,22 @@ function updateBadges(){
   const n=enquiries.filter(e=>e.stage==='new').length;
   const be=document.getElementById('badge-enq');
   be.textContent=n;be.style.display=n>0?'inline-block':'none';
+  // Compliance badge — count of expiring or expired items
+  const bc=document.getElementById('badge-compliance');
+  if(bc){
+    const items=load('cw_compliance',[])||[];
+    let warn=0;
+    items.forEach(it=>{
+      if(!it.expiry) return;
+      const today=new Date();today.setHours(0,0,0,0);
+      const exp=new Date(it.expiry+'T00:00:00');
+      const days=Math.floor((exp-today)/86400000);
+      if(days<=60) warn++;
+    });
+    bc.textContent=warn;
+    bc.style.display=warn>0?'inline-block':'none';
+    bc.style.background=items.some(it=>{if(!it.expiry)return false;const e=new Date(it.expiry+'T00:00:00');return e<new Date();})?'var(--danger)':'var(--warning)';
+  }
 }
 
 // ── CHART ──
@@ -2534,6 +2551,251 @@ async function renderInvestorView(){
   // Render chart
   if(trendData.length){
     buildChart('inv-trend-chart','inv-trend-labels',trendData,120);
+  }
+}
+
+// ── COMPLIANCE ──
+let complianceFilter='all';
+let editingComplianceId=null;
+const COMPLIANCE_TYPE_LABELS={insurance:'Insurance',cert:'Walker Certification',rego:'Vehicle Rego',wwcc:'Working with Children',licence:'Licence',other:'Other'};
+
+function loadCompliance(){return load('cw_compliance',[])||[];}
+function saveComplianceList(items){save('cw_compliance',items);}
+
+function complianceStatus(item){
+  if(!item.expiry) return {key:'unknown',label:'No expiry',color:'var(--ink-xlight)',daysLeft:null};
+  const today=new Date();today.setHours(0,0,0,0);
+  const exp=new Date(item.expiry+'T00:00:00');
+  const daysLeft=Math.floor((exp-today)/86400000);
+  if(daysLeft<0) return {key:'expired',label:'Expired',color:'var(--danger)',daysLeft};
+  if(daysLeft<=60) return {key:'expiring',label:`${daysLeft}d left`,color:'var(--warning)',daysLeft};
+  return {key:'active',label:`${daysLeft}d left`,color:'var(--success)',daysLeft};
+}
+
+function setComplianceFilter(f){complianceFilter=f;renderCompliance();}
+
+function renderCompliance(){
+  const items=loadCompliance();
+  // KPIs
+  const counts={total:items.length,active:0,expiring:0,expired:0};
+  items.forEach(it=>{
+    const s=complianceStatus(it);
+    if(s.key==='active') counts.active++;
+    else if(s.key==='expiring') counts.expiring++;
+    else if(s.key==='expired') counts.expired++;
+  });
+  const kpiEl=document.getElementById('compliance-kpis');
+  if(kpiEl){
+    kpiEl.innerHTML=`
+      <div class="kpi-card"><div class="kpi-label">Total Items</div><div class="kpi-value">${counts.total}</div><div class="kpi-change">Tracked</div></div>
+      <div class="kpi-card"><div class="kpi-label">Active</div><div class="kpi-value" style="color:var(--success)">${counts.active}</div><div class="kpi-change">More than 60 days remaining</div></div>
+      <div class="kpi-card"><div class="kpi-label">Expiring &lt;60d</div><div class="kpi-value" style="color:var(--warning)">${counts.expiring}</div><div class="kpi-change">Renew soon</div></div>
+      <div class="kpi-card"><div class="kpi-label">Expired</div><div class="kpi-value" style="color:var(--danger)">${counts.expired}</div><div class="kpi-change">Action required</div></div>
+    `;
+  }
+  // Filter pills active state
+  document.querySelectorAll('#compliance-filters .filter-pill').forEach(p=>p.classList.toggle('active',p.dataset.cf===complianceFilter));
+
+  // Filtered list
+  let list=[...items];
+  if(complianceFilter!=='all'){
+    list=list.filter(it=>complianceStatus(it).key===complianceFilter);
+  }
+  // Sort: expired first, then by expiry asc
+  list.sort((a,b)=>{
+    const sa=complianceStatus(a),sb=complianceStatus(b);
+    const order={expired:0,expiring:1,active:2,unknown:3};
+    if(order[sa.key]!==order[sb.key]) return order[sa.key]-order[sb.key];
+    return (a.expiry||'').localeCompare(b.expiry||'');
+  });
+
+  const wrap=document.getElementById('compliance-table-wrap');
+  if(!wrap) return;
+  if(!list.length){
+    wrap.innerHTML=`<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">${items.length?'No items match this filter.':'No compliance items yet. Click "Add Item" to track insurance, certifications, registrations, and other expiring documents.'}</div></div>`;
+    return;
+  }
+  const rows=list.map(it=>{
+    const s=complianceStatus(it);
+    const typeLabel=COMPLIANCE_TYPE_LABELS[it.type]||it.type;
+    const issued=it.issued?fmtDate(it.issued):'—';
+    const expiry=it.expiry?fmtDate(it.expiry):'—';
+    const docLink=it.url?`<a href="${esc(it.url)}" target="_blank" style="color:var(--info);font-size:12px">📎 View</a>`:'<span style="color:var(--ink-xlight);font-size:12px">—</span>';
+    return `<tr style="cursor:pointer" onclick="openComplianceItem('${it.id}')">
+      <td><strong>${esc(it.name)}</strong>${it.notes?`<div style="font-size:11px;color:var(--ink-light);margin-top:2px">${esc(it.notes.substring(0,80))}${it.notes.length>80?'…':''}</div>`:''}</td>
+      <td>${esc(typeLabel)}</td>
+      <td>${esc(it.holder||'—')}</td>
+      <td style="font-size:12px;color:var(--ink-light)">${issued}</td>
+      <td style="font-weight:600">${expiry}</td>
+      <td><span style="font-weight:700;color:${s.color}">${s.label}</span></td>
+      <td>${docLink}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML=`<div class="card"><div class="card-body" style="padding:0;overflow-x:auto">
+    <table class="report-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Holder</th><th>Issued</th><th>Expires</th><th>Status</th><th>Doc</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div></div>`;
+}
+
+function openComplianceItem(id){
+  editingComplianceId=id;
+  const items=loadCompliance();
+  const it=id?items.find(x=>x.id===id):null;
+  document.getElementById('modal-compliance-title').textContent=it?'Edit Compliance Item':'New Compliance Item';
+  document.getElementById('cf-name').value=it?.name||'';
+  document.getElementById('cf-type').value=it?.type||'insurance';
+  document.getElementById('cf-holder').value=it?.holder||'';
+  document.getElementById('cf-issued').value=it?.issued||'';
+  document.getElementById('cf-expiry').value=it?.expiry||'';
+  document.getElementById('cf-url').value=it?.url||'';
+  document.getElementById('cf-notes').value=it?.notes||'';
+  document.getElementById('cf-delete-btn').style.display=it?'inline-flex':'none';
+  openModal('modal-compliance');
+}
+
+function saveComplianceItem(){
+  const name=document.getElementById('cf-name').value.trim();
+  const expiry=document.getElementById('cf-expiry').value;
+  if(!name){document.getElementById('cf-name').style.borderColor='var(--danger)';return;}
+  if(!expiry){document.getElementById('cf-expiry').style.borderColor='var(--danger)';return;}
+  document.getElementById('cf-name').style.borderColor='';
+  document.getElementById('cf-expiry').style.borderColor='';
+  const data={
+    id:editingComplianceId||('c'+Date.now()),
+    name,
+    type:document.getElementById('cf-type').value,
+    holder:document.getElementById('cf-holder').value.trim(),
+    issued:document.getElementById('cf-issued').value||null,
+    expiry,
+    url:document.getElementById('cf-url').value.trim(),
+    notes:document.getElementById('cf-notes').value.trim(),
+    updatedAt:new Date().toISOString(),
+  };
+  let items=loadCompliance();
+  if(editingComplianceId){
+    items=items.map(x=>x.id===editingComplianceId?data:x);
+    showToast('Compliance item updated','✅');
+  } else {
+    items.push(data);
+    showToast('Compliance item added','✅');
+    logEvent('Compliance item added',`${name} expires ${fmtDate(expiry)}`,'info','🛡️');
+  }
+  saveComplianceList(items);
+  closeModal('modal-compliance');
+  renderCompliance();
+  updateBadges();
+}
+
+function deleteComplianceItem(){
+  if(!editingComplianceId||!confirm('Delete this compliance item?')) return;
+  const items=loadCompliance().filter(x=>x.id!==editingComplianceId);
+  saveComplianceList(items);
+  closeModal('modal-compliance');
+  renderCompliance();
+  updateBadges();
+  showToast('Compliance item deleted','🗑️');
+}
+
+// ── DATA ROOM EXPORT ──
+async function exportDataRoom(){
+  showToast('Building data room bundle…','📦');
+  try {
+    const [walks,summary,ttpClients]=await Promise.all([
+      fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]),
+      getSummary(),
+      fetch('/api/walks/clients').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    ]);
+    // Sanitised settings — strip API keys / webhook URLs
+    const allSettings=load('cw_settings',{});
+    const sanitisedSettings={};
+    Object.entries(allSettings).forEach(([k,v])=>{
+      if(k.startsWith('s-api-')||k.startsWith('wh-')) return; // strip secrets
+      sanitisedSettings[k]=v;
+    });
+    const bundle={
+      manifest:{
+        exportedAt:new Date().toISOString(),
+        appVersion:'Chillys Business Hub',
+        sections:[
+          {key:'business',description:'Business profile (name, base location, walker config)'},
+          {key:'enquiries',description:'All lead/enquiry records (Notion-backed)'},
+          {key:'clients',description:'Client roster from Time to Pet (status, tenure, last walk)'},
+          {key:'walks',description:'Historical walks (date, walker, service, revenue)'},
+          {key:'revenue',description:'Monthly revenue totals + per-client lifetime revenue'},
+          {key:'compliance',description:'Compliance register (insurance, certs, regos, expiries)'},
+          {key:'metrics',description:'Snapshot of headline business metrics at export time'},
+          {key:'settings',description:'App settings excluding API keys and webhook URLs'},
+        ],
+        notes:'API keys and webhook URLs deliberately excluded.',
+      },
+      business:{
+        name:getSetting('s-biz-name',''),
+        owner:getSetting('s-your-name',''),
+        email:getSetting('s-email',''),
+        phone:getSetting('s-phone',''),
+        website:getSetting('s-website',''),
+        baseLocation:{lat:Number(getSetting('s-base-lat',-37.8990))||null,lng:Number(getSetting('s-base-lng',145.0448))||null},
+      },
+      enquiries:enquiries.map(e=>({...e})),
+      clients:ttpClients,
+      walks,
+      revenue:{
+        monthly:summary?.revenueMonthly||[],
+        byClient:summary?.revenueByClient||{},
+        byService:summary?.revenueByService||[],
+        clientTypes:summary?.clientTypes||{},
+      },
+      compliance:loadCompliance(),
+      metrics:exportMetricsSnapshot(walks,summary,ttpClients),
+      settings:sanitisedSettings,
+    };
+    const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
+    const ts=new Date().toISOString().slice(0,10);
+    const fname=`chillys-data-room-${ts}.json`;
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=fname;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    logEvent('Data room exported',`Bundle saved as ${fname}`,'success','📦');
+    showToast('Data room downloaded','📦');
+  } catch(err){
+    showToast('Export failed: '+err.message,'⚠️');
+    logEvent('Export failed',err.message,'error','⚠️');
+  }
+}
+
+function exportMetricsSnapshot(walks,summary,ttpClients){
+  // Build a quick snapshot using the same primitives as Investor View
+  try {
+    const clientMap=inv_buildClientMap(walks||[]);
+    const revenueByClient=summary?.revenueByClient||{};
+    Object.values(clientMap).forEach(c=>{
+      const r=revenueByClient[c.name]||revenueByClient[c.name+' ']||0;
+      if(r>0) c.revenue=r;
+    });
+    const sortedMonthly=[...(summary?.revenueMonthly||[])].filter(m=>m.revenue>0).sort((a,b)=>a.month.localeCompare(b.month));
+    const last3=sortedMonthly.slice(-3);
+    const recurringRev=last3.length?last3.reduce((s,m)=>s+m.revenue,0)/last3.length:null;
+    const conc=inv_concentration(Object.values(clientMap));
+    const churn30=inv_churnRate(clientMap,30);
+    const activeClients=(ttpClients||[]).filter(c=>c.status==='active').length;
+    const lastFullMonthD=new Date();lastFullMonthD.setDate(1);lastFullMonthD.setMonth(lastFullMonthD.getMonth()-1);
+    const lfmKey=`${lastFullMonthD.getFullYear()}-${String(lastFullMonthD.getMonth()+1).padStart(2,'0')}`;
+    const grossMargin=inv_grossMargin(walks||[],lfmKey);
+    return {
+      recurringRevenue3moAvg:recurringRev,
+      activeClients,
+      grossMarginEstPct:grossMargin,
+      churnRate30dPct:churn30,
+      top5ConcentrationPct:conc.top5Pct,
+      top1ClientName:conc.top1Name,
+      totalLifetimeRevenue:conc.total,
+      generatedAt:new Date().toISOString(),
+    };
+  } catch(e){
+    return {error:'Could not compute metrics: '+e.message};
   }
 }
 

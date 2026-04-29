@@ -58,6 +58,7 @@
       <div class="nav-item" data-view="parks"><span class="ni">🌳</span><span class="nl">Off-Leash Parks</span></div>
       <div class="nav-item" data-view="templates"><span class="ni">💬</span><span class="nl">Templates</span></div>
       <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
+      <div class="nav-item" data-view="compliance"><span class="ni">🛡️</span><span class="nl">Compliance</span><span class="nav-badge" id="badge-compliance" style="display:none"></span></div>
     </div>
     <div class="nav-section">
       <div class="nav-item" data-view="settings"><span class="ni">⚙️</span><span class="nl">Settings</span></div>
@@ -408,6 +409,12 @@
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('routes')">Save Route Settings</button></div>
         </div>
         <div class="settings-card">
+          <h3>📦 Data Room Export</h3>
+          <p>Download a complete JSON bundle of clients, walks, enquiries, revenue, compliance items, and key metrics. Useful for buyer due diligence, accountant review, or backups.</p>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="exportDataRoom()">📥 Download Data Room</button></div>
+          <div style="font-size:11px;color:var(--ink-xlight);margin-top:10px">Excludes API keys and webhook URLs. Includes a manifest describing each section.</div>
+        </div>
+        <div class="settings-card">
           <h3>📋 Automation Log</h3>
           <p>In-app events logged automatically — enquiry changes, stage moves, templates used.</p>
           <div class="auto-log" id="auto-log"></div>
@@ -521,6 +528,21 @@
           <div id="coverage-map" style="height:100%;width:100%"></div>
         </div>
       </div>
+    </div>
+
+    <!-- ── COMPLIANCE ── -->
+    <div class="view" id="view-compliance">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="compliance-filters">
+          <div class="filter-pill active" data-cf="all" onclick="setComplianceFilter('all')">All</div>
+          <div class="filter-pill" data-cf="active" onclick="setComplianceFilter('active')">✅ Active</div>
+          <div class="filter-pill" data-cf="expiring" onclick="setComplianceFilter('expiring')">⚠️ Expiring &lt;60d</div>
+          <div class="filter-pill" data-cf="expired" onclick="setComplianceFilter('expired')">❌ Expired</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openComplianceItem(null)">+ Add Item</button>
+      </div>
+      <div class="kpi-grid" id="compliance-kpis"></div>
+      <div id="compliance-table-wrap" style="margin-top:14px"></div>
     </div>
 
   </div><!-- /content -->
@@ -693,6 +715,43 @@
       <div style="flex:1"></div>
       <button class="btn btn-secondary" onclick="closeModal('modal-shift')">Cancel</button>
       <button class="btn btn-primary" onclick="saveShift()">💾 Save Route</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── COMPLIANCE ITEM MODAL ── -->
+<div class="modal-overlay" id="modal-compliance">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3 id="modal-compliance-title">Compliance Item</h3>
+      <button class="modal-close" onclick="closeModal('modal-compliance')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full"><label>Name *</label><input id="cf-name" placeholder="e.g. Public Liability Insurance"></div>
+        <div class="form-group"><label>Type *</label>
+          <select id="cf-type">
+            <option value="insurance">Insurance</option>
+            <option value="cert">Walker Certification</option>
+            <option value="rego">Vehicle Rego</option>
+            <option value="wwcc">Working with Children Check</option>
+            <option value="licence">Licence</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Holder</label><input id="cf-holder" placeholder="e.g. Business / Walker name"></div>
+        <div class="form-group"><label>Issued Date</label><input id="cf-issued" type="date"></div>
+        <div class="form-group"><label>Expiry Date *</label><input id="cf-expiry" type="date"></div>
+        <div class="form-group full"><label>Document URL (Drive / Dropbox link)</label><input id="cf-url" placeholder="https://..."></div>
+        <div class="form-group full"><label>Notes</label><textarea id="cf-notes" rows="3" placeholder="Policy number, contact details, etc."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot" style="display:flex;justify-content:space-between;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="cf-delete-btn" onclick="deleteComplianceItem()" style="display:none;color:var(--danger)">🗑️ Delete</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn btn-secondary" onclick="closeModal('modal-compliance')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveComplianceItem()">💾 Save</button>
+      </div>
     </div>
   </div>
 </div>
