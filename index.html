@@ -60,6 +60,7 @@
       <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
       <div class="nav-item" data-view="compliance"><span class="ni">🛡️</span><span class="nl">Compliance</span><span class="nav-badge" id="badge-compliance" style="display:none"></span></div>
       <div class="nav-item" data-view="playbooks"><span class="ni">📘</span><span class="nl">Playbooks</span></div>
+      <div class="nav-item" data-view="reviews"><span class="ni">🌟</span><span class="nl">Reviews</span><span class="nav-badge" id="badge-reviews" style="display:none"></span></div>
     </div>
     <div class="nav-section">
       <div class="nav-item" data-view="settings"><span class="ni">⚙️</span><span class="nl">Settings</span></div>
@@ -359,6 +360,7 @@
             <div class="form-group"><label>Xero Data Fetch</label><input id="wh-xero" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Fetch New Leads (FB/Instagram)</label><input id="wh-fetch-leads" placeholder="https://hook.eu1.make.com/..."></div>
             <div class="form-group"><label>Fetch Today's Walks (Google Calendar)</label><input id="wh-fetch-walks" placeholder="https://hook.eu1.make.com/..."></div>
+            <div class="form-group"><label>Send Review Request</label><input id="wh-review-request" placeholder="https://hook.eu1.make.com/..."></div>
           </div>
           <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveSettings('webhooks')">Save Webhooks</button></div>
         </div>
@@ -531,6 +533,21 @@
           <div id="coverage-map" style="height:100%;width:100%"></div>
         </div>
       </div>
+    </div>
+
+    <!-- ── REVIEWS ── -->
+    <div class="view" id="view-reviews">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="reviews-filters">
+          <div class="filter-pill active" data-rf="eligible" onclick="setReviewsFilter('eligible')">⭐ Eligible</div>
+          <div class="filter-pill" data-rf="asked" onclick="setReviewsFilter('asked')">📤 Asked</div>
+          <div class="filter-pill" data-rf="completed" onclick="setReviewsFilter('completed')">✅ Completed</div>
+          <div class="filter-pill" data-rf="all" onclick="setReviewsFilter('all')">All</div>
+        </div>
+        <div style="font-size:11px;color:var(--ink-xlight)">Eligible = ≥10 walks AND not asked in last 90 days</div>
+      </div>
+      <div class="kpi-grid" id="reviews-kpis"></div>
+      <div id="reviews-table-wrap" style="margin-top:14px"></div>
     </div>
 
     <!-- ── PLAYBOOKS / SOPs ── -->

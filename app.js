@@ -363,7 +363,7 @@ function getObNextAction(e){
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
-  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',
+  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',reviews:'Review Collection',
 };
 
 function navigate(v){
@@ -394,6 +394,7 @@ function navigate(v){
   if(v==='settings')renderSettings();
   if(v==='compliance')renderCompliance();
   if(v==='playbooks')renderPlaybooks();
+  if(v==='reviews')renderReviews();
   updateBadges();
 }
 
@@ -420,6 +421,16 @@ function updateBadges(){
     bc.textContent=warn;
     bc.style.display=warn>0?'inline-block':'none';
     bc.style.background=items.some(it=>{if(!it.expiry)return false;const e=new Date(it.expiry+'T00:00:00');return e<new Date();})?'var(--danger)':'var(--warning)';
+  }
+  // Reviews badge — count of pending "asked" reviews older than 14 days (need follow-up)
+  const br=document.getElementById('badge-reviews');
+  if(br){
+    const reviews=load('cw_reviews',[])||[];
+    const now=Date.now();
+    const stale=reviews.filter(r=>r.requestedAt&&!r.completed&&(now-new Date(r.requestedAt).getTime())>14*86400000).length;
+    br.textContent=stale;
+    br.style.display=stale>0?'inline-block':'none';
+    br.style.background='var(--warning)';
   }
 }
 
@@ -2743,6 +2754,169 @@ async function renderInvestorView(){
   }
 }
 
+// ── REVIEWS ──
+let reviewsFilter='eligible';
+const REVIEW_MIN_WALKS=10;
+const REVIEW_COOLDOWN_DAYS=90;
+
+function loadReviews(){return load('cw_reviews',[])||[];}
+function saveReviewsList(list){save('cw_reviews',list);}
+
+function setReviewsFilter(f){reviewsFilter=f;renderReviews();}
+
+async function renderReviews(){
+  const wrap=document.getElementById('reviews-table-wrap');
+  if(!wrap) return;
+  wrap.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading client walks…</div></div>';
+  document.querySelectorAll('#reviews-filters .filter-pill').forEach(p=>p.classList.toggle('active',p.dataset.rf===reviewsFilter));
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const reviews=loadReviews();
+  const reviewsByName={};
+  reviews.forEach(r=>{reviewsByName[r.name.toLowerCase()]=r;});
+
+  // Build per-client stats
+  const map={};
+  walks.forEach(w=>{
+    if(w.status&&w.status!=='completed') return;
+    const name=cleanClientName(w.client||'');
+    if(!name||name.toLowerCase().includes('potential client')) return;
+    if(!map[name]) map[name]={name,walks:0,lastWalk:null,firstWalk:null};
+    map[name].walks++;
+    if(!map[name].lastWalk||w.date>map[name].lastWalk) map[name].lastWalk=w.date;
+    if(!map[name].firstWalk||w.date<map[name].firstWalk) map[name].firstWalk=w.date;
+  });
+
+  const now=new Date();
+  const cooldownMs=REVIEW_COOLDOWN_DAYS*86400000;
+  // Annotate each client with their review status
+  const list=Object.values(map).map(c=>{
+    const rec=reviewsByName[c.name.toLowerCase()]||null;
+    const lastAsked=rec?.requestedAt?new Date(rec.requestedAt):null;
+    const completed=!!rec?.completed;
+    const completedAt=rec?.completedAt?new Date(rec.completedAt):null;
+    let status='ineligible';
+    if(c.walks<REVIEW_MIN_WALKS) status='ineligible';
+    else if(completed) status='completed';
+    else if(lastAsked&&(now-lastAsked)<cooldownMs) status='asked';
+    else status='eligible';
+    return {...c,rec,lastAsked,completed,completedAt,status};
+  }).sort((a,b)=>{
+    const order={eligible:0,asked:1,completed:2,ineligible:3};
+    if(order[a.status]!==order[b.status]) return order[a.status]-order[b.status];
+    return b.walks-a.walks;
+  });
+
+  // KPIs
+  const counts={eligible:0,asked:0,completed:0,ineligible:0};
+  list.forEach(c=>counts[c.status]++);
+  const kpiEl=document.getElementById('reviews-kpis');
+  if(kpiEl){
+    kpiEl.innerHTML=`
+      <div class="kpi-card"><div class="kpi-label">Eligible</div><div class="kpi-value" style="color:var(--orange)">${counts.eligible}</div><div class="kpi-change">Ready to ask</div></div>
+      <div class="kpi-card"><div class="kpi-label">Asked (last 90d)</div><div class="kpi-value">${counts.asked}</div><div class="kpi-change">Pending response</div></div>
+      <div class="kpi-card"><div class="kpi-label">Completed</div><div class="kpi-value" style="color:var(--success)">${counts.completed}</div><div class="kpi-change">Reviews logged</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Clients</div><div class="kpi-value">${list.length}</div><div class="kpi-change">${counts.ineligible} below 10-walk threshold</div></div>
+    `;
+  }
+
+  // Filter
+  let filtered=list;
+  if(reviewsFilter!=='all'){
+    if(reviewsFilter==='eligible') filtered=list.filter(c=>c.status==='eligible');
+    else if(reviewsFilter==='asked') filtered=list.filter(c=>c.status==='asked');
+    else if(reviewsFilter==='completed') filtered=list.filter(c=>c.status==='completed');
+  }
+  if(!filtered.length){
+    wrap.innerHTML=`<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">No clients match this filter.</div></div>`;
+    return;
+  }
+  const fmtDateLocal=d=>d?d.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'—';
+  const rows=filtered.map(c=>{
+    const statusBadge={
+      eligible:'<span style="background:var(--orange-light);color:var(--orange-dark);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">⭐ Eligible</span>',
+      asked:'<span style="background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">📤 Asked</span>',
+      completed:'<span style="background:var(--success-bg);color:var(--success);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">✅ Completed</span>',
+      ineligible:'<span style="background:var(--cream-dark);color:var(--ink-xlight);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Below threshold</span>',
+    }[c.status];
+    const actionBtns=[];
+    if(c.status==='eligible'){
+      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="requestReview('${esc(c.name)}',true)" title="Mark as asked and fire webhook if configured">📤 Request</button>`);
+      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="requestReview('${esc(c.name)}',false)" title="Just mark as asked">Mark Asked</button>`);
+    } else if(c.status==='asked'){
+      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="markReviewCompleted('${esc(c.name)}')">✅ Got Review</button>`);
+      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${esc(c.name)}')" style="color:var(--danger)">↺ Reset</button>`);
+    } else if(c.status==='completed'){
+      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${esc(c.name)}')" style="color:var(--danger)">↺ Re-eligible</button>`);
+    }
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${c.walks}</td>
+      <td>${fmtDateLocal(c.lastWalk?new Date(c.lastWalk+'T00:00:00'):null)}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:12px;color:var(--ink-light)">${c.lastAsked?fmtDateLocal(c.lastAsked):'—'}</td>
+      <td style="font-size:12px;color:var(--ink-light)">${c.completedAt?fmtDateLocal(c.completedAt):'—'}</td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">${actionBtns.join('')||'<span style="color:var(--ink-xlight);font-size:12px">—</span>'}</div></td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML=`<div class="card"><div class="card-body" style="padding:0;overflow-x:auto">
+    <table class="report-table">
+      <thead><tr><th>Client</th><th>Walks</th><th>Last Walk</th><th>Status</th><th>Last Asked</th><th>Completed</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div></div>
+  <div style="font-size:11px;color:var(--ink-xlight);margin-top:10px;line-height:1.6">
+    <div>• Configure the webhook in Settings → Make.com Webhooks → "Send Review Request" to send the request automatically (email/SMS via Make).</div>
+    <div>• Without a webhook, "Mark Asked" still tracks the request locally.</div>
+  </div>`;
+}
+
+function requestReview(name,fireHook){
+  const list=loadReviews();
+  let rec=list.find(r=>r.name.toLowerCase()===name.toLowerCase());
+  if(!rec){rec={name,requestedAt:null,completed:false,completedAt:null};list.push(rec);}
+  rec.requestedAt=new Date().toISOString();
+  rec.completed=false;
+  rec.completedAt=null;
+  saveReviewsList(list);
+  logEvent('Review requested',name,'info','🌟');
+  if(fireHook){
+    const url=getWebhookUrl('wh-review-request');
+    if(url){
+      fireWebhook('review-request',{client:name,requestedAt:rec.requestedAt});
+      showToast('Review request sent + logged','📤');
+    } else {
+      showToast('Marked asked (no webhook configured)','📤');
+    }
+  } else {
+    showToast('Marked asked','📤');
+  }
+  renderReviews();
+  updateBadges();
+}
+
+function markReviewCompleted(name){
+  const list=loadReviews();
+  const rec=list.find(r=>r.name.toLowerCase()===name.toLowerCase());
+  if(!rec) return;
+  rec.completed=true;
+  rec.completedAt=new Date().toISOString();
+  saveReviewsList(list);
+  logEvent('Review completed',name,'success','✅');
+  showToast('Review logged 🌟','✅');
+  renderReviews();
+  updateBadges();
+}
+
+function resetReview(name){
+  if(!confirm('Reset review status for '+name+'? They\'ll become eligible to ask again.')) return;
+  const list=loadReviews().filter(r=>r.name.toLowerCase()!==name.toLowerCase());
+  saveReviewsList(list);
+  showToast('Review status reset','↺');
+  renderReviews();
+  updateBadges();
+}
+
 // ── PLAYBOOKS / SOPs ──
 const SOP_CATEGORIES=['Onboarding','Operations','HR & Walkers','Customer Service','Emergency','Finance','Owner Handover'];
 const SOP_TEMPLATES=[
@@ -3277,6 +3451,7 @@ async function exportDataRoom(){
           {key:'revenue',description:'Monthly revenue totals + per-client lifetime revenue'},
           {key:'compliance',description:'Compliance register (insurance, certs, regos, expiries)'},
           {key:'playbooks',description:'Standard operating procedures and runbooks'},
+          {key:'reviews',description:'Review-request log: who was asked, who completed'},
           {key:'metrics',description:'Snapshot of headline business metrics at export time'},
           {key:'settings',description:'App settings excluding API keys and webhook URLs'},
         ],
@@ -3301,6 +3476,7 @@ async function exportDataRoom(){
       },
       compliance:loadCompliance(),
       playbooks:loadSops(),
+      reviews:loadReviews(),
       metrics:exportMetricsSnapshot(walks,summary,ttpClients),
       settings:sanitisedSettings,
     };
@@ -3357,7 +3533,7 @@ function exportMetricsSnapshot(walks,summary,ttpClients){
 const SETTINGS_FIELDS={
   business:['s-biz-name','s-your-name','s-email','s-phone','s-website'],
   ai:['s-api-key','s-auto-reply','s-tone'],
-  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
+  webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks','wh-review-request'],
   base:['s-base-lat','s-base-lng'],
   routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo'],
   adSpend:['s-spend-meta','s-spend-google']
