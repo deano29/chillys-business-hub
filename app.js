@@ -1805,20 +1805,116 @@ function reportTableWrap(title,subtitle,theadHtml,tbodyHtml){
   return `<div class="card"><div class="card-header"><h3>${title}</h3><span style="font-size:11px;color:var(--ink-xlight)">${subtitle}</span></div><div class="card-body" style="padding:0"><table class="report-table"><thead><tr>${theadHtml}</tr></thead><tbody>${tbodyHtml}</tbody></table></div></div>`;
 }
 
-function renderBySource(){
-  const map={};
-  enquiries.forEach(e=>{
-    const s=e.source||'Unknown';
-    if(!map[s])map[s]={total:0,converted:0};
-    map[s].total++;
-    if(e.stage==='closed-won')map[s].converted++;
+// ── BY SOURCE / LEAD-SOURCE ROI ──
+let bySourceWindow='all'; // 'all' | '3' | '6' | '12' (months)
+let _summaryCache=null;
+async function getSummary(){
+  if(_summaryCache) return _summaryCache;
+  _summaryCache=await fetch('/api/data/summary').then(r=>r.ok?r.json():null).catch(()=>null);
+  return _summaryCache;
+}
+const PAID_SOURCES={'Meta Ads':'s-spend-meta','Google':'s-spend-google','Instagram':'s-spend-instagram','Facebook':'s-spend-facebook'};
+function inSourceWindow(dateStr,monthsBack){
+  if(monthsBack==='all') return true;
+  if(!dateStr) return false;
+  const cutoff=new Date();
+  cutoff.setMonth(cutoff.getMonth()-Number(monthsBack));
+  const d=new Date(dateStr+(dateStr.length===10?'T00:00:00':''));
+  return !isNaN(d) && d>=cutoff;
+}
+function setBySourceWindow(w){bySourceWindow=w;renderBySource();}
+async function renderBySource(){
+  const panel=document.getElementById('rp-by-source');
+  if(!panel) return;
+  const summary=await getSummary();
+  const revenueByClient=summary?.revenueByClient||{};
+  // Build a normalised lookup: trimmed lower-case → revenue
+  const revLookupNorm={};
+  Object.entries(revenueByClient).forEach(([k,v])=>{
+    revLookupNorm[k.trim().toLowerCase()]=v;
   });
-  const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  const lookupRev=name=>{
+    if(!name) return 0;
+    const clean=cleanClientName(name).trim();
+    return revenueByClient[clean] || revenueByClient[clean+' '] || revLookupNorm[clean.toLowerCase()] || 0;
+  };
+
+  const windowLabels={all:'All time','3':'Last 3 months','6':'Last 6 months','12':'Last 12 months'};
+  const inWin=e=>inSourceWindow(e.dateAdded,bySourceWindow);
+  const winEnq=enquiries.filter(inWin);
+
+  // Aggregate by source
+  const map={};
+  winEnq.forEach(e=>{
+    const s=e.source||'Unknown';
+    if(!map[s]) map[s]={total:0,converted:0,revenue:0};
+    map[s].total++;
+    if(e.stage==='closed-won'){
+      map[s].converted++;
+      map[s].revenue+=lookupRev(e.name);
+    }
+  });
+
+  // KPI totals
+  const kpiLeads=winEnq.length;
+  const kpiConverted=winEnq.filter(e=>e.stage==='closed-won').length;
+  const kpiRevenue=Object.values(map).reduce((s,d)=>s+d.revenue,0);
+
+  // Sort rows: revenue desc, then leads desc
+  const rows=Object.entries(map).sort((a,b)=>(b[1].revenue-a[1].revenue)||(b[1].total-a[1].total));
+
+  const fmtMoney=n=>'$'+Math.round(n).toLocaleString();
   const tbody=rows.map(([s,d])=>{
-    const rate=Math.round((d.converted/d.total)*100);
-    return `<tr><td><strong>${s}</strong></td><td>${d.total}</td><td>${d.converted}</td><td><span style="font-weight:700;color:${rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)'}">${rate}%</span></td></tr>`;
+    const rate=d.total?Math.round((d.converted/d.total)*100):0;
+    const spendId=PAID_SOURCES[s];
+    const spend=spendId?Number(getSetting(spendId,0))||0:0;
+    const isPaid=!!spendId && spend>0;
+    const roi=isPaid?(d.revenue/spend):null;
+    const cac=(isPaid && d.converted>0)?(spend/d.converted):null;
+    const roiCell=isPaid
+      ? `<span style="font-weight:700;color:${roi>=3?'var(--success)':roi>=1?'var(--warning)':'var(--danger)'}">${roi.toFixed(1)}x</span>`
+      : '<span style="color:var(--ink-xlight)">—</span>';
+    const cacCell=cac!==null
+      ? `<span style="font-weight:600">${fmtMoney(cac)}</span>`
+      : '<span style="color:var(--ink-xlight)">—</span>';
+    const spendCell=isPaid?fmtMoney(spend):'<span style="color:var(--ink-xlight)">—</span>';
+    const rateColor=rate>=50?'var(--success)':rate>=25?'var(--warning)':'var(--danger)';
+    return `<tr>
+      <td><strong>${esc(s)}</strong></td>
+      <td>${d.total}</td>
+      <td>${d.converted}</td>
+      <td><span style="font-weight:700;color:${rateColor}">${rate}%</span></td>
+      <td style="font-weight:600">${fmtMoney(d.revenue)}</td>
+      <td>${spendCell}</td>
+      <td>${roiCell}</td>
+      <td>${cacCell}</td>
+    </tr>`;
   }).join('');
-  document.getElementById('rp-by-source').innerHTML=reportTableWrap('Leads by Source','All time','<th>Source</th><th>Leads</th><th>Converted</th><th>Rate</th>',tbody);
+
+  const headers='<th>Source</th><th>Leads</th><th>Converted</th><th>Rate</th><th>Revenue Attributed</th><th>Spend (lifetime)</th><th>ROI</th><th>CAC</th>';
+  const tableHtml=rows.length
+    ? reportTableWrap('Leads by Source',windowLabels[bySourceWindow],headers,tbody)
+    : `<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">No enquiries in the selected window.</div></div>`;
+
+  const optionHtml=Object.entries(windowLabels).map(([k,v])=>`<option value="${k}"${k===bySourceWindow?' selected':''}>${v}</option>`).join('');
+
+  panel.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--ink-mid)">Showing leads from <strong>${windowLabels[bySourceWindow]}</strong>. Revenue and Spend are lifetime totals.</div>
+      <select onchange="setBySourceWindow(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer">${optionHtml}</select>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      <div class="kpi-card"><div class="kpi-label">Total Leads</div><div class="kpi-value">${kpiLeads}</div><div class="kpi-change">${windowLabels[bySourceWindow]}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Converted</div><div class="kpi-value">${kpiConverted}</div><div class="kpi-change">${kpiLeads?Math.round((kpiConverted/kpiLeads)*100):0}% conversion rate</div></div>
+      <div class="kpi-card"><div class="kpi-label">Revenue Attributed</div><div class="kpi-value">${fmtMoney(kpiRevenue)}</div><div class="kpi-change">Lifetime value of converted clients</div></div>
+    </div>
+    ${tableHtml}
+    <div style="font-size:11px;color:var(--ink-xlight);margin-top:10px;line-height:1.5">
+      <div>• <strong>Revenue Attributed</strong> sums lifetime-to-date revenue for closed-won clients in this window.</div>
+      <div>• <strong>Spend</strong> is your lifetime total per channel (set in Settings → Lead Acquisition Spend).</div>
+      <div>• <strong>ROI</strong> = Revenue ÷ Spend. <strong>CAC</strong> = Spend ÷ Converted. Organic channels show "—".</div>
+    </div>
+  `;
 }
 
 function renderByService(){
@@ -2018,7 +2114,8 @@ const SETTINGS_FIELDS={
   ai:['s-api-key','s-auto-reply','s-tone'],
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks'],
   base:['s-base-lat','s-base-lng'],
-  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo']
+  routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo'],
+  adSpend:['s-spend-meta','s-spend-google','s-spend-instagram','s-spend-facebook']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
