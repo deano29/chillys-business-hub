@@ -1831,6 +1831,7 @@ function reportTab(tab){
   if(tab==='by-service')renderByService();
   if(tab==='by-suburb')renderBySuburb();
   if(tab==='retention')renderRetention();
+  if(tab==='walkers')renderWalkers();
   if(tab==='investor')renderInvestorView();
 }
 
@@ -2169,6 +2170,165 @@ async function renderRetention(){
   </div>`;
 
   panel.innerHTML=html;
+}
+
+// ── WALKER PERFORMANCE ──
+let walkersWindow='30'; // '7' | '30' | '90' | 'all'
+function setWalkersWindow(w){walkersWindow=w;renderWalkers();}
+
+function inv_walkerCost(walker,hours){
+  if(!walker) return null;
+  const superRate=(Number(getSetting('s-super-rate',11.5))||11.5)/100;
+  const casualLoad=(Number(getSetting('s-casual-load',25))||25)/100;
+  if(walker.type==='founder') return null; // founder draws weekly salary, not per-walk
+  if(walker.type==='employee') return hours*(walker.rate||0)*(1+superRate);
+  if(walker.type==='contractor') return hours*(walker.rate||0);
+  return hours*(walker.rate||0);
+}
+
+async function renderWalkers(){
+  const panel=document.getElementById('rp-walkers');
+  if(!panel) return;
+  panel.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink-xlight)">Loading walker stats…</div>';
+
+  const walks=await fetch('/api/walks/today?range=all').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  const now=new Date();
+  const windowDays=walkersWindow==='all'?9999:Number(walkersWindow);
+  const cutoffCurr=new Date(now.getTime()-windowDays*86400000);
+  const cutoffPrior=new Date(now.getTime()-2*windowDays*86400000);
+  const windowLabels={'7':'Last 7 days','30':'Last 30 days','90':'Last 3 months','all':'All time'};
+
+  // Helper: assign walker name (handle dog-name leakage in TTP via KNOWN_WALKERS heuristic)
+  function assignWalker(w,allWindowWalks){
+    const raw=w.walker||'';
+    const cleanLower=raw.toLowerCase();
+    // First pass: match against walkerConfig
+    const cfgMatch=walkerConfig.find(wc=>{
+      const first=wc.name.toLowerCase().split(' ')[0];
+      return first&&cleanLower.includes(first);
+    });
+    if(cfgMatch) return cfgMatch.name;
+    // Fallback: pick first known walker who walked on the same date
+    const sameDay=allWindowWalks.find(x=>x.date===w.date&&x.walker&&walkerConfig.some(wc=>x.walker.toLowerCase().includes(wc.name.toLowerCase().split(' ')[0])));
+    if(sameDay){
+      const m=walkerConfig.find(wc=>sameDay.walker.toLowerCase().includes(wc.name.toLowerCase().split(' ')[0]));
+      if(m) return m.name;
+    }
+    return null; // unassigned
+  }
+
+  // Bucket walks by window
+  const currWalks=[],priorWalks=[];
+  walks.forEach(w=>{
+    if(w.status&&w.status!=='completed') return;
+    if(!w.date) return;
+    const wd=new Date(w.date+'T00:00:00');
+    if(isNaN(wd)) return;
+    if(walkersWindow==='all'||wd>=cutoffCurr) currWalks.push(w);
+    else if(wd>=cutoffPrior&&wd<cutoffCurr) priorWalks.push(w);
+  });
+
+  // Build per-walker stats for current window
+  function aggregate(walksList){
+    const byWalker={};
+    walksList.forEach(w=>{
+      const name=assignWalker(w,walksList);
+      if(!name) return;
+      if(!byWalker[name]) byWalker[name]={name,walks:0,hours:0,revenue:0,clients:new Set(),days:new Set()};
+      byWalker[name].walks++;
+      if(w.start&&w.end){
+        const dur=(new Date(w.end)-new Date(w.start))/3600000;
+        if(dur>0&&dur<8) byWalker[name].hours+=dur;
+      } else {
+        byWalker[name].hours+=0.75; // default
+      }
+      byWalker[name].revenue+=walkRevenue(w);
+      if(w.client) byWalker[name].clients.add(cleanClientName(w.client));
+      if(w.date) byWalker[name].days.add(w.date);
+    });
+    return byWalker;
+  }
+  const curr=aggregate(currWalks);
+  const prior=aggregate(priorWalks);
+
+  // KPI totals
+  const totalWalkers=Object.keys(curr).length;
+  const totalWalks=Object.values(curr).reduce((s,d)=>s+d.walks,0);
+  const totalHours=Object.values(curr).reduce((s,d)=>s+d.hours,0);
+  let totalCost=0;
+  Object.values(curr).forEach(d=>{
+    const cfg=walkerConfig.find(wc=>wc.name===d.name);
+    const c=inv_walkerCost(cfg,d.hours);
+    if(c!=null) totalCost+=c;
+  });
+
+  const optionHtml=Object.entries(windowLabels).map(([k,v])=>`<option value="${k}"${k===walkersWindow?' selected':''}>${v}</option>`).join('');
+
+  // Per-walker rows
+  const rows=Object.values(curr).sort((a,b)=>b.walks-a.walks).map(d=>{
+    const cfg=walkerConfig.find(wc=>wc.name===d.name);
+    const type=cfg?cfg.type:'unknown';
+    const cost=inv_walkerCost(cfg,d.hours);
+    const profit=cost!=null?d.revenue-cost:null;
+    const profPerHr=cost!=null&&d.hours>0?profit/d.hours:null;
+    const avgWalkMins=d.walks>0?Math.round((d.hours*60)/d.walks):0;
+    const avgRevPerWalk=d.walks>0?d.revenue/d.walks:0;
+    // Trend
+    const p=prior[d.name];
+    let trendCell='<span style="color:var(--ink-xlight)">—</span>';
+    if(p&&p.walks>0){
+      const delta=((d.walks-p.walks)/p.walks)*100;
+      const color=delta>=10?'var(--success)':delta<=-10?'var(--danger)':'var(--ink-xlight)';
+      const arrow=delta>=10?'↑':delta<=-10?'↓':'→';
+      trendCell=`<span style="color:${color};font-weight:700" title="${d.walks} this period vs ${p.walks} prior">${arrow} ${delta>=0?'+':''}${delta.toFixed(0)}%</span>`;
+    } else if(d.walks>0&&walkersWindow!=='all'){
+      trendCell='<span style="color:var(--info);font-weight:600">New</span>';
+    }
+    const fmtMoney=n=>n==null?'<span style="color:var(--ink-xlight)">—</span>':'$'+Math.round(n).toLocaleString();
+    const profitColor=profit==null?'var(--ink-xlight)':profit<0?'var(--danger)':profit/Math.max(1,d.revenue)>=0.4?'var(--success)':'var(--warning)';
+    return `<tr>
+      <td><strong>${esc(d.name)}</strong>${type!=='unknown'?` <span style="font-size:10px;color:var(--ink-xlight);text-transform:uppercase">· ${esc(type)}</span>`:''}</td>
+      <td>${d.walks}</td>
+      <td>${d.hours.toFixed(1)}h</td>
+      <td>${avgWalkMins} min</td>
+      <td>${d.clients.size}</td>
+      <td>${d.days.size}</td>
+      <td style="font-weight:600">${fmtMoney(d.revenue)}</td>
+      <td>$${Math.round(avgRevPerWalk)}</td>
+      <td>${fmtMoney(cost)}</td>
+      <td style="font-weight:700;color:${profitColor}">${fmtMoney(profit)}</td>
+      <td>${profPerHr!=null?'$'+Math.round(profPerHr)+'/hr':'<span style="color:var(--ink-xlight)">—</span>'}</td>
+      <td>${trendCell}</td>
+    </tr>`;
+  }).join('');
+
+  panel.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--ink-mid)">Showing walks from <strong>${windowLabels[walkersWindow]}</strong>. Founder cost is fixed weekly (shown as "—") so profit reflects walker hourly cost only.</div>
+      <select onchange="setWalkersWindow(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--cream);font-size:13px;cursor:pointer">${optionHtml}</select>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      <div class="kpi-card"><div class="kpi-label">Walkers</div><div class="kpi-value">${totalWalkers}</div><div class="kpi-change">${windowLabels[walkersWindow]}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Walks</div><div class="kpi-value">${totalWalks}</div><div class="kpi-change">Completed in window</div></div>
+      <div class="kpi-card"><div class="kpi-label">Walker Hours</div><div class="kpi-value">${totalHours.toFixed(0)}h</div><div class="kpi-change">Across all walkers</div></div>
+      <div class="kpi-card"><div class="kpi-label">Walker Cost</div><div class="kpi-value">$${Math.round(totalCost).toLocaleString()}</div><div class="kpi-change">Excludes founder salary</div></div>
+    </div>
+    ${rows
+      ? `<div class="card"><div class="card-body" style="padding:0;overflow-x:auto">
+          <table class="report-table">
+            <thead><tr><th>Walker</th><th>Walks</th><th>Hours</th><th>Avg Walk</th><th>Clients</th><th>Days</th><th>Revenue</th><th>Avg / Walk</th><th>Est. Cost</th><th>Profit</th><th>$/hr</th><th>Trend</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div></div>`
+      : `<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">No walker data in the selected window.</div></div>`
+    }
+    <div style="font-size:11px;color:var(--ink-xlight);margin-top:10px;line-height:1.6">
+      <div>• <strong>Hours</strong> uses walk start/end times; falls back to 0.75h estimate when missing.</div>
+      <div>• <strong>Est. Cost</strong> = hours × walker rate (employee adds super, contractor flat). Founder cost is fixed weekly and shown as "—".</div>
+      <div>• <strong>Profit</strong> = revenue − est. cost. Coloured green when ≥40% margin, amber otherwise, red if negative.</div>
+      <div>• <strong>Trend</strong> compares current window to the prior identical window. Walker rates are set in Settings → Walker Team.</div>
+    </div>
+  `;
 }
 
 // ── INVESTOR VIEW ──
