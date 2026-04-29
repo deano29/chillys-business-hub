@@ -59,6 +59,7 @@
       <div class="nav-item" data-view="templates"><span class="ni">💬</span><span class="nl">Templates</span></div>
       <div class="nav-item" data-view="reports"><span class="ni">📈</span><span class="nl">Reports</span></div>
       <div class="nav-item" data-view="compliance"><span class="ni">🛡️</span><span class="nl">Compliance</span><span class="nav-badge" id="badge-compliance" style="display:none"></span></div>
+      <div class="nav-item" data-view="playbooks"><span class="ni">📘</span><span class="nl">Playbooks</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-item" data-view="settings"><span class="ni">⚙️</span><span class="nl">Settings</span></div>
@@ -528,6 +529,25 @@
         </div>
         <div class="cov-map-wrap">
           <div id="coverage-map" style="height:100%;width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PLAYBOOKS / SOPs ── -->
+    <div class="view" id="view-playbooks">
+      <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;height:calc(100vh - 130px);min-height:500px">
+        <!-- Left pane: SOP list -->
+        <div class="card" style="display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap" id="sop-filters"></div>
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+            <input type="text" id="sop-search" placeholder="Search playbooks…" oninput="renderSopList()" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px">
+          </div>
+          <div id="sop-list" style="flex:1;overflow-y:auto;padding:8px"></div>
+          <div style="padding:10px 14px;border-top:1px solid var(--border)"><button class="btn btn-primary btn-sm" style="width:100%" onclick="newSop()">+ New Playbook</button></div>
+        </div>
+        <!-- Right pane: editor -->
+        <div class="card" style="display:flex;flex-direction:column;overflow:hidden">
+          <div id="sop-editor" style="flex:1;display:flex;flex-direction:column;overflow:hidden"></div>
         </div>
       </div>
     </div>

@@ -363,7 +363,7 @@ function getObNextAction(e){
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
-  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',
+  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',
 };
 
 function navigate(v){
@@ -393,6 +393,7 @@ function navigate(v){
   if(v==='reports')renderReports();
   if(v==='settings')renderSettings();
   if(v==='compliance')renderCompliance();
+  if(v==='playbooks')renderPlaybooks();
   updateBadges();
 }
 
@@ -2742,6 +2743,368 @@ async function renderInvestorView(){
   }
 }
 
+// ── PLAYBOOKS / SOPs ──
+const SOP_CATEGORIES=['Onboarding','Operations','HR & Walkers','Customer Service','Emergency','Finance','Owner Handover'];
+const SOP_TEMPLATES=[
+  {title:'Client Onboarding Process',category:'Onboarding',body:`# Client Onboarding Process
+
+## Step 1 — First contact
+- Respond within ___ hours
+- Send intro template (Templates → New Lead Welcome)
+- Log into Notion enquiries
+
+## Step 2 — Meet & Greet
+- Schedule via Calendly
+- Bring: enrolment form, leash sample, business card
+- Confirm: vaccinations, vet contact, emergency contact, behaviour notes
+
+## Step 3 — Set up in Time to Pet
+- Create client + pet records
+- Upload vaccination certs
+- Set pricing per service
+
+## Step 4 — First walk
+- Walker briefed on dog's quirks
+- Photo update sent to owner
+- Follow up next day
+
+## Step 5 — Onboarding complete
+- Mark enquiry as Closed Won
+- Add to Compliance register if WWCC required
+`},
+  {title:'Handling a Missed Walk',category:'Operations',body:`# Missed Walk Procedure
+
+## If we miss a walk (our fault)
+1. Notify client immediately by phone (not text)
+2. Apologise — no excuses
+3. Offer free replacement walk + 10% credit
+4. Log incident in walker notes
+5. Investigate root cause within 24h
+
+## If owner cancels < 24h
+1. Apply cancellation fee per policy
+2. Confirm reschedule if needed
+
+## If walker is sick / unavailable
+1. Check sub list (Settings → Walker Team)
+2. If no cover available, contact client ASAP
+3. Same-day cover gets ___% premium
+`},
+  {title:'Emergency: Lost Dog or Injury',category:'Emergency',body:`# Emergency Procedure
+
+## If a dog gets loose
+1. Stop walking other dogs — secure them first
+2. Call out the dog's name calmly
+3. Ring owner immediately
+4. If not found in 15 mins → call council ranger and post on local lost-pet groups
+5. Do NOT chase — it makes them run
+
+## If a dog is injured
+1. Stop the walk
+2. Call vet (see contacts list below)
+3. Call owner
+4. If serious — taxi/Uber to nearest emergency vet
+5. We cover transport cost upfront
+
+## Emergency contacts
+- Vet 1: ___
+- Vet 2 (after hours): ___
+- Owner emergency contacts in TTP profile
+`},
+  {title:'New Walker Onboarding Checklist',category:'HR & Walkers',body:`# New Walker Onboarding
+
+## Before first walk
+- [ ] Signed contract
+- [ ] WWCC verified + uploaded to Compliance
+- [ ] Public liability covered (under our policy)
+- [ ] Trial walk shadowing senior walker
+- [ ] Phone with TTP app installed
+- [ ] Branded t-shirt + leashes issued
+- [ ] First aid for pets — 30 min watch-along video
+
+## Week 1
+- [ ] 3 supervised walks
+- [ ] Reviewed TTP scheduling
+- [ ] Met top 5 clients (intro photo to owner)
+
+## Ongoing
+- [ ] Monthly check-in
+- [ ] Annual WWCC renewal reminder set
+`},
+  {title:'Walker Daily Checklist',category:'HR & Walkers',body:`# Daily Walker Checklist
+
+## Before leaving home
+- [ ] Phone fully charged + power bank
+- [ ] Water bottle + collapsible bowl
+- [ ] Spare leashes
+- [ ] Poo bags (extras)
+- [ ] First aid pouch
+
+## At each walk
+- [ ] Check dog before clipping leash
+- [ ] Lock door behind you
+- [ ] Take photo for owner update
+- [ ] Note any concerns in TTP
+
+## End of day
+- [ ] All TTP walk records closed
+- [ ] Wash leashes weekly
+- [ ] Report any incidents to founder
+`},
+  {title:'Customer Complaint Resolution',category:'Customer Service',body:`# Customer Complaint Resolution
+
+## Within 1 hour
+- Acknowledge receipt by call (not just text)
+- Listen first, don't justify
+- Confirm we'll get back within 24h with a plan
+
+## Within 24 hours
+- Investigate (talk to walker, check photos/GPS)
+- Decide outcome:
+  - At fault → apology + credit/refund
+  - Misunderstanding → clarify with empathy
+  - No fault → explain politely, offer goodwill gesture
+
+## Always
+- Document in client notes
+- If serious — escalate to founder
+`},
+  {title:'Holiday & Sick Cover Plan',category:'Operations',body:`# Holiday & Sick Cover
+
+## Walker sick (same day)
+1. Notify founder by 6:30am
+2. Founder picks up walks OR contacts cover walker
+3. Notify affected clients ASAP
+
+## Pre-planned leave
+- Submit 2+ weeks notice via shared calendar
+- Founder schedules cover walker
+- Clients informed if walker change is permanent for that day
+
+## Public holidays
+- Walks run as normal except Christmas Day, NYE
+- Public holiday surcharge of $___ per walk
+
+## Christmas / NYE
+- Walks paused — clients notified 1 month prior
+- Boarding referrals to ___ available
+`},
+  {title:'Payroll & Invoicing Cadence',category:'Finance',body:`# Payroll & Invoicing
+
+## Walkers
+- Pay cycle: weekly, run every Tuesday
+- Source: TTP staff hours export
+- Super rate: 11.5% (employees only)
+
+## Client invoicing
+- Auto-billed via TTP, weekly on Sunday night
+- Late payment: chase day +7
+- Credit hold: day +14
+
+## Tax / BAS
+- Monthly BAS via accountant: ___
+- GST: yes/no
+- Logbook for vehicle: ongoing
+`},
+  {title:'Key Supplier & Service Contacts',category:'Operations',body:`# Key Contacts
+
+## Vets (in priority order)
+1. ___ — phone — address — hours
+2. ___ — phone — address — hours
+3. After-hours emergency: ___
+
+## Insurance
+- Public liability: ___ (policy #, expiry)
+- Vehicle: ___
+- Workers comp: ___
+
+## Suppliers
+- Leashes/treats: ___
+- Branded merch: ___
+
+## Professional services
+- Accountant: ___
+- Bookkeeper: ___
+- Lawyer (if needed): ___
+
+## Software
+- Time to Pet — login + recovery
+- Notion — login + recovery
+- Vercel — login + recovery
+`},
+  {title:'Owner Handover Guide ("If I get hit by a bus")',category:'Owner Handover',body:`# Owner Handover Guide
+
+> The minimum information someone needs to keep this business running for a week without me.
+
+## Who's who
+- Lead walker right now: ___
+- Backup walker: ___
+- Accountant: ___
+
+## Daily must-dos
+- Check TTP for today's walks (07:00)
+- Approve cancellations / reschedules
+- Reply to enquiries within ___ hours
+- End-of-day: confirm all walks completed
+
+## Weekly must-dos
+- Tuesday — walker payroll
+- Sunday night — client invoicing auto-runs (verify it sent)
+
+## Where everything lives
+- Client data: Time to Pet (login in Settings → Integrations)
+- Enquiries: Notion (login in 1Password)
+- Financials: this app → Reports → Investor View
+- SOPs: this app → Playbooks
+- Compliance docs: this app → Compliance
+
+## Logins
+Stored in 1Password under "Chilly's Business Hub" vault.
+`},
+];
+let selectedSopId=null;
+let sopCategoryFilter='all';
+
+function loadSops(){
+  let list=load('cw_sops',null);
+  if(!list||!Array.isArray(list)){
+    // First-run seed
+    list=SOP_TEMPLATES.map((t,i)=>({
+      id:'s'+(Date.now()+i),
+      title:t.title,
+      category:t.category,
+      body:t.body,
+      updatedAt:new Date().toISOString(),
+    }));
+    save('cw_sops',list);
+  }
+  return list;
+}
+function saveSops(list){save('cw_sops',list);}
+
+function renderPlaybooks(){
+  // Filter pills
+  const fEl=document.getElementById('sop-filters');
+  if(fEl){
+    fEl.innerHTML=`<div class="filter-pill${sopCategoryFilter==='all'?' active':''}" onclick="setSopFilter('all')">All</div>`+
+      SOP_CATEGORIES.map(c=>`<div class="filter-pill${sopCategoryFilter===c?' active':''}" onclick="setSopFilter('${esc(c)}')">${esc(c)}</div>`).join('');
+  }
+  renderSopList();
+  // Auto-select first SOP if none selected
+  if(!selectedSopId){
+    const list=loadSops();
+    if(list.length) selectedSopId=list[0].id;
+  }
+  renderSopEditor();
+}
+
+function setSopFilter(c){sopCategoryFilter=c;renderPlaybooks();}
+
+function renderSopList(){
+  const el=document.getElementById('sop-list');
+  if(!el) return;
+  const search=(document.getElementById('sop-search')?.value||'').toLowerCase().trim();
+  let list=loadSops();
+  if(sopCategoryFilter!=='all') list=list.filter(s=>s.category===sopCategoryFilter);
+  if(search) list=list.filter(s=>s.title.toLowerCase().includes(search)||(s.body||'').toLowerCase().includes(search));
+  // Group by category for display
+  const grouped={};
+  list.forEach(s=>{
+    const cat=s.category||'Other';
+    if(!grouped[cat]) grouped[cat]=[];
+    grouped[cat].push(s);
+  });
+  const order=[...SOP_CATEGORIES,'Other'];
+  let html='';
+  order.forEach(cat=>{
+    if(!grouped[cat]) return;
+    html+=`<div style="font-size:10px;font-weight:700;color:var(--ink-xlight);text-transform:uppercase;padding:8px 6px 4px">${esc(cat)}</div>`;
+    grouped[cat].forEach(s=>{
+      const isActive=s.id===selectedSopId;
+      html+=`<div onclick="selectSop('${s.id}')" style="padding:8px 10px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;${isActive?'background:var(--orange-light);color:var(--orange-dark);font-weight:600':'color:var(--ink-mid)'};margin-bottom:2px">${esc(s.title)}</div>`;
+    });
+  });
+  if(!html) html='<div style="text-align:center;padding:20px;color:var(--ink-xlight);font-size:12px">No playbooks match.</div>';
+  el.innerHTML=html;
+}
+
+function selectSop(id){selectedSopId=id;renderSopList();renderSopEditor();}
+
+function renderSopEditor(){
+  const el=document.getElementById('sop-editor');
+  if(!el) return;
+  const list=loadSops();
+  const sop=list.find(s=>s.id===selectedSopId);
+  if(!sop){
+    el.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;flex:1;color:var(--ink-xlight);font-size:13px">Select a playbook on the left, or create a new one.</div>`;
+    return;
+  }
+  const updated=sop.updatedAt?new Date(sop.updatedAt):null;
+  const updatedLabel=updated?updated.toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const catOpts=SOP_CATEGORIES.map(c=>`<option value="${esc(c)}"${c===sop.category?' selected':''}>${esc(c)}</option>`).join('');
+  el.innerHTML=`
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px">
+        <input id="sop-title-input" value="${esc(sop.title)}" style="font-size:18px;font-weight:700;border:none;outline:none;background:transparent;color:var(--ink-dark);width:100%">
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-xlight)">
+          <select id="sop-category-input" style="padding:3px 6px;border:1px solid var(--border-light);border-radius:4px;background:var(--cream);font-size:11px">${catOpts}</select>
+          ${updatedLabel?`<span>· Last updated ${updatedLabel}</span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="deleteSop('${sop.id}')" style="color:var(--danger)">🗑️ Delete</button>
+        <button class="btn btn-primary btn-sm" onclick="saveCurrentSop()">💾 Save</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;display:flex">
+      <textarea id="sop-body-input" style="width:100%;height:100%;padding:18px 22px;border:none;outline:none;resize:none;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;line-height:1.7;color:var(--ink-dark);background:var(--cream-light)">${esc(sop.body)}</textarea>
+    </div>
+  `;
+}
+
+function saveCurrentSop(){
+  const list=loadSops();
+  const sop=list.find(s=>s.id===selectedSopId);
+  if(!sop) return;
+  sop.title=document.getElementById('sop-title-input').value.trim()||'Untitled';
+  sop.category=document.getElementById('sop-category-input').value;
+  sop.body=document.getElementById('sop-body-input').value;
+  sop.updatedAt=new Date().toISOString();
+  saveSops(list);
+  showToast('Playbook saved','✅');
+  logEvent('Playbook updated',sop.title,'info','📘');
+  renderSopList();
+  renderSopEditor();
+}
+
+function newSop(){
+  const list=loadSops();
+  const sop={
+    id:'s'+Date.now(),
+    title:'New Playbook',
+    category:sopCategoryFilter==='all'?'Operations':sopCategoryFilter,
+    body:'# New Playbook\n\nWrite your process here…',
+    updatedAt:new Date().toISOString(),
+  };
+  list.push(sop);
+  saveSops(list);
+  selectedSopId=sop.id;
+  renderSopList();
+  renderSopEditor();
+  // Focus title for immediate edit
+  setTimeout(()=>{const t=document.getElementById('sop-title-input');if(t){t.focus();t.select();}},0);
+}
+
+function deleteSop(id){
+  if(!confirm('Delete this playbook?')) return;
+  const list=loadSops().filter(s=>s.id!==id);
+  saveSops(list);
+  if(selectedSopId===id) selectedSopId=list[0]?.id||null;
+  renderSopList();
+  renderSopEditor();
+  showToast('Playbook deleted','🗑️');
+}
+
 // ── COMPLIANCE ──
 let complianceFilter='all';
 let editingComplianceId=null;
@@ -2913,6 +3276,7 @@ async function exportDataRoom(){
           {key:'walks',description:'Historical walks (date, walker, service, revenue)'},
           {key:'revenue',description:'Monthly revenue totals + per-client lifetime revenue'},
           {key:'compliance',description:'Compliance register (insurance, certs, regos, expiries)'},
+          {key:'playbooks',description:'Standard operating procedures and runbooks'},
           {key:'metrics',description:'Snapshot of headline business metrics at export time'},
           {key:'settings',description:'App settings excluding API keys and webhook URLs'},
         ],
@@ -2936,6 +3300,7 @@ async function exportDataRoom(){
         clientTypes:summary?.clientTypes||{},
       },
       compliance:loadCompliance(),
+      playbooks:loadSops(),
       metrics:exportMetricsSnapshot(walks,summary,ttpClients),
       settings:sanitisedSettings,
     };
