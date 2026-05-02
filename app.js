@@ -2892,15 +2892,9 @@ function openMediaUpload(){
     alert('Cloudinary widget script did not load.\n\nThis usually means:\n• Ad blocker / privacy extension is blocking it\n• Slow network — wait 5 seconds and try again\n• Network is offline\n\nCheck the browser console (F12) for details.');
     return;
   }
-  // Prompt for tags up front
-  const tagInput=prompt('Tags for these uploads (comma-separated, optional)\nExamples: insta, reel, behind-scenes','');
-  if(tagInput===null) return; // cancelled
-  const userTags=tagInput.split(',').map(t=>t.trim().toLowerCase().replace(/[^a-z0-9-]/g,'-')).filter(Boolean);
-  const allTags=[MEDIA_TAG,...userTags];
-  if(_mediaWidget){
-    // Update tags on the existing widget
-    try{_mediaWidget.update({tags:allTags});}catch(e){_mediaWidget=null;}
-  }
+  // Open the widget directly. Tags can be added inside the widget's UI (showAdvancedOptions:true).
+  // Default tag (chillys-media) is always applied so the gallery can list the asset.
+  const allTags=[MEDIA_TAG];
   if(!_mediaWidget){
     console.log('[Media] Creating Cloudinary widget');
     try{
@@ -2911,6 +2905,7 @@ function openMediaUpload(){
       sources:['local','camera','url','dropbox','google_drive'],
       multiple:true,
       maxFileSize:200*1024*1024, // 200MB cap per file
+      showAdvancedOptions:true, // exposes the Tags field in the widget's UI
     },(error,result)=>{
       if(error){
         showToast('Upload error: '+(error.statusText||error.message||'unknown'),'⚠️');
