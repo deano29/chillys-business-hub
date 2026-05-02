@@ -185,6 +185,8 @@ if(storedClients&&storedClients.length>0)clients=storedClients;
 
 // Async load from APIs
 async function loadFromNotion(){
+  // Pull cross-device settings first so credentials/preferences hydrate before pages render
+  await pullSettingsFromNotion().catch(()=>{});
   try{
     const [enqRes,cliRes]=await Promise.all([
       authFetch('/api/notion/enquiries').then(r=>{if(!r.ok)throw new Error('Enquiries API returned '+r.status);return r.json();}),
@@ -2830,22 +2832,45 @@ function renderMediaLibrary(){
   refreshMedia();
 }
 
+function knownDogNames(){
+  // Build a set of known dog names (lowercased) from current enquiries
+  const set=new Set();
+  (enquiries||[]).forEach(e=>{
+    const n=(e.dogName||'').trim().toLowerCase();
+    if(n) set.add(n);
+  });
+  return set;
+}
+
 function renderMediaGrid(){
   const grid=document.getElementById('media-grid');
   const filtersEl=document.getElementById('media-filters');
   if(!grid) return;
   const all=_mediaCache||[];
-  // Tag union + counts
+  // Tag union + counts; split into "dog tags" (matching known dog names) vs other tags
+  const dogs=knownDogNames();
   const tagCounts={};
-  all.forEach(a=>{(a.tags||[]).forEach(t=>{if(t!==MEDIA_TAG){tagCounts[t]=(tagCounts[t]||0)+1;}});});
+  const dogCounts={};
+  all.forEach(a=>{(a.tags||[]).forEach(t=>{
+    if(t===MEDIA_TAG) return;
+    const lower=t.toLowerCase();
+    if(dogs.has(lower)) dogCounts[lower]=(dogCounts[lower]||0)+1;
+    else tagCounts[t]=(tagCounts[t]||0)+1;
+  });});
   const imgCount=all.filter(a=>a.resource_type==='image').length;
   const vidCount=all.filter(a=>a.resource_type==='video').length;
 
   if(filtersEl){
-    const pill=(value,label,count,active)=>`<div class="filter-pill${active?' active':''}" onclick="setMediaFilter('${esc(value)}')">${esc(label)}${count!=null?` <strong>${count}</strong>`:''}</div>`;
+    const pill=(value,label,count,active,style)=>`<div class="filter-pill${active?' active':''}" ${style?'style="'+style+'"':''} onclick="setMediaFilter('${esc(value)}')">${esc(label)}${count!=null?` <strong>${count}</strong>`:''}</div>`;
     let html=pill('all','All',all.length,mediaTagFilter==='all');
     html+=pill('images','📷 Images',imgCount,mediaTagFilter==='images');
     html+=pill('videos','🎬 Videos',vidCount,mediaTagFilter==='videos');
+    // Dogs group (highlighted)
+    Object.entries(dogCounts).sort((a,b)=>b[1]-a[1]).forEach(([t,n])=>{
+      const cap=t.charAt(0).toUpperCase()+t.slice(1);
+      html+=pill(t,'🐕 '+cap,n,mediaTagFilter===t,'background:var(--orange-light);color:var(--orange-dark);border-color:var(--orange-light)');
+    });
+    // Other tags
     Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]).forEach(([t,n])=>{
       html+=pill(t,'#'+t,n,mediaTagFilter===t);
     });
@@ -2856,7 +2881,7 @@ function renderMediaGrid(){
   let list=all;
   if(mediaTagFilter==='images') list=list.filter(a=>a.resource_type==='image');
   else if(mediaTagFilter==='videos') list=list.filter(a=>a.resource_type==='video');
-  else if(mediaTagFilter!=='all') list=list.filter(a=>(a.tags||[]).includes(mediaTagFilter));
+  else if(mediaTagFilter!=='all') list=list.filter(a=>(a.tags||[]).some(t=>t.toLowerCase()===mediaTagFilter.toLowerCase()));
 
   if(!list.length){
     grid.innerHTML=`<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">${all.length?'No assets match this filter.':'No assets yet — click + Upload to add your first photo or video.'}</div></div>`;
@@ -2872,6 +2897,7 @@ function renderMediaGrid(){
     const original=`https://res.cloudinary.com/${cloud}/${a.resource_type}/upload/${a.public_id}.${a.format||(isVideo?'mp4':'jpg')}`;
     const tags=(a.tags||[]).filter(t=>t!==MEDIA_TAG);
     const safeOriginal=original.replace(/'/g,"\\'");
+    const safePid=a.public_id.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<div class="card" style="overflow:hidden;display:flex;flex-direction:column">
       <div style="position:relative;aspect-ratio:1;background:var(--cream-dark);cursor:pointer" onclick="window.open('${safeOriginal}','_blank')">
         <img src="${thumb}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
@@ -2880,9 +2906,10 @@ function renderMediaGrid(){
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:4px">
         <div style="font-size:11px;color:var(--ink-light);font-family:'SF Mono',Monaco,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.public_id)}">${esc(a.public_id)}</div>
         ${tags.length?`<div style="font-size:10px;color:var(--ink-xlight)">${tags.map(t=>`#${esc(t)}`).join(' ')}</div>`:''}
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" onclick="copyMediaUrl('${safeOriginal}')">📋 Copy URL</button>
-          <a href="${original}" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;text-align:center;text-decoration:none">↗ Original</a>
+        <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" onclick="copyMediaUrl('${safeOriginal}')">📋 Copy</button>
+          <a href="${original}" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;text-align:center;text-decoration:none">↗ Open</a>
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;color:var(--danger)" onclick="deleteMedia('${safePid}','${a.resource_type}')">🗑️</button>
         </div>
       </div>
     </div>`;
@@ -2892,6 +2919,26 @@ function renderMediaGrid(){
 
 function copyMediaUrl(url){
   navigator.clipboard.writeText(url).then(()=>showToast('URL copied','📋')).catch(()=>showToast('Copy failed','⚠️'));
+}
+
+async function deleteMedia(public_id,resource_type){
+  if(!confirm('Delete this asset from Cloudinary?\n\n'+public_id+'\n\nThis cannot be undone.')) return;
+  try{
+    const r=await authFetch('/api/cloudinary/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_id,resource_type})});
+    if(!r.ok){
+      const data=await r.json().catch(()=>({}));
+      showToast('Delete failed: '+(data.error||r.status),'⚠️');
+      return;
+    }
+    // Remove from cache + re-render
+    if(_mediaCache) _mediaCache=_mediaCache.filter(a=>a.public_id!==public_id);
+    saveMediaCache(_mediaCache||[]);
+    renderMediaGrid();
+    showToast('Asset deleted','🗑️');
+    logEvent('Media deleted',public_id,'info','🗑️');
+  }catch(err){
+    showToast('Delete failed: '+err.message,'⚠️');
+  }
 }
 
 function openMediaUpload(){
@@ -4009,10 +4056,41 @@ function saveSettings(section){
   save('cw_settings',s);
   showToast('Settings saved!','✅');
   logEvent('Settings updated',section||'all','info','⚙️');
+  // Push to Notion config so other devices pick this up
+  pushSettingsToNotion(s);
   // Refresh dashboard revenue when route/pricing settings change
   if(section==='routes'||section==='base') renderDashboard();
   // Re-render Enquiries so distance-from-hub chips reflect new base location
   if(section==='base' && document.getElementById('view-enquiries')?.classList.contains('active')) renderPipeline();
+}
+
+// ── CROSS-DEVICE SETTINGS SYNC (Notion-backed) ──
+let _settingsSyncBusy=false;
+function pushSettingsToNotion(settings){
+  if(_settingsSyncBusy) return;
+  _settingsSyncBusy=true;
+  authFetch('/api/notion/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)})
+    .then(r=>{if(!r.ok)throw new Error('Config push '+r.status);})
+    .catch(err=>{console.warn('[Config] Push failed:',err.message);})
+    .finally(()=>{_settingsSyncBusy=false;});
+}
+async function pullSettingsFromNotion(){
+  try{
+    const r=await authFetch('/api/notion/config');
+    if(!r.ok) throw new Error('Config fetch '+r.status);
+    const remote=await r.json();
+    if(!remote||typeof remote!=='object') return;
+    if(!Object.keys(remote).length) return; // empty remote, keep local
+    const local=load('cw_settings',{});
+    // Remote is source of truth — overwrite local with remote keys
+    const merged={...local,...remote};
+    save('cw_settings',merged);
+    // Re-populate inputs if Settings is open
+    if(document.getElementById('view-settings')?.classList.contains('active')) loadSettings();
+    logEvent('Settings synced','Pulled config from Notion','info','☁️');
+  }catch(err){
+    console.warn('[Config] Pull failed:',err.message);
+  }
 }
 function loadSettings(){
   const s=load('cw_settings',{});
