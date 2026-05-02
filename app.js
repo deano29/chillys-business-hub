@@ -2879,15 +2879,17 @@ function copyMediaUrl(url){
 }
 
 function openMediaUpload(){
+  console.log('[Media] Upload clicked');
   const cloud=getSetting('s-cloudinary-cloud','');
   const preset=getSetting('s-cloudinary-preset','');
+  console.log('[Media] cloud:',cloud,'preset:',preset);
   if(!cloud||!preset){
-    showToast('Add Cloudinary credentials in Settings first','⚠️');
+    alert('Cloudinary not configured.\n\nGo to Settings → 📸 Cloudinary, paste your Cloud Name and Upload Preset, then click Save Cloudinary.');
     navigate('settings');
     return;
   }
   if(typeof cloudinary==='undefined'){
-    showToast('Cloudinary widget not loaded yet — try again in a moment','⚠️');
+    alert('Cloudinary widget script did not load.\n\nThis usually means:\n• Ad blocker / privacy extension is blocking it\n• Slow network — wait 5 seconds and try again\n• Network is offline\n\nCheck the browser console (F12) for details.');
     return;
   }
   // Prompt for tags up front
@@ -2900,6 +2902,8 @@ function openMediaUpload(){
     try{_mediaWidget.update({tags:allTags});}catch(e){_mediaWidget=null;}
   }
   if(!_mediaWidget){
+    console.log('[Media] Creating Cloudinary widget');
+    try{
     _mediaWidget=cloudinary.createUploadWidget({
       cloudName:cloud,
       uploadPreset:preset,
@@ -2937,8 +2941,19 @@ function openMediaUpload(){
         refreshMedia();
       }
     });
+    }catch(err){
+      console.error('[Media] Widget creation failed:',err);
+      alert('Cloudinary widget failed to initialise: '+(err.message||err));
+      return;
+    }
   }
-  _mediaWidget.open();
+  try{
+    _mediaWidget.open();
+    console.log('[Media] Widget open() called');
+  }catch(err){
+    console.error('[Media] Widget open failed:',err);
+    alert('Could not open upload dialog: '+(err.message||err));
+  }
 }
 
 // ── WEEKLY REVIEW ──
