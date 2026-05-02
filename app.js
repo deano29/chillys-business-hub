@@ -3000,7 +3000,7 @@ function sendWeeklyReview(){
 
 // ── REVIEWS ──
 let reviewsFilter='eligible';
-const REVIEW_MIN_WALKS=10;
+const REVIEW_MIN_WALKS=5;
 const REVIEW_COOLDOWN_DAYS=90;
 
 function loadReviews(){return load('cw_reviews',[])||[];}
@@ -3060,7 +3060,7 @@ async function renderReviews(){
       <div class="kpi-card"><div class="kpi-label">Eligible</div><div class="kpi-value" style="color:var(--orange)">${counts.eligible}</div><div class="kpi-change">Ready to ask</div></div>
       <div class="kpi-card"><div class="kpi-label">Asked (last 90d)</div><div class="kpi-value">${counts.asked}</div><div class="kpi-change">Pending response</div></div>
       <div class="kpi-card"><div class="kpi-label">Completed</div><div class="kpi-value" style="color:var(--success)">${counts.completed}</div><div class="kpi-change">Reviews logged</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total Clients</div><div class="kpi-value">${list.length}</div><div class="kpi-change">${counts.ineligible} below 10-walk threshold</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Clients</div><div class="kpi-value">${list.length}</div><div class="kpi-change">${counts.ineligible} below ${REVIEW_MIN_WALKS}-walk threshold</div></div>
     `;
   }
 
