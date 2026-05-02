@@ -2807,14 +2807,18 @@ async function refreshMedia(){
   showToast('Refreshing media…','🔄');
   // Try authenticated route first
   try{
+    console.log('[Media] Trying authenticated list…');
     const resources=await fetchCloudinaryListAuthenticated();
+    console.log('[Media] Authenticated list returned',resources.length,'asset(s)');
     _mediaCache=resources.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
     saveMediaCache(_mediaCache);
     renderMediaGrid();
     showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
     return;
   }catch(err){
-    if(err.message!=='env-not-set'){
+    if(err.message==='env-not-set'){
+      console.log('[Media] Cloudinary env vars not set in Vercel — falling back to public list');
+    } else {
       console.warn('[Media] Authenticated list failed, falling back to public:',err.message);
     }
   }
