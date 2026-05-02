@@ -363,7 +363,7 @@ function getObNextAction(e){
 const VIEW_TITLES={
   dashboard:'Dashboard',enquiries:'Enquiry Pipeline',
   clients:'Clients',walks:'Walk Schedule',inbox:'Inbox',routes:'Profitability & Growth',coverage:'Coverage Map',parks:'Off-Leash Parks',templates:'Message Templates',
-  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',reviews:'Review Collection',weekly:'Weekly Review',
+  reports:'Reports & KPIs',settings:'Settings',compliance:'Compliance',playbooks:'Playbooks & SOPs',reviews:'Review Collection',weekly:'Weekly Review',media:'Media Library',
 };
 
 function navigate(v){
@@ -396,6 +396,7 @@ function navigate(v){
   if(v==='playbooks')renderPlaybooks();
   if(v==='reviews')renderReviews();
   if(v==='weekly')renderWeekly();
+  if(v==='media')renderMediaLibrary();
   updateBadges();
 }
 
@@ -2755,6 +2756,191 @@ async function renderInvestorView(){
   }
 }
 
+// ── MEDIA LIBRARY (Cloudinary) ──
+const MEDIA_TAG='chillys-media';
+let mediaTagFilter='all'; // 'all' | 'images' | 'videos' | <tag-name>
+let _mediaCache=null;
+let _mediaWidget=null;
+
+function loadMediaCache(){return load('cw_media_cache',null);}
+function saveMediaCache(arr){save('cw_media_cache',arr);}
+
+function setMediaFilter(f){mediaTagFilter=f;renderMediaGrid();}
+
+async function fetchCloudinaryList(cloud,resourceType){
+  // Public resource list endpoint — works for unsigned reads when "Resource list" is enabled in account settings
+  const url=`https://res.cloudinary.com/${encodeURIComponent(cloud)}/${resourceType}/list/${MEDIA_TAG}.json?_=${Date.now()}`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error(`Cloudinary ${resourceType} list returned ${r.status}`);
+  const data=await r.json();
+  return (data.resources||[]).map(it=>({...it,resource_type:resourceType==='video'?'video':'image'}));
+}
+
+async function refreshMedia(){
+  const cloud=getSetting('s-cloudinary-cloud','');
+  if(!cloud){renderMediaLibrary();return;}
+  showToast('Refreshing media…','🔄');
+  try{
+    const [images,videos]=await Promise.all([
+      fetchCloudinaryList(cloud,'image').catch(()=>[]),
+      fetchCloudinaryList(cloud,'video').catch(()=>[]),
+    ]);
+    _mediaCache=[...images,...videos].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+    saveMediaCache(_mediaCache);
+    renderMediaGrid();
+    showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
+  }catch(e){
+    showToast('Could not load media: '+e.message,'⚠️');
+  }
+}
+
+function renderMediaLibrary(){
+  const cloud=getSetting('s-cloudinary-cloud','');
+  const preset=getSetting('s-cloudinary-preset','');
+  if(!cloud||!preset){
+    document.getElementById('media-filters').innerHTML='';
+    document.getElementById('media-grid').innerHTML=`
+      <div class="card"><div class="card-body" style="padding:40px;text-align:center">
+        <div style="font-size:36px;margin-bottom:10px">📸</div>
+        <h3 style="margin-bottom:8px">Media Library not set up yet</h3>
+        <p style="color:var(--ink-light);max-width:480px;margin:0 auto 16px">Sign up for a free Cloudinary account, then add your Cloud Name and an unsigned Upload Preset in Settings to enable shared image and video storage.</p>
+        <button class="btn btn-primary btn-sm" onclick="navigate('settings')">Open Settings</button>
+      </div></div>`;
+    return;
+  }
+  // Hydrate from cache for instant render, then refresh
+  if(!_mediaCache) _mediaCache=loadMediaCache();
+  renderMediaGrid();
+  refreshMedia();
+}
+
+function renderMediaGrid(){
+  const grid=document.getElementById('media-grid');
+  const filtersEl=document.getElementById('media-filters');
+  if(!grid) return;
+  const all=_mediaCache||[];
+  // Tag union + counts
+  const tagCounts={};
+  all.forEach(a=>{(a.tags||[]).forEach(t=>{if(t!==MEDIA_TAG){tagCounts[t]=(tagCounts[t]||0)+1;}});});
+  const imgCount=all.filter(a=>a.resource_type==='image').length;
+  const vidCount=all.filter(a=>a.resource_type==='video').length;
+
+  if(filtersEl){
+    const pill=(value,label,count,active)=>`<div class="filter-pill${active?' active':''}" onclick="setMediaFilter('${esc(value)}')">${esc(label)}${count!=null?` <strong>${count}</strong>`:''}</div>`;
+    let html=pill('all','All',all.length,mediaTagFilter==='all');
+    html+=pill('images','📷 Images',imgCount,mediaTagFilter==='images');
+    html+=pill('videos','🎬 Videos',vidCount,mediaTagFilter==='videos');
+    Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]).forEach(([t,n])=>{
+      html+=pill(t,'#'+t,n,mediaTagFilter===t);
+    });
+    filtersEl.innerHTML=html;
+  }
+
+  // Filter
+  let list=all;
+  if(mediaTagFilter==='images') list=list.filter(a=>a.resource_type==='image');
+  else if(mediaTagFilter==='videos') list=list.filter(a=>a.resource_type==='video');
+  else if(mediaTagFilter!=='all') list=list.filter(a=>(a.tags||[]).includes(mediaTagFilter));
+
+  if(!list.length){
+    grid.innerHTML=`<div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--ink-xlight)">${all.length?'No assets match this filter.':'No assets yet — click + Upload to add your first photo or video.'}</div></div>`;
+    return;
+  }
+
+  const cloud=getSetting('s-cloudinary-cloud','');
+  const cards=list.map(a=>{
+    const isVideo=a.resource_type==='video';
+    const thumb=isVideo
+      ? `https://res.cloudinary.com/${cloud}/video/upload/so_2,c_fill,w_400,h_400,q_auto,f_jpg/${a.public_id}.jpg`
+      : `https://res.cloudinary.com/${cloud}/image/upload/c_fill,w_400,h_400,q_auto,f_auto/${a.public_id}.${a.format||'jpg'}`;
+    const original=`https://res.cloudinary.com/${cloud}/${a.resource_type}/upload/${a.public_id}.${a.format||(isVideo?'mp4':'jpg')}`;
+    const tags=(a.tags||[]).filter(t=>t!==MEDIA_TAG);
+    const safeOriginal=original.replace(/'/g,"\\'");
+    return `<div class="card" style="overflow:hidden;display:flex;flex-direction:column">
+      <div style="position:relative;aspect-ratio:1;background:var(--cream-dark);cursor:pointer" onclick="window.open('${safeOriginal}','_blank')">
+        <img src="${thumb}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
+        ${isVideo?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:42px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.5);pointer-events:none">▶</div>':''}
+      </div>
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:4px">
+        <div style="font-size:11px;color:var(--ink-light);font-family:'SF Mono',Monaco,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.public_id)}">${esc(a.public_id)}</div>
+        ${tags.length?`<div style="font-size:10px;color:var(--ink-xlight)">${tags.map(t=>`#${esc(t)}`).join(' ')}</div>`:''}
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" onclick="copyMediaUrl('${safeOriginal}')">📋 Copy URL</button>
+          <a href="${original}" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;text-align:center;text-decoration:none">↗ Original</a>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  grid.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${cards}</div>`;
+}
+
+function copyMediaUrl(url){
+  navigator.clipboard.writeText(url).then(()=>showToast('URL copied','📋')).catch(()=>showToast('Copy failed','⚠️'));
+}
+
+function openMediaUpload(){
+  const cloud=getSetting('s-cloudinary-cloud','');
+  const preset=getSetting('s-cloudinary-preset','');
+  if(!cloud||!preset){
+    showToast('Add Cloudinary credentials in Settings first','⚠️');
+    navigate('settings');
+    return;
+  }
+  if(typeof cloudinary==='undefined'){
+    showToast('Cloudinary widget not loaded yet — try again in a moment','⚠️');
+    return;
+  }
+  // Prompt for tags up front
+  const tagInput=prompt('Tags for these uploads (comma-separated, optional)\\nExamples: insta, reel, behind-scenes','');
+  if(tagInput===null) return; // cancelled
+  const userTags=tagInput.split(',').map(t=>t.trim().toLowerCase().replace(/[^a-z0-9-]/g,'-')).filter(Boolean);
+  const allTags=[MEDIA_TAG,...userTags];
+  if(_mediaWidget){
+    // Update tags on the existing widget
+    try{_mediaWidget.update({tags:allTags});}catch(e){_mediaWidget=null;}
+  }
+  if(!_mediaWidget){
+    _mediaWidget=cloudinary.createUploadWidget({
+      cloudName:cloud,
+      uploadPreset:preset,
+      tags:allTags,
+      sources:['local','camera','url','dropbox','google_drive'],
+      multiple:true,
+      maxFileSize:200*1024*1024, // 200MB cap per file
+    },(error,result)=>{
+      if(error){
+        showToast('Upload error: '+(error.statusText||error.message||'unknown'),'⚠️');
+        return;
+      }
+      if(result&&result.event==='success'){
+        const info=result.info;
+        logEvent('Media uploaded',`${info.original_filename||info.public_id} (${info.resource_type})`,'success','📸');
+        // Optimistic add to cache
+        if(!_mediaCache) _mediaCache=[];
+        _mediaCache.unshift({
+          public_id:info.public_id,
+          format:info.format,
+          version:info.version,
+          resource_type:info.resource_type,
+          type:info.type,
+          created_at:info.created_at,
+          tags:info.tags||allTags,
+          bytes:info.bytes,
+          width:info.width,
+          height:info.height,
+        });
+        saveMediaCache(_mediaCache);
+        renderMediaGrid();
+      }
+      if(result&&result.event==='queues-end'){
+        // All uploads finished — refresh from server to ensure parity
+        refreshMedia();
+      }
+    });
+  }
+  _mediaWidget.open();
+}
+
 // ── WEEKLY REVIEW ──
 let weeklyWindow='last';
 let _weeklySnapshot=null;
@@ -3084,16 +3270,18 @@ async function renderReviews(){
       ineligible:'<span style="background:var(--cream-dark);color:var(--ink-xlight);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Below threshold</span>',
     }[c.status];
     const actionBtns=[];
+    // Escape for safe use inside a single-quoted JS string within an HTML double-quoted attribute
+    const jsName=c.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     if(c.status==='eligible'){
       const hasHook=!!getWebhookUrl('wh-review-request');
       const lbl=hasHook?'📤 Send Request':'✓ Mark Asked';
       const tip=hasHook?'Fire Make.com webhook to send + mark asked':'No webhook configured — marks asked locally';
-      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="requestReview('${esc(c.name)}',${hasHook})" title="${tip}">${lbl}</button>`);
+      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="requestReview('${jsName}',${hasHook})" title="${tip}">${lbl}</button>`);
     } else if(c.status==='asked'){
-      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="markReviewCompleted('${esc(c.name)}')">✅ Got Review</button>`);
-      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${esc(c.name)}')" style="color:var(--danger)">↺ Reset</button>`);
+      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="markReviewCompleted('${jsName}')">✅ Got Review</button>`);
+      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${jsName}')" style="color:var(--danger)">↺ Reset</button>`);
     } else if(c.status==='completed'){
-      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${esc(c.name)}')" style="color:var(--danger)">↺ Re-eligible</button>`);
+      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${jsName}')" style="color:var(--danger)">↺ Re-eligible</button>`);
     }
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
@@ -3782,7 +3970,8 @@ const SETTINGS_FIELDS={
   webhooks:['wh-new-enquiry','wh-stage-onboarding','wh-client-converted','wh-followup-overdue','wh-send-email','wh-ai-draft','wh-xero','wh-fetch-leads','wh-fetch-walks','wh-review-request','wh-weekly-review'],
   base:['s-base-lat','s-base-lng'],
   routes:['s-cost-km','s-super-rate','s-casual-load','s-target-profit','s-margin-green','s-margin-yellow','s-travel-warn','s-travel-danger','s-founder-weekly','s-founder-days','s-founder-target','s-buffer-mins','s-max-dogs','s-rate-employee','s-rate-contractor','s-price-adventure','s-price-solo'],
-  adSpend:['s-spend-meta','s-spend-google']
+  adSpend:['s-spend-meta','s-spend-google'],
+  cloudinary:['s-cloudinary-cloud','s-cloudinary-preset']
 };
 function saveSettings(section){
   const s=load('cw_settings',{});
