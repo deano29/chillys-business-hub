@@ -2776,8 +2776,24 @@ function saveMediaCache(arr){save('cw_media_cache',arr);}
 
 function setMediaFilter(f){mediaTagFilter=f;renderMediaGrid();}
 
-async function fetchCloudinaryList(cloud,resourceType){
-  // Public resource list endpoint — works for unsigned reads when "Resource list" is enabled in account settings
+async function fetchCloudinaryListAuthenticated(){
+  // Preferred path: server-side route that uses Cloudinary API key/secret to list ALL assets,
+  // independent of tags or any public-resource-list setting.
+  const r=await authFetch('/api/cloudinary/list');
+  if(r.status===503){
+    const data=await r.json().catch(()=>({}));
+    const err=new Error('env-not-set');
+    err.envMissing=data.missing||true;
+    throw err;
+  }
+  if(!r.ok) throw new Error('Authenticated list returned '+r.status);
+  const data=await r.json();
+  return data.resources||[];
+}
+
+async function fetchCloudinaryListPublic(cloud,resourceType){
+  // Fallback: public resource-list endpoint by tag. Requires Cloudinary Resource List enabled
+  // AND assets tagged with chillys-media. Used only when env vars aren't configured.
   const url=`https://res.cloudinary.com/${encodeURIComponent(cloud)}/${resourceType}/list/${MEDIA_TAG}.json?_=${Date.now()}`;
   const r=await fetch(url);
   if(!r.ok) throw new Error(`Cloudinary ${resourceType} list returned ${r.status}`);
@@ -2789,33 +2805,44 @@ async function refreshMedia(){
   const cloud=getCloud();
   if(!cloud){renderMediaLibrary();return;}
   showToast('Refreshing media…','🔄');
+  // Try authenticated route first
+  try{
+    const resources=await fetchCloudinaryListAuthenticated();
+    _mediaCache=resources.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+    saveMediaCache(_mediaCache);
+    renderMediaGrid();
+    showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
+    return;
+  }catch(err){
+    if(err.message!=='env-not-set'){
+      console.warn('[Media] Authenticated list failed, falling back to public:',err.message);
+    }
+  }
+  // Fallback: public tag-based list
   let imgErr=null,vidErr=null;
   const [images,videos]=await Promise.all([
-    fetchCloudinaryList(cloud,'image').catch(e=>{imgErr=e;return[];}),
-    fetchCloudinaryList(cloud,'video').catch(e=>{vidErr=e;return[];}),
+    fetchCloudinaryListPublic(cloud,'image').catch(e=>{imgErr=e;return[];}),
+    fetchCloudinaryListPublic(cloud,'video').catch(e=>{vidErr=e;return[];}),
   ]);
-  // Both endpoints failing usually means "Resource list" is restricted in Cloudinary security settings
   if(imgErr&&vidErr&&!images.length&&!videos.length){
-    console.error('[Media] Image list error:',imgErr);
-    console.error('[Media] Video list error:',vidErr);
+    console.error('[Media] Public list also failed. Image:',imgErr,'Video:',vidErr);
     document.getElementById('media-grid').innerHTML=`<div class="card"><div class="card-body" style="padding:30px;text-align:center">
-      <div style="font-size:32px;margin-bottom:8px">⚠️</div>
-      <h3 style="margin-bottom:8px">Cloudinary Resource List is restricted</h3>
+      <div style="font-size:32px;margin-bottom:8px">⚙️</div>
+      <h3 style="margin-bottom:8px">Add three Cloudinary env vars in Vercel</h3>
       <p style="color:var(--ink-light);max-width:520px;margin:0 auto 14px;line-height:1.6">
-        Your account has the public Resource List feature disabled — that's why uploads work but don't appear cross-device.<br><br>
-        <strong>Fix:</strong> Cloudinary dashboard → ⚙️ Settings → <strong>Security</strong> tab → find <strong>Restricted media types</strong> → uncheck/allow <strong>Resource list</strong> → Save.<br><br>
-        Then come back here and click Refresh.
+        For full cross-device sync and in-app delete, add these in your Vercel project's Environment Variables (one-time, ~30 seconds):<br><br>
+        <code style="background:var(--cream-dark);padding:2px 6px;border-radius:4px">CLOUDINARY_CLOUD_NAME</code> = <code>dfokiv0pj</code><br>
+        <code style="background:var(--cream-dark);padding:2px 6px;border-radius:4px">CLOUDINARY_API_KEY</code> = (your API key from Cloudinary dashboard)<br>
+        <code style="background:var(--cream-dark);padding:2px 6px;border-radius:4px">CLOUDINARY_API_SECRET</code> = (your API secret)<br><br>
+        Find the key + secret on your Cloudinary dashboard's home page (top section). Then redeploy and refresh this page.
       </p>
-      <div style="font-size:11px;color:var(--ink-xlight)">Image API status: ${imgErr.message||'failed'} · Video API: ${vidErr.message||'failed'}</div>
     </div></div>`;
-    showToast('Cloudinary Resource List restricted — see Media page','⚠️');
+    showToast('Cloudinary needs Vercel env vars — see Media page','⚙️');
     return;
   }
   _mediaCache=[...images,...videos].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
   saveMediaCache(_mediaCache);
   renderMediaGrid();
-  if(imgErr) console.warn('[Media] Image list error (videos still loaded):',imgErr);
-  if(vidErr) console.warn('[Media] Video list error (images still loaded):',vidErr);
   showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
 }
 
@@ -2975,7 +3002,6 @@ function openMediaUpload(){
       sources:['local','camera','url','dropbox','google_drive'],
       multiple:true,
       maxFileSize:200*1024*1024, // 200MB cap per file
-      showAdvancedOptions:true, // exposes the Tags field in the widget's UI
     },(error,result)=>{
       if(error){
         showToast('Upload error: '+(error.statusText||error.message||'unknown'),'⚠️');
