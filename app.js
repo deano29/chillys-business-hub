@@ -2891,7 +2891,7 @@ function openMediaUpload(){
     return;
   }
   // Prompt for tags up front
-  const tagInput=prompt('Tags for these uploads (comma-separated, optional)\\nExamples: insta, reel, behind-scenes','');
+  const tagInput=prompt('Tags for these uploads (comma-separated, optional)\nExamples: insta, reel, behind-scenes','');
   if(tagInput===null) return; // cancelled
   const userTags=tagInput.split(',').map(t=>t.trim().toLowerCase().replace(/[^a-z0-9-]/g,'-')).filter(Boolean);
   const allTags=[MEDIA_TAG,...userTags];
