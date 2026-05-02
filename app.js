@@ -3085,8 +3085,10 @@ async function renderReviews(){
     }[c.status];
     const actionBtns=[];
     if(c.status==='eligible'){
-      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="requestReview('${esc(c.name)}',true)" title="Mark as asked and fire webhook if configured">📤 Request</button>`);
-      actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="requestReview('${esc(c.name)}',false)" title="Just mark as asked">Mark Asked</button>`);
+      const hasHook=!!getWebhookUrl('wh-review-request');
+      const lbl=hasHook?'📤 Send Request':'✓ Mark Asked';
+      const tip=hasHook?'Fire Make.com webhook to send + mark asked':'No webhook configured — marks asked locally';
+      actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="requestReview('${esc(c.name)}',${hasHook})" title="${tip}">${lbl}</button>`);
     } else if(c.status==='asked'){
       actionBtns.push(`<button class="btn btn-primary btn-sm" onclick="markReviewCompleted('${esc(c.name)}')">✅ Got Review</button>`);
       actionBtns.push(`<button class="btn btn-ghost btn-sm" onclick="resetReview('${esc(c.name)}')" style="color:var(--danger)">↺ Reset</button>`);
