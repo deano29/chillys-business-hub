@@ -2759,7 +2759,14 @@ async function renderInvestorView(){
 }
 
 // ── MEDIA LIBRARY (Cloudinary) ──
+// Hardcoded defaults so any device works out of the box. Settings inputs
+// override these per-device if needed (otherwise these win). Cloud name +
+// unsigned upload preset are not secrets — both appear in client-side URLs.
+const CLOUDINARY_DEFAULT_CLOUD='dfokiv0pj';
+const CLOUDINARY_DEFAULT_PRESET="Chilly's Hub";
 const MEDIA_TAG='chillys-media';
+function getCloud(){return getSetting('s-cloudinary-cloud','')||CLOUDINARY_DEFAULT_CLOUD;}
+function getPreset(){return getSetting('s-cloudinary-preset','')||CLOUDINARY_DEFAULT_PRESET;}
 let mediaTagFilter='all'; // 'all' | 'images' | 'videos' | <tag-name>
 let _mediaCache=null;
 let _mediaWidget=null;
@@ -2779,7 +2786,7 @@ async function fetchCloudinaryList(cloud,resourceType){
 }
 
 async function refreshMedia(){
-  const cloud=getSetting('s-cloudinary-cloud','');
+  const cloud=getCloud();
   if(!cloud){renderMediaLibrary();return;}
   showToast('Refreshing media…','🔄');
   let imgErr=null,vidErr=null;
@@ -2813,8 +2820,8 @@ async function refreshMedia(){
 }
 
 function renderMediaLibrary(){
-  const cloud=getSetting('s-cloudinary-cloud','');
-  const preset=getSetting('s-cloudinary-preset','');
+  const cloud=getCloud();
+  const preset=getPreset();
   if(!cloud||!preset){
     document.getElementById('media-filters').innerHTML='';
     document.getElementById('media-grid').innerHTML=`
@@ -2888,7 +2895,7 @@ function renderMediaGrid(){
     return;
   }
 
-  const cloud=getSetting('s-cloudinary-cloud','');
+  const cloud=getCloud();
   const cards=list.map(a=>{
     const isVideo=a.resource_type==='video';
     const thumb=isVideo
@@ -2943,8 +2950,8 @@ async function deleteMedia(public_id,resource_type){
 
 function openMediaUpload(){
   console.log('[Media] Upload clicked');
-  const cloud=getSetting('s-cloudinary-cloud','');
-  const preset=getSetting('s-cloudinary-preset','');
+  const cloud=getCloud();
+  const preset=getPreset();
   console.log('[Media] cloud:',cloud,'preset:',preset);
   if(!cloud||!preset){
     alert('Cloudinary not configured.\n\nGo to Settings → 📸 Cloudinary, paste your Cloud Name and Upload Preset, then click Save Cloudinary.');
