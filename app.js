@@ -2780,18 +2780,34 @@ async function refreshMedia(){
   const cloud=getSetting('s-cloudinary-cloud','');
   if(!cloud){renderMediaLibrary();return;}
   showToast('Refreshing media…','🔄');
-  try{
-    const [images,videos]=await Promise.all([
-      fetchCloudinaryList(cloud,'image').catch(()=>[]),
-      fetchCloudinaryList(cloud,'video').catch(()=>[]),
-    ]);
-    _mediaCache=[...images,...videos].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
-    saveMediaCache(_mediaCache);
-    renderMediaGrid();
-    showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
-  }catch(e){
-    showToast('Could not load media: '+e.message,'⚠️');
+  let imgErr=null,vidErr=null;
+  const [images,videos]=await Promise.all([
+    fetchCloudinaryList(cloud,'image').catch(e=>{imgErr=e;return[];}),
+    fetchCloudinaryList(cloud,'video').catch(e=>{vidErr=e;return[];}),
+  ]);
+  // Both endpoints failing usually means "Resource list" is restricted in Cloudinary security settings
+  if(imgErr&&vidErr&&!images.length&&!videos.length){
+    console.error('[Media] Image list error:',imgErr);
+    console.error('[Media] Video list error:',vidErr);
+    document.getElementById('media-grid').innerHTML=`<div class="card"><div class="card-body" style="padding:30px;text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+      <h3 style="margin-bottom:8px">Cloudinary Resource List is restricted</h3>
+      <p style="color:var(--ink-light);max-width:520px;margin:0 auto 14px;line-height:1.6">
+        Your account has the public Resource List feature disabled — that's why uploads work but don't appear cross-device.<br><br>
+        <strong>Fix:</strong> Cloudinary dashboard → ⚙️ Settings → <strong>Security</strong> tab → find <strong>Restricted media types</strong> → uncheck/allow <strong>Resource list</strong> → Save.<br><br>
+        Then come back here and click Refresh.
+      </p>
+      <div style="font-size:11px;color:var(--ink-xlight)">Image API status: ${imgErr.message||'failed'} · Video API: ${vidErr.message||'failed'}</div>
+    </div></div>`;
+    showToast('Cloudinary Resource List restricted — see Media page','⚠️');
+    return;
   }
+  _mediaCache=[...images,...videos].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+  saveMediaCache(_mediaCache);
+  renderMediaGrid();
+  if(imgErr) console.warn('[Media] Image list error (videos still loaded):',imgErr);
+  if(vidErr) console.warn('[Media] Video list error (images still loaded):',vidErr);
+  showToast(`Loaded ${_mediaCache.length} asset${_mediaCache.length===1?'':'s'}`,'📸');
 }
 
 function renderMediaLibrary(){
